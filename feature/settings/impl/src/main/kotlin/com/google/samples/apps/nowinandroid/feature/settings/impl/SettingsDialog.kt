@@ -31,6 +31,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -38,6 +41,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,6 +60,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.gms.oss.licenses.OssLicensesMenuActivity
 import com.google.samples.apps.nowinandroid.core.designsystem.component.NiaTextButton
+import com.google.samples.apps.nowinandroid.core.designsystem.component.NiaLoadingWheel
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.NiaTheme
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.supportsDynamicTheming
 import com.google.samples.apps.nowinandroid.core.model.data.DarkThemeConfig
@@ -82,6 +87,8 @@ fun SettingsDialog(
         onChangeThemeBrand = viewModel::updateThemeBrand,
         onChangeDynamicColorPreference = viewModel::updateDynamicColorPreference,
         onChangeDarkThemeConfig = viewModel::updateDarkThemeConfig,
+        onChangeScannerAction = viewModel::updateScannerAction,
+        onChangeBluetoothPrinterMac = viewModel::updateBluetoothPrinterMac,
     )
 }
 
@@ -93,6 +100,8 @@ fun SettingsDialog(
     onChangeThemeBrand: (themeBrand: ThemeBrand) -> Unit,
     onChangeDynamicColorPreference: (useDynamicColor: Boolean) -> Unit,
     onChangeDarkThemeConfig: (darkThemeConfig: DarkThemeConfig) -> Unit,
+    onChangeScannerAction: (action: String) -> Unit,
+    onChangeBluetoothPrinterMac: (mac: String) -> Unit,
 ) {
     val configuration = LocalConfiguration.current
 
@@ -131,6 +140,8 @@ fun SettingsDialog(
                             onChangeThemeBrand = onChangeThemeBrand,
                             onChangeDynamicColorPreference = onChangeDynamicColorPreference,
                             onChangeDarkThemeConfig = onChangeDarkThemeConfig,
+                            onChangeScannerAction = onChangeScannerAction,
+                            onChangeBluetoothPrinterMac = onChangeBluetoothPrinterMac,
                         )
                     }
                 }
@@ -162,6 +173,8 @@ private fun ColumnScope.SettingsPanel(
     onChangeThemeBrand: (themeBrand: ThemeBrand) -> Unit,
     onChangeDynamicColorPreference: (useDynamicColor: Boolean) -> Unit,
     onChangeDarkThemeConfig: (darkThemeConfig: DarkThemeConfig) -> Unit,
+    onChangeScannerAction: (action: String) -> Unit,
+    onChangeBluetoothPrinterMac: (mac: String) -> Unit,
 ) {
     SettingsDialogSectionTitle(text = stringResource(string.feature_settings_impl_theme))
     Column(Modifier.selectableGroup()) {
@@ -211,6 +224,36 @@ private fun ColumnScope.SettingsPanel(
             onClick = { onChangeDarkThemeConfig(DARK) },
         )
     }
+
+    SettingsDialogSectionTitle(text = "PDA 扫描设置")
+    OutlinedTextField(
+        value = settings.scannerAction,
+        onValueChange = onChangeScannerAction,
+        label = { Text("广播 Action 名称") },
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        singleLine = true
+    )
+    Text(
+        text = "例如: com.android.scanner.ACTION",
+        style = MaterialTheme.typography.labelSmall,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    SettingsDialogSectionTitle(text = "蓝牙打印机设置")
+    OutlinedTextField(
+        value = settings.bluetoothPrinterMac,
+        onValueChange = onChangeBluetoothPrinterMac,
+        label = { Text("打印机 MAC 地址") },
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        singleLine = true
+    )
+    Text(
+        text = "例如: 00:11:22:33:44:55",
+        style = MaterialTheme.typography.labelSmall,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }
 
 @Composable
@@ -296,11 +339,15 @@ private fun PreviewSettingsDialog() {
                     brand = DEFAULT,
                     darkThemeConfig = FOLLOW_SYSTEM,
                     useDynamicColor = false,
+                    scannerAction = "",
+                    bluetoothPrinterMac = "",
                 ),
             ),
             onChangeThemeBrand = {},
             onChangeDynamicColorPreference = {},
             onChangeDarkThemeConfig = {},
+            onChangeScannerAction = {},
+            onChangeBluetoothPrinterMac = {},
         )
     }
 }
@@ -315,6 +362,8 @@ private fun PreviewSettingsDialogLoading() {
             onChangeThemeBrand = {},
             onChangeDynamicColorPreference = {},
             onChangeDarkThemeConfig = {},
+            onChangeScannerAction = {},
+            onChangeBluetoothPrinterMac = {},
         )
     }
 }

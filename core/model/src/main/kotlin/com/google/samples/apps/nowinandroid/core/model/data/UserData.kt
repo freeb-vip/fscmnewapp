@@ -27,4 +27,6 @@ data class UserData(
     val darkThemeConfig: DarkThemeConfig,
     val useDynamicColor: Boolean,
     val shouldHideOnboarding: Boolean,
+    val scannerAction: String = "",
+    val bluetoothPrinterMac: String = "",
 )

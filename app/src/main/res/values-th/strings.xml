@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ Copyright 2026 The Android Open Source Project
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~     https://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<resources>
+    <string name="app_name">FSCM</string>
+    <string name="not_connected">เครือข่ายไม่พร้อมใช้งาน</string>
+    <string name="home">หน้าแรก</string>
+    <string name="apps">แอป</string>
+    <string name="messages">ข้อความ</string>
+    <string name="profile">โปรไฟล์</string>
+    <string name="profit_dashboard">แผงควบคุมกำไร</string>
+    <string name="warehouse_receiving">การรับสินค้าในคลังสินค้า</string>
+    <string name="scan_receiving">การสแกนรับสินค้า</string>
+    <string name="username">ชื่อผู้ใช้</string>
+    <string name="password">รหัสผ่าน</string>
+    <string name="login">เข้าสู่ระบบ</string>
+    <string name="back">กลับ</string>
+    <string name="loading">กำลังโหลด&#8230;</string>
+    <string name="no_data">ไม่มีข้อมูล</string>
+
+    <string name="login_failed">เข้าสู่ระบบล้มเหลว</string>
+    <string name="switch_namespace_failed">สลับพื้นที่ทำงานล้มเหลว</string>
+    <string name="load_home_failed">ไม่สามารถโหลดหน้าแรกได้</string>
+    <string name="no_permission_profit">ไม่มีสิทธิ์สำหรับแผงควบคุมกำไร</string>
+    <string name="load_profit_failed">โหลดแผงควบคุมกำไรล้มเหลว</string>
+    <string name="load_receiving_failed">โหลดรายการรับสินค้าล้มเหลว</string>
+    <string name="load_receiving_detail_failed">โหลดรายละเอียดการรับสินค้าล้มเหลว</string>
+    <string name="scan_failed">การสแกนล้มเหลว</string>
+    <string name="submit_failed">ส่งข้อมูลล้มเหลว</string>
+    <string name="cancel_scan_failed">ยกเลิกการสแกนล้มเหลว</string>
+    <string name="finish_receiving_failed">เสร็จสิ้นการรับสินค้าล้มเหลว</string>
+</resources>

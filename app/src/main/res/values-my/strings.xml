@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ Copyright 2026 The Android Open Source Project
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~     https://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<resources>
+    <string name="app_name">FSCM</string>
+    <string name="not_connected">ကွန်ရက်မရနိုင်ပါ</string>
+    <string name="home">ပင်မစာမျက်နှာ</string>
+    <string name="apps">အက်ပ်များ</string>
+    <string name="messages">မက်ဆေ့ခ်ျများ</string>
+    <string name="profile">ကိုယ်ရေးအကျဉ်း</string>
+    <string name="profit_dashboard">အမြတ်အစွန်း ဒက်ရှ်ဘုတ်</string>
+    <string name="warehouse_receiving">ဂိုဒေါင်လက်ခံခြင်း</string>
+    <string name="scan_receiving">စကန်ဖတ်ခြင်း လက်ခံခြင်း</string>
+    <string name="username">အသုံးပြုသူအမည်</string>
+    <string name="password">စကားဝှက်</string>
+    <string name="login">အကောင့်ဝင်ရန်</string>
+    <string name="back">နောက်သို့</string>
+    <string name="loading">လုပ်ဆောင်နေသည်&#8230;</string>
+    <string name="no_data">ဒေတာမရှိပါ</string>
+
+    <string name="login_failed">အကောင့်ဝင်ခြင်း မအောင်မြင်ပါ</string>
+    <string name="switch_namespace_failed">အလုပ်ခွင်ပြောင်းခြင်း မအောင်မြင်ပါ</string>
+    <string name="load_home_failed">ပင်မစာမျက်နှာကို မဖွင့်နိုင်ပါ</string>
+    <string name="no_permission_profit">အမြတ်အစွန်း ဒက်ရှ်ဘုတ်အတွက် ခွင့်ပြုချက်မရှိပါ</string>
+    <string name="load_profit_failed">အမြတ်အစွန်း ဒက်ရှ်ဘုတ်ကို မဖွင့်နိုင်ပါ</string>
+    <string name="load_receiving_failed">လက်ခံသည့်စာရင်းကို မဖွင့်နိုင်ပါ</string>
+    <string name="load_receiving_detail_failed">လက်ခံသည့်အသေးစိတ်ကို မဖွင့်နိုင်ပါ</string>
+    <string name="scan_failed">စကန်ဖတ်ခြင်း မအောင်မြင်ပါ</string>
+    <string name="submit_failed">ပေးပို့ခြင်း မအောင်မြင်ပါ</string>
+    <string name="cancel_scan_failed">စကန်ဖတ်ခြင်းကို ပယ်ဖျက်ခြင်း မအောင်မြင်ပါ</string>
+    <string name="finish_receiving_failed">လက်ခံခြင်းကို အပြီးသတ်ခြင်း မအောင်မြင်ပါ</string>
+</resources>

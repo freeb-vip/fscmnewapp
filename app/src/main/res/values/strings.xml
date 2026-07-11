@@ -1,20 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-     Copyright 2021 The Android Open Source Project
-
-     Licensed under the Apache License, Version 2.0 (the "License");
-     you may not use this file except in compliance with the License.
-     You may obtain a copy of the License at
-
-          http://www.apache.org/licenses/LICENSE-2.0
-
-     Unless required by applicable law or agreed to in writing, software
-     distributed under the License is distributed on an "AS IS" BASIS,
-     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-     See the License for the specific language governing permissions and
-     limitations under the License.
--->
 <resources>
-    <string name="app_name">Now in Android</string>
-    <string name="not_connected">⚠️ You aren’t connected to the internet</string>
+    <string name="app_name">FSCM</string>
+    <string name="not_connected">Network unavailable</string>
+    <string name="home">Home</string>
+    <string name="apps">Apps</string>
+    <string name="messages">Messages</string>
+    <string name="profile">Profile</string>
+    <string name="profit_dashboard">Profit Dashboard</string>
+    <string name="warehouse_receiving">Warehouse Receiving</string>
+    <string name="scan_receiving">Scan Receiving</string>
+    <string name="username">Username</string>
+    <string name="password">Password</string>
+    <string name="login">Login</string>
+    <string name="back">Back</string>
+    <string name="loading">Loading&#8230;</string>
+    <string name="no_data">No data</string>
+
+    <string name="login_failed">Login failed</string>
+    <string name="switch_namespace_failed">Switch workspace failed</string>
+    <string name="load_home_failed">Unable to load home</string>
+    <string name="no_permission_profit">No permission for profit dashboard</string>
+    <string name="load_profit_failed">Profit dashboard load failed</string>
+    <string name="load_receiving_failed">Receiving list load failed</string>
+    <string name="load_receiving_detail_failed">Receiving detail load failed</string>
+    <string name="scan_failed">Scan failed</string>
+    <string name="submit_failed">Submit failed</string>
+    <string name="cancel_scan_failed">Cancel scan failed</string>
+    <string name="finish_receiving_failed">Finish receiving failed</string>
 </resources>

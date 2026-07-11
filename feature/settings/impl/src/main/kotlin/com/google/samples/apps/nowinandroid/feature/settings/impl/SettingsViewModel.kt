@@ -44,6 +44,8 @@ class SettingsViewModel @Inject constructor(
                         brand = userData.themeBrand,
                         useDynamicColor = userData.useDynamicColor,
                         darkThemeConfig = userData.darkThemeConfig,
+                        scannerAction = userData.scannerAction,
+                        bluetoothPrinterMac = userData.bluetoothPrinterMac,
                     ),
                 )
             }
@@ -70,6 +72,18 @@ class SettingsViewModel @Inject constructor(
             userDataRepository.setDynamicColorPreference(useDynamicColor)
         }
     }
+
+    fun updateScannerAction(action: String) {
+        viewModelScope.launch {
+            userDataRepository.setScannerAction(action)
+        }
+    }
+
+    fun updateBluetoothPrinterMac(mac: String) {
+        viewModelScope.launch {
+            userDataRepository.setBluetoothPrinterMac(mac)
+        }
+    }
 }
 
 /**
@@ -79,6 +93,8 @@ data class UserEditableSettings(
     val brand: ThemeBrand,
     val useDynamicColor: Boolean,
     val darkThemeConfig: DarkThemeConfig,
+    val scannerAction: String,
+    val bluetoothPrinterMac: String,
 )
 
 sealed interface SettingsUiState {

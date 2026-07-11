@@ -28,7 +28,7 @@ internal fun configureGradleManagedDevices(
     commonExtension: CommonExtension,
 ) {
     val pixel4 = DeviceConfig("Pixel 4", 30, "aosp-atd")
-    val pixel6 = DeviceConfig("Pixel 6", 31, "aosp")
+    val pixel6 = DeviceConfig("Pixel 6", 31, "aosp-atd")
     val pixelC = DeviceConfig("Pixel C", 30, "aosp-atd")
 
     val allDevices = listOf(pixel4, pixel6, pixelC)

@@ -49,5 +49,8 @@ message UserPreferences {
 
     bool use_dynamic_color = 19;
 
-    // NEXT AVAILABLE ID: 21
+    string scanner_action = 21;
+    string bluetooth_printer_mac = 22;
+
+    // NEXT AVAILABLE ID: 23
 }

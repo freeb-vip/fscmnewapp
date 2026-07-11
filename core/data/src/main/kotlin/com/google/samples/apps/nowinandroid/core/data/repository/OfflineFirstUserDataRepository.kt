@@ -72,4 +72,10 @@ internal class OfflineFirstUserDataRepository @Inject constructor(
         niaPreferencesDataSource.setShouldHideOnboarding(shouldHideOnboarding)
         analyticsHelper.logOnboardingStateChanged(shouldHideOnboarding)
     }
+
+    override suspend fun setScannerAction(action: String) =
+        niaPreferencesDataSource.setScannerAction(action)
+
+    override suspend fun setBluetoothPrinterMac(mac: String) =
+        niaPreferencesDataSource.setBluetoothPrinterMac(mac)
 }

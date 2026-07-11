@@ -1,15 +1,15 @@
 {
   "project_info": {
     "project_number": "YourProjectId",
-    "project_id": "abc",
-    "storage_bucket": "abc"
+    "project_id": "fscm-app",
+    "storage_bucket": "fscm-app.appspot.com"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "Your:App:Id",
+        "mobilesdk_app_id": "1:YourProjectId:android:fscm1234567890",
         "android_client_info": {
-          "package_name": "com.google.samples.apps.nowinandroid"
+          "package_name": "com.fscm.app"
         }
       },
       "oauth_client": [],
@@ -26,9 +26,9 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "Your:App:Id",
+        "mobilesdk_app_id": "1:YourProjectId:android:fscm1234567891",
         "android_client_info": {
-          "package_name": "com.google.samples.apps.nowinandroid.demo.debug"
+          "package_name": "com.fscm.app.debug"
         }
       },
       "oauth_client": [],
@@ -45,9 +45,9 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "Your:App:Id",
+        "mobilesdk_app_id": "1:YourProjectId:android:fscm1234567892",
         "android_client_info": {
-          "package_name": "com.google.samples.apps.nowinandroid.demo.benchmark"
+          "package_name": "com.fscm.app.demo"
         }
       },
       "oauth_client": [],
@@ -64,47 +64,9 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "Your:App:Id",
+        "mobilesdk_app_id": "1:YourProjectId:android:fscm1234567893",
         "android_client_info": {
-          "package_name": "com.google.samples.apps.nowinandroid.benchmark"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "APlaceholderAPIKeyWith-ThirtyNineCharsX"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "Your:App:Id",
-        "android_client_info": {
-          "package_name": "com.google.samples.apps.nowinandroid.debug"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "APlaceholderAPIKeyWith-ThirtyNineCharsX"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "Your:App:Id",
-        "android_client_info": {
-          "package_name": "com.google.samples.apps.nowinandroid.demo"
+          "package_name": "com.fscm.app.demo.debug"
         }
       },
       "oauth_client": [],
@@ -120,6 +82,5 @@
       }
     }
   ],
-
   "configuration_version": "1"
 }

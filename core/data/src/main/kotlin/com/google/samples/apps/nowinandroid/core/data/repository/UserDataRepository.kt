@@ -67,4 +67,14 @@ interface UserDataRepository {
      * Sets whether the user has completed the onboarding process.
      */
     suspend fun setShouldHideOnboarding(shouldHideOnboarding: Boolean)
+
+    /**
+     * Sets the PDA scanner broadcast action.
+     */
+    suspend fun setScannerAction(action: String)
+
+    /**
+     * Sets the Bluetooth printer MAC address.
+     */
+    suspend fun setBluetoothPrinterMac(mac: String)
 }

@@ -65,4 +65,12 @@ class FakeUserDataRepository @Inject constructor(
     override suspend fun setShouldHideOnboarding(shouldHideOnboarding: Boolean) {
         niaPreferencesDataSource.setShouldHideOnboarding(shouldHideOnboarding)
     }
+
+    override suspend fun setScannerAction(action: String) {
+        niaPreferencesDataSource.setScannerAction(action)
+    }
+
+    override suspend fun setBluetoothPrinterMac(mac: String) {
+        niaPreferencesDataSource.setBluetoothPrinterMac(mac)
+    }
 }

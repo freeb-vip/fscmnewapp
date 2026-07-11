@@ -33,6 +33,8 @@ val emptyUserData = UserData(
     darkThemeConfig = DarkThemeConfig.FOLLOW_SYSTEM,
     useDynamicColor = false,
     shouldHideOnboarding = false,
+    scannerAction = "",
+    bluetoothPrinterMac = "",
 )
 
 class TestUserDataRepository : UserDataRepository {
@@ -109,6 +111,18 @@ class TestUserDataRepository : UserDataRepository {
     override suspend fun setShouldHideOnboarding(shouldHideOnboarding: Boolean) {
         currentUserData.let { current ->
             _userData.tryEmit(current.copy(shouldHideOnboarding = shouldHideOnboarding))
+        }
+    }
+
+    override suspend fun setScannerAction(action: String) {
+        currentUserData.let { current ->
+            _userData.tryEmit(current.copy(scannerAction = action))
+        }
+    }
+
+    override suspend fun setBluetoothPrinterMac(mac: String) {
+        currentUserData.let { current ->
+            _userData.tryEmit(current.copy(bluetoothPrinterMac = mac))
         }
     }
 

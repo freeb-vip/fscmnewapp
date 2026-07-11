@@ -28,6 +28,10 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "APP_BUILD_TYPE_SUFFIX", "\"\"")
+
+        ndk {
+            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
+        }
     }
 
     buildFeatures {
@@ -49,7 +53,7 @@ android {
         create("pixel6Api33") {
             device = "Pixel 6"
             apiLevel = 33
-            systemImageSource = "aosp"
+            systemImageSource = "aosp-atd"
         }
     }
 

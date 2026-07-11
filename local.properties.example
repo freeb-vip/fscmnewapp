@@ -1,0 +1,13 @@
+# Copy the BACKEND_URL_* lines into local.properties and adjust them for your machine.
+#
+# Android emulator -> host machine:
+# BACKEND_URL_DEMO=http://127.0.0.1:3000/api/
+#
+# Physical Android device -> your computer LAN IP:
+# BACKEND_URL_DEMO=http://192.168.1.23:8088/api/
+#
+# Production API:
+# BACKEND_URL_PROD=https://fscm.freeb.vip/api/
+#
+# Backward-compatible fallback for all flavors:
+# BACKEND_URL=http://127.0.0.1:3000/api/

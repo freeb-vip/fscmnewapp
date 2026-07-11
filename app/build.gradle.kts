@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 import com.google.samples.apps.nowinandroid.NiaBuildType
+import com.android.build.api.variant.BuildConfigField
+import java.io.StringReader
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.nowinandroid.android.application)
@@ -29,13 +32,21 @@ plugins {
 }
 
 android {
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
-        applicationId = "com.google.samples.apps.nowinandroid"
+        applicationId = "com.fscm.app"
         versionCode = 8
         versionName = "0.1.2" // X.Y.Z; X = Major, Y = minor, Z = Patch level
 
         // Custom test runner to set up Hilt dependency graph
         testInstrumentationRunner = "com.google.samples.apps.nowinandroid.core.testing.NiaTestRunner"
+
+        ndk {
+            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
+        }
     }
 
     buildTypes {
@@ -53,8 +64,6 @@ android {
             // who clones the code to sign and run the release variant, use the debug signing key.
             // TODO: Abstract the signing configuration to a separate file to avoid hardcoding this.
             signingConfig = signingConfigs.named("debug").get()
-            // Ensure Baseline Profile is fresh for release builds.
-            baselineProfile.automaticGenerationDuringBuild = true
         }
     }
 
@@ -67,29 +76,55 @@ android {
     namespace = "com.google.samples.apps.nowinandroid"
 }
 
-dependencies {
-    implementation(projects.feature.interests.api)
-    implementation(projects.feature.interests.impl)
-    implementation(projects.feature.foryou.api)
-    implementation(projects.feature.foryou.impl)
-    implementation(projects.feature.bookmarks.api)
-    implementation(projects.feature.bookmarks.impl)
-    implementation(projects.feature.topic.api)
-    implementation(projects.feature.topic.impl)
-    implementation(projects.feature.search.api)
-    implementation(projects.feature.search.impl)
-    implementation(projects.feature.settings.impl)
+val localProperties = providers.fileContents(
+    isolated.rootProject.projectDirectory.file("local.properties"),
+).asText.map { text ->
+    Properties().apply {
+        load(StringReader(text))
+    }
+}.orElse(Properties())
 
-    implementation(projects.core.common)
-    implementation(projects.core.ui)
-    implementation(projects.core.designsystem)
+androidComponents {
+    onVariants { variant ->
+        val flavorName = variant.productFlavors
+            .firstOrNull { it.first == "contentType" }
+            ?.second
+            ?: "demo"
+        val flavorBackendUrlKey = "BACKEND_URL_${flavorName.uppercase()}"
+        val fallbackBackendUrl = when (flavorName) {
+            "prod" -> "https://fscm.freeb.vip/api/"
+            else -> "http://10.0.2.2:8088/api/"
+        }
+        val backendUrl = localProperties.map { properties ->
+            val rawValue = properties.getProperty(flavorBackendUrlKey)?.trim()?.takeIf { it.isNotBlank() }
+                ?: properties.getProperty("BACKEND_URL")?.trim()?.takeIf { it.isNotBlank() }
+                ?: fallbackBackendUrl
+            val normalized = "${rawValue.trim().trimEnd('/')}/"
+            val escaped = normalized
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+            "\"$escaped\""
+        }
+        variant.buildConfigFields!!.put(
+            "BACKEND_URL",
+            backendUrl.map { value ->
+                BuildConfigField(
+                    type = "String",
+                    value = value,
+                    comment = null,
+                )
+            },
+        )
+    }
+}
+
+dependencies {
     implementation(projects.core.data)
-    implementation(projects.core.model)
-    implementation(projects.core.analytics)
-    implementation(projects.sync.work)
+    implementation(projects.core.designsystem)
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.iconsExtended)
     implementation(libs.androidx.navigation3.ui)
     implementation(libs.androidx.compose.material3.adaptive)
     implementation(libs.androidx.compose.material3.adaptive.layout)
@@ -100,36 +135,42 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.runtimeCompose)
+    implementation(libs.androidx.lifecycle.viewModelCompose)
+    implementation(libs.androidx.hilt.lifecycle.viewModelCompose)
     implementation(libs.androidx.lifecycle.viewModel.navigation3)
     implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.tracing.ktx)
     implementation(libs.androidx.window.core)
-    implementation(libs.kotlinx.coroutines.guava)
+    implementation(libs.androidx.dataStore.preferences)
+    implementation(libs.androidx.work.ktx)
+    implementation(libs.hilt.ext.work)
+    implementation(libs.room.ktx)
+    implementation(libs.room.runtime)
     implementation(libs.coil.kt)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.okhttp.logging)
+    implementation(libs.retrofit.core)
+    implementation(libs.retrofit.kotlin.serialization)
+    implementation(libs.escpos.printer)
 
     ksp(libs.hilt.compiler)
+    ksp(libs.hilt.ext.compiler)
+    ksp(libs.room.compiler)
 
     debugImplementation(libs.androidx.compose.ui.testManifest)
     debugImplementation(projects.uiTestHiltManifest)
 
     kspTest(libs.hilt.compiler)
 
-    testImplementation(projects.core.dataTest)
-    testImplementation(projects.core.datastoreTest)
     testImplementation(libs.hilt.android.testing)
-    testImplementation(projects.sync.syncTest)
+    testImplementation(libs.junit)
     testImplementation(libs.kotlin.test)
+    testImplementation(libs.androidx.work.testing)
 
     testDemoImplementation(libs.androidx.navigation.testing)
     testDemoImplementation(libs.robolectric)
     testDemoImplementation(libs.roborazzi)
-    testDemoImplementation(projects.core.screenshotTesting)
-    testDemoImplementation(projects.core.testing)
 
-    androidTestImplementation(projects.core.testing)
-    androidTestImplementation(projects.core.dataTest)
-    androidTestImplementation(projects.core.datastoreTest)
     androidTestImplementation(libs.androidx.test.espresso.core)
     androidTestImplementation(libs.androidx.compose.ui.test)
     androidTestImplementation(libs.hilt.android.testing)
@@ -142,6 +183,12 @@ baselineProfile {
     // Don't build on every iteration of a full assemble.
     // Instead enable generation directly for the release build variant.
     automaticGenerationDuringBuild = false
+
+    variants {
+        register("release") {
+            automaticGenerationDuringBuild = false
+        }
+    }
 
     // Make use of Dex Layout Optimizations via Startup Profiles
     dexLayoutOptimization = true

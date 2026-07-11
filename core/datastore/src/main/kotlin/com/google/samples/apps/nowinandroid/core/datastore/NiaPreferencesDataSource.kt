@@ -56,6 +56,8 @@ class NiaPreferencesDataSource @Inject constructor(
                 },
                 useDynamicColor = it.useDynamicColor,
                 shouldHideOnboarding = it.shouldHideOnboarding,
+                scannerAction = it.scannerAction,
+                bluetoothPrinterMac = it.bluetoothPrinterMac,
             )
         }
 
@@ -189,6 +191,18 @@ class NiaPreferencesDataSource @Inject constructor(
     suspend fun setShouldHideOnboarding(shouldHideOnboarding: Boolean) {
         userPreferences.updateData {
             it.copy { this.shouldHideOnboarding = shouldHideOnboarding }
+        }
+    }
+
+    suspend fun setScannerAction(action: String) {
+        userPreferences.updateData {
+            it.copy { this.scannerAction = action }
+        }
+    }
+
+    suspend fun setBluetoothPrinterMac(mac: String) {
+        userPreferences.updateData {
+            it.copy { this.bluetoothPrinterMac = mac }
         }
     }
 }
