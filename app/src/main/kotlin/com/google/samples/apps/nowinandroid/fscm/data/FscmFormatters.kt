@@ -55,6 +55,10 @@ fun statusText(status: String): String = when (status.lowercase()) {
     "normal" -> "正常"
     "damaged" -> "破损"
     "duplicate" -> "重复"
+    "voided" -> "已作废"
+    "shorted" -> "短装"
+    "received" -> "已收货"
+    "exception" -> "异常"
     "unknown" -> "未知"
     else -> status.ifBlank { "待处理" }
 }

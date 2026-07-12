@@ -330,3 +330,209 @@ data class PagedList<T>(
         else -> records
     }
 }
+
+enum class BusinessTypeCode(val wireValue: String) {
+    SkuDetail("sku_detail"),
+    BoxLabelDetail("box_label_detail"),
+    LocalApp("local_app"),
+    Unknown("unknown"),
+}
+
+fun String.toBusinessTypeCode(): BusinessTypeCode =
+    BusinessTypeCode.entries.firstOrNull { it.wireValue == this } ?: BusinessTypeCode.Unknown
+
+@Serializable
+data class GlobalSearchHit(
+    @SerialName("business_type") val businessType: String,
+    @SerialName("target_id") val targetId: String = "",
+    @SerialName("target_code") val targetCode: String = "",
+    val title: String,
+    val subtitle: String = "",
+    val status: String = "",
+    @SerialName("match_kind") val matchKind: String = "fuzzy",
+    val score: Double = 0.0,
+    val source: String = "remote",
+)
+
+@Serializable
+data class GlobalSearchResponse(
+    val query: String = "",
+    @SerialName("normalized_query") val normalizedQuery: String = "",
+    val hits: List<GlobalSearchHit> = emptyList(),
+)
+
+@Serializable
+data class SearchBusinessType(
+    val code: String,
+    val title: String,
+    @SerialName("required_permissions") val requiredPermissions: List<String> = emptyList(),
+    val enabled: Boolean = true,
+)
+
+@Serializable
+data class SearchBusinessTypesResponse(
+    val types: List<SearchBusinessType> = emptyList(),
+)
+
+@Serializable
+data class SearchCachePayload(
+    val response: GlobalSearchResponse,
+    val cachedAt: Long,
+)
+
+sealed interface SearchDestination {
+    data class LocalApp(val entry: MobileAppEntry) : SearchDestination
+    data class Business(val hit: GlobalSearchHit) : SearchDestination
+}
+
+@Serializable
+data class EdgePrinter(
+    val name: String = "",
+    @SerialName("is_default") val isDefault: Boolean = false,
+    val status: String = "",
+)
+
+@Serializable
+data class EdgePrintTemplate(
+    val type: String = "label",
+    val code: String = "",
+    val name: String = "",
+    @SerialName("printer_name") val printerName: String = "",
+    @SerialName("width_mm") val widthMM: Double = 0.0,
+    @SerialName("height_mm") val heightMM: Double = 0.0,
+    val orientation: String = "",
+    val version: String = "",
+    val available: Boolean = false,
+)
+
+@Serializable
+data class EdgePrintInventory(
+    val printers: List<EdgePrinter> = emptyList(),
+    val templates: List<EdgePrintTemplate> = emptyList(),
+)
+
+@Serializable
+data class EdgeNode(
+    val id: Long = 0,
+    @SerialName("node_id") val nodeId: String = "",
+    @SerialName("node_name") val nodeName: String = "",
+    @SerialName("lan_base_url") val lanBaseUrl: String = "",
+    val capabilities: List<String> = emptyList(),
+    @SerialName("print_inventory") val printInventory: EdgePrintInventory = EdgePrintInventory(),
+    val status: String = "",
+    @SerialName("last_seen_at") val lastSeenAt: String = "",
+)
+
+data class EdgePrintNodeOption(
+    val node: EdgeNode,
+    val template: EdgePrintTemplate,
+    val localReachable: Boolean,
+) {
+    val selectionKey: String get() = "${node.id}:${template.code}"
+}
+
+data class EdgePrintNodeStatus(
+    val node: EdgeNode,
+    val localReachable: Boolean,
+) {
+    val identityKey: String
+        get() = if (node.id > 0) "center:${node.id}" else "lan:${node.nodeId}:${node.lanBaseUrl}"
+}
+
+@Serializable
+data class EdgeTerminalRegistrationRequest(
+    @SerialName("terminal_id") val terminalId: String,
+    @SerialName("edge_node_id") val edgeNodeId: String,
+    @SerialName("terminal_name") val terminalName: String,
+    @SerialName("app_version") val appVersion: String,
+    val platform: String,
+    @SerialName("lan_ip") val lanIp: String,
+    val capabilities: List<String>,
+)
+
+@Serializable
+data class EdgePrintJob(
+    val id: Long = 0,
+    @SerialName("edge_node_id") val edgeNodeId: Long = 0,
+    @SerialName("sku_id") val skuId: Long = 0,
+    @SerialName("template_code") val templateCode: String = "",
+    @SerialName("printer_name") val printerName: String = "",
+    val copies: Int = 1,
+    val status: String = "",
+)
+
+data class EdgePrintSubmission(
+    val nodeName: String,
+    val local: Boolean,
+    val status: String,
+    val jobId: String,
+)
+
+@Serializable
+data class Product(
+    val id: Long = 0,
+    val code: String = "",
+    val name: String = "",
+    val brand: String = "",
+    val material: String = "",
+    @SerialName("image_url") val imageUrl: String = "",
+    @SerialName("thumbnail_url") val thumbnailUrl: String = "",
+    val features: String = "",
+    val detail: String = "",
+    val skus: List<Sku> = emptyList(),
+)
+
+@Serializable
+data class Sku(
+    val id: Long = 0,
+    val code: String = "",
+    @SerialName("product_id") val productId: Long = 0,
+    val name: String = "",
+    val spec: String = "",
+    val color: String = "",
+    val size: String = "",
+    val weight: Double = 0.0,
+    @SerialName("image_url") val imageUrl: String = "",
+    @SerialName("thumbnail_url") val thumbnailUrl: String = "",
+    val product: Product? = null,
+)
+
+@Serializable
+data class BoxLabelDocumentRef(
+    val id: Long = 0,
+    val code: String = "",
+    val status: String = "",
+)
+
+@Serializable
+data class BoxLabelSKUItem(
+    @SerialName("sku_code") val skuCode: String = "",
+    @SerialName("qty_per_box") val qtyPerBox: Int = 0,
+)
+
+@Serializable
+data class BoxLabel(
+    @SerialName("box_uid") val boxUid: String = "",
+    @SerialName("label_code") val labelCode: String = "",
+    @SerialName("box_no") val boxNo: String = "",
+    val status: String = "",
+    @SerialName("warning_code") val warningCode: String = "",
+    @SerialName("warning_message") val warningMessage: String = "",
+    @SerialName("product_code") val productCode: String = "",
+    @SerialName("product_name") val productName: String = "",
+    @SerialName("sku_code") val skuCode: String = "",
+    @SerialName("case_spec_name") val caseSpecName: String = "",
+    @SerialName("qty_per_carton") val qtyPerCarton: Int = 0,
+    @SerialName("planned_box_qty") val plannedBoxQty: Int = 0,
+    @SerialName("actual_box_qty") val actualBoxQty: Int = 0,
+    @SerialName("warehouse_code") val warehouseCode: String = "",
+    @SerialName("location_code") val locationCode: String = "",
+    @SerialName("supplier_order") val supplierOrder: BoxLabelDocumentRef? = null,
+    @SerialName("purchase_order") val purchaseOrder: BoxLabelDocumentRef? = null,
+    @SerialName("central_receipt") val centralReceipt: BoxLabelDocumentRef? = null,
+    @SerialName("consolidation_order") val consolidationOrder: BoxLabelDocumentRef? = null,
+    @SerialName("receiving_session") val receivingSession: BoxLabelDocumentRef? = null,
+    @SerialName("receiving_record") val receivingRecord: BoxLabelDocumentRef? = null,
+    @SerialName("sku_items") val skuItems: List<BoxLabelSKUItem> = emptyList(),
+    val warnings: List<String> = emptyList(),
+)

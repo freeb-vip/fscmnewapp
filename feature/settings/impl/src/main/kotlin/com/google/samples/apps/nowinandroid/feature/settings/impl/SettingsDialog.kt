@@ -229,15 +229,15 @@ private fun ColumnScope.SettingsPanel(
     OutlinedTextField(
         value = settings.scannerAction,
         onValueChange = onChangeScannerAction,
-        label = { Text("广播 Action 名称") },
+        label = { Text("模式 / 广播 Action / Extra") },
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-        singleLine = true
+        minLines = 1,
     )
     Text(
-        text = "例如: com.android.scanner.ACTION",
+        text = "格式: mode=intent 或 mode=keyboard 换行后填写 Action1;Action2|extra1;extra2。留空默认键盘输入，并使用内置常见 PDA 广播配置做自动检测。",
         style = MaterialTheme.typography.labelSmall,
         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
     SettingsDialogSectionTitle(text = "蓝牙打印机设置")
@@ -246,13 +246,13 @@ private fun ColumnScope.SettingsPanel(
         onValueChange = onChangeBluetoothPrinterMac,
         label = { Text("打印机 MAC 地址") },
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-        singleLine = true
+        singleLine = true,
     )
     Text(
         text = "例如: 00:11:22:33:44:55",
         style = MaterialTheme.typography.labelSmall,
         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 

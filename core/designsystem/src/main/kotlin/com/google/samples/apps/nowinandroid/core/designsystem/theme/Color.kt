@@ -83,3 +83,21 @@ internal val Teal30 = Color(0xFF214D56)
 internal val Teal40 = Color(0xFF3A656F)
 internal val Teal80 = Color(0xFFA2CED9)
 internal val Teal90 = Color(0xFFBEEAF6)
+
+/**
+ * FSCM brand colors.
+ */
+val FscmBrandMain = Color(0xFF1677FF)
+val FscmBrandDeep = Color(0xFF0958D9)
+val FscmBrandSoft = Color(0xFFE8F1FF)
+val FscmPageTop = Color(0xFFF5F8FF)
+val FscmPageBottom = Color(0xFFEFF4FB)
+val FscmSurfaceRaised = Color(0xFFFFFFFF)
+val FscmSurfaceMuted = Color(0xFFF6F9FD)
+val FscmStrokeSoft = Color(0xFFDCE7F5)
+val FscmInkStrong = Color(0xFF172033)
+val FscmInkSoft = Color(0xFF66758A)
+val FscmSuccess = Color(0xFF52C41A)
+val FscmWarning = Color(0xFFFAAD14)
+val FscmDanger = Color(0xFFFF4D4F)
+val FscmTeal = Color(0xFF13A8A8)

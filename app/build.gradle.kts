@@ -121,6 +121,7 @@ androidComponents {
 dependencies {
     implementation(projects.core.data)
     implementation(projects.core.designsystem)
+    implementation(projects.core.ui)
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
@@ -147,6 +148,7 @@ dependencies {
     implementation(libs.room.ktx)
     implementation(libs.room.runtime)
     implementation(libs.coil.kt)
+    implementation(libs.coil.kt.compose)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp.logging)
     implementation(libs.retrofit.core)

@@ -91,6 +91,16 @@ interface OfflineCacheDao {
 
     @Query("SELECT * FROM offline_cache WHERE namespaceId = :namespaceId AND cacheKey = :cacheKey LIMIT 1")
     suspend fun find(namespaceId: Long, cacheKey: String): OfflineCacheEntity?
+
+    @Query("DELETE FROM offline_cache WHERE namespaceId = :namespaceId AND cacheKey LIKE :cacheKeyPrefix || '%' AND updatedAt < :cutoff")
+    suspend fun deleteOlderThan(namespaceId: Long, cacheKeyPrefix: String, cutoff: Long)
+
+    @Query(
+        "DELETE FROM offline_cache WHERE id IN (" +
+            "SELECT id FROM offline_cache WHERE namespaceId = :namespaceId AND cacheKey LIKE :cacheKeyPrefix || '%' " +
+            "ORDER BY updatedAt DESC LIMIT -1 OFFSET :maxEntries)",
+    )
+    suspend fun trimToNewest(namespaceId: Long, cacheKeyPrefix: String, maxEntries: Int)
 }
 
 @Dao

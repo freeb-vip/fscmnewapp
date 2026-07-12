@@ -28,13 +28,17 @@ object PdaPermissions {
             arrayOf(
                 Manifest.permission.BLUETOOTH_CONNECT,
                 Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.CAMERA,
             )
         } else {
-            emptyArray()
+            arrayOf(Manifest.permission.CAMERA)
         }
 
     fun hasBluetoothRuntimePermissions(context: Context): Boolean =
         bluetoothRuntimePermissions.all { permission ->
             ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
         }
+
+    fun hasCameraPermission(context: Context): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 }

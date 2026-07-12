@@ -33,6 +33,12 @@ dependencies {
     implementation(libs.coil.kt)
     implementation(libs.coil.kt.compose)
 
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.google.mlkit.barcode.scanning)
+
     androidTestImplementation(libs.bundles.androidx.compose.ui.test)
     androidTestImplementation(projects.core.testing)
 }
