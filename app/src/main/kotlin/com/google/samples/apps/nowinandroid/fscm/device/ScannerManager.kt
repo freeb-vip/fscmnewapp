@@ -81,7 +81,29 @@ class ScannerManager @Inject constructor(
     }
 
     fun clearDiagnostics() {
-        _scannerState.update { it.copy(lastEvent = null, lastError = null) }
+        _scannerState.update {
+            it.copy(
+                lastEvent = null,
+                lastError = null,
+                lastBackSuppressedAtMillis = 0L,
+                suppressedBackCount = 0,
+            )
+        }
+    }
+
+    fun consumeBackEventAfterScan(nowMillis: Long = System.currentTimeMillis()): Boolean {
+        val scanMillis = _scannerState.value.lastEvent
+            ?.takeIf { it.extracted && _scannerState.value.effectiveMode == ScannerInputMode.IntentBroadcast }
+            ?.receivedAtMillis
+            ?: return false
+        if (nowMillis - scanMillis !in 0..BACK_EVENT_GUARD_WINDOW_MS) return false
+        _scannerState.update {
+            it.copy(
+                lastBackSuppressedAtMillis = nowMillis,
+                suppressedBackCount = it.suppressedBackCount + 1,
+            )
+        }
+        return true
     }
 
     fun applyInputMode(mode: ScannerInputMode) {
@@ -204,6 +226,7 @@ class ScannerManager @Inject constructor(
 
     companion object {
         const val FSCM_SCAN_ACTION = "com.fscm.SCAN"
+        const val BACK_EVENT_GUARD_WINDOW_MS = 600L
 
         val DEFAULT_SCANNER_ACTIONS = listOf(
             FSCM_SCAN_ACTION,
@@ -364,6 +387,8 @@ data class ScannerRuntimeState(
     val registered: Boolean = false,
     val lastEvent: ScannerEvent? = null,
     val lastError: String? = null,
+    val lastBackSuppressedAtMillis: Long = 0L,
+    val suppressedBackCount: Int = 0,
 )
 
 data class ScannerEvent(

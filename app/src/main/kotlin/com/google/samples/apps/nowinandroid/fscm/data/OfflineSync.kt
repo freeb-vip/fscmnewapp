@@ -35,7 +35,9 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.put
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -45,6 +47,8 @@ data class ReceivingScanOperationPayload(
     @SerialName("raw_code") val rawCode: String,
     val damaged: Boolean = false,
     @SerialName("actual_received_qty") val actualReceivedQty: Int? = null,
+    @SerialName("original_raw_code") val originalRawCode: String = rawCode,
+    val items: List<BoxLabelQrItem> = emptyList(),
 )
 
 @Serializable
@@ -57,6 +61,54 @@ data class ReceivingVoidOperationPayload(
 @Serializable
 data class ReceivingCompleteOperationPayload(
     @SerialName("session_id") val sessionId: Long,
+)
+
+@Serializable
+data class ReceivingQuickScanOperationPayload(
+    @SerialName("raw_code") val rawCode: String,
+    @SerialName("actual_received_qty") val actualReceivedQty: Int? = null,
+    @SerialName("original_raw_code") val originalRawCode: String = rawCode,
+    val items: List<BoxLabelQrItem> = emptyList(),
+)
+
+@Serializable
+data class CentralReceivingScanOperationPayload(
+    @SerialName("receipt_id") val receiptId: Long? = null,
+    @SerialName("raw_code") val rawCode: String,
+    @SerialName("actual_box_qty") val actualBoxQty: Int? = null,
+    @SerialName("original_raw_code") val originalRawCode: String = rawCode,
+    val items: List<BoxLabelQrItem> = emptyList(),
+)
+
+@Serializable
+data class OfflineOperationEnvelope(
+    @SerialName("actor_user_id") val actorUserId: Long,
+    @SerialName("namespace_id") val namespaceId: Long,
+    @SerialName("device_id") val deviceId: String,
+    @SerialName("device_key_algorithm") val deviceKeyAlgorithm: String,
+    @SerialName("offline_lease_id") val offlineLeaseId: String,
+    @SerialName("idempotency_key") val idempotencyKey: String,
+    val module: String,
+    val action: String,
+    @SerialName("resource_id") val resourceId: String,
+    val payload: String,
+    @SerialName("occurred_at") val occurredAt: Long,
+    @SerialName("device_signature") val deviceSignature: String,
+)
+
+@Serializable
+private data class OfflineOperationSyncRequest(val operations: List<OfflineOperationEnvelope>)
+
+@Serializable
+private data class OfflineOperationSyncResponse(
+    val results: List<OfflineOperationSyncResult> = emptyList(),
+)
+
+@Serializable
+private data class OfflineOperationSyncResult(
+    @SerialName("idempotency_key") val idempotencyKey: String = "",
+    val status: String = "",
+    val message: String = "",
 )
 
 @Singleton
@@ -88,14 +140,39 @@ class OfflineSyncRepository @Inject constructor(
     private val api: FscmApiClient,
     private val pendingSyncDao: PendingSyncDao,
     private val sessionStore: SessionStore,
+    private val deviceIdentityManager: DeviceIdentityManager,
+    private val trustedClock: TrustedClock,
     @param:FscmJson
     private val json: Json,
 ) {
     val pendingCount: Flow<Int> = pendingSyncDao.pendingCount()
 
-    suspend fun enqueueReceivingScan(payload: ReceivingScanOperationPayload) {
-        enqueue("receiving", "scan", payload.sessionId.toString(), json.encodeToString(payload))
-    }
+    suspend fun enqueueReceivingScan(payload: ReceivingScanOperationPayload): Boolean =
+        enqueue(
+            "receiving",
+            "scan",
+            receivingScanResourceId(payload.sessionId, payload.rawCode),
+            json.encodeToString(payload),
+            dedupeByResource = true,
+        )
+
+    suspend fun enqueueReceivingQuickScan(payload: ReceivingQuickScanOperationPayload): Boolean =
+        enqueue(
+            "receiving",
+            "quick_scan",
+            "global:${payload.rawCode}",
+            json.encodeToString(payload),
+            dedupeByResource = true,
+        )
+
+    suspend fun enqueueCentralReceivingScan(payload: CentralReceivingScanOperationPayload): Boolean =
+        enqueue(
+            module = "central_receiving",
+            action = if (payload.receiptId == null) "quick_scan" else "scan",
+            resourceId = "${payload.receiptId?.toString() ?: "global"}:${payload.rawCode}",
+            payload = json.encodeToString(payload),
+            dedupeByResource = true,
+        )
 
     suspend fun enqueueReceivingVoid(payload: ReceivingVoidOperationPayload) {
         enqueue("receiving", "void", payload.sessionId.toString(), json.encodeToString(payload))
@@ -106,32 +183,45 @@ class OfflineSyncRepository @Inject constructor(
     }
 
     suspend fun syncPending(): Boolean {
-        if (sessionStore.current().token.isBlank()) return false
+        val session = sessionStore.current()
+        if (session.token.isBlank()) return false
         var allSucceeded = true
-        pendingSyncDao.pending().forEach { operation ->
-            if (operation.retryCount >= MAX_RETRY_COUNT) {
-                pendingSyncDao.updateStatus(
-                    id = operation.id,
-                    status = PendingSyncStatus.Failed.value,
-                    retryCount = operation.retryCount,
-                    lastError = operation.lastError.ifBlank { "已达到离线同步重试上限，请检查后手动重试" },
-                )
-                return@forEach
-            }
+        pendingSyncDao.pendingForSync().forEach { operation ->
             pendingSyncDao.updateStatus(
                 id = operation.id,
                 status = PendingSyncStatus.Syncing.value,
                 retryCount = operation.retryCount,
                 lastError = operation.lastError,
             )
-            runCatching { sync(operation) }
-                .onSuccess { pendingSyncDao.delete(operation.id) }
+            runCatching { sync(operation, session) }
+                .onSuccess { outcome ->
+                    when (outcome.status) {
+                        SyncOutcomeStatus.Accepted -> pendingSyncDao.delete(operation.id)
+                        SyncOutcomeStatus.Conflict -> pendingSyncDao.updateStatus(
+                            operation.id,
+                            PendingSyncStatus.Conflict.value,
+                            operation.retryCount,
+                            outcome.message,
+                        )
+                        SyncOutcomeStatus.Rejected -> pendingSyncDao.updateStatus(
+                            operation.id,
+                            PendingSyncStatus.Rejected.value,
+                            operation.retryCount,
+                            outcome.message,
+                        )
+                    }
+                }
                 .onFailure { error ->
-                    allSucceeded = false
+                    val disposition = error.offlineSyncFailureDisposition()
+                    if (disposition == OfflineSyncFailureDisposition.Retry) allSucceeded = false
                     pendingSyncDao.updateStatus(
                         id = operation.id,
-                        status = PendingSyncStatus.Failed.value,
-                        retryCount = operation.retryCount + 1,
+                        status = when (disposition) {
+                            OfflineSyncFailureDisposition.Retry -> PendingSyncStatus.Failed.value
+                            OfflineSyncFailureDisposition.Conflict -> PendingSyncStatus.Conflict.value
+                            OfflineSyncFailureDisposition.Rejected -> PendingSyncStatus.Rejected.value
+                        },
+                        retryCount = operation.retryCount + if (disposition == OfflineSyncFailureDisposition.Retry) 1 else 0,
                         lastError = error.message.orEmpty().take(300),
                     )
                 }
@@ -139,20 +229,130 @@ class OfflineSyncRepository @Inject constructor(
         return allSucceeded
     }
 
-    private suspend fun enqueue(module: String, action: String, resourceId: String, payload: String) {
-        val namespaceId = sessionStore.current().currentNamespace?.id ?: 0
+    suspend fun pendingOperations(module: String): List<PendingSyncOperationEntity> {
+        val session = sessionStore.current()
+        return pendingSyncDao.pendingForModule(
+            namespaceId = session.currentNamespace?.id ?: 0,
+            actorUserId = session.user?.id ?: 0,
+            module = module,
+        )
+    }
+
+    suspend fun retryPending(id: Long) {
+        pendingSyncDao.retry(sessionStore.current().currentNamespace?.id ?: 0, id)
+    }
+
+    suspend fun cancelPending(id: Long) {
+        pendingSyncDao.delete(sessionStore.current().currentNamespace?.id ?: 0, id)
+    }
+
+    suspend fun cancelReceivingScan(sessionId: Long, labelCode: String): Boolean {
+        val session = sessionStore.current()
+        val namespaceId = session.currentNamespace?.id ?: 0
+        val actorUserId = session.user?.id ?: 0
+        if (namespaceId <= 0 || actorUserId <= 0 || labelCode.isBlank()) return false
+        return pendingSyncDao.deletePendingResource(
+            namespaceId = namespaceId,
+            actorUserId = actorUserId,
+            module = "receiving",
+            action = "scan",
+            resourceId = receivingScanResourceId(sessionId, labelCode),
+        ) > 0
+    }
+
+    private suspend fun enqueue(
+        module: String,
+        action: String,
+        resourceId: String,
+        payload: String,
+        dedupeByResource: Boolean = false,
+    ): Boolean {
+        val session = sessionStore.current()
+        val namespaceId = session.currentNamespace?.id ?: 0
+        val actorUserId = session.user?.id ?: 0
+        check(namespaceId > 0 && actorUserId > 0) { "Offline operation requires an active user and namespace" }
+        session.requireOfflineOperationPermission(module)
+        val duplicateCount = if (dedupeByResource) {
+            pendingSyncDao.duplicateResourceCount(namespaceId, actorUserId, module, action, resourceId)
+        } else {
+            pendingSyncDao.duplicateCount(namespaceId, actorUserId, module, action, resourceId, payload)
+        }
+        if (duplicateCount > 0) return false
+        val idempotencyKey = "mobile-offline-${UUID.randomUUID()}"
+        val occurredAt = trustedClock.trustedNowMillis()
+            ?: error("Device time must be trusted for offline operations")
+        val deviceId = session.deviceId.ifBlank(deviceIdentityManager::deviceId)
+        val canonical = offlineOperationCanonicalValue(
+            actorUserId = actorUserId,
+            namespaceId = namespaceId,
+            deviceId = deviceId,
+            offlineLeaseId = session.offlineLeaseId,
+            idempotencyKey = idempotencyKey,
+            module = module,
+            action = action,
+            resourceId = resourceId,
+            payload = payload,
+            occurredAt = occurredAt,
+        )
         pendingSyncDao.insert(
             PendingSyncOperationEntity(
                 namespaceId = namespaceId,
+                actorUserId = actorUserId,
+                deviceId = deviceId,
+                deviceKeyAlgorithm = session.deviceKeyAlgorithm,
+                offlineLeaseId = session.offlineLeaseId,
+                idempotencyKey = idempotencyKey,
+                deviceSignature = deviceIdentityManager.signDetached(canonical),
                 module = module,
                 action = action,
                 resourceId = resourceId,
                 payload = payload,
+                createdAt = occurredAt,
+                updatedAt = occurredAt,
             ),
         )
+        return true
     }
 
-    private suspend fun sync(operation: PendingSyncOperationEntity) {
+    private suspend fun sync(operation: PendingSyncOperationEntity, activeSession: SessionState): SyncOutcome {
+        if (operation.hasSignedEnvelope) {
+            val signedResult = runCatching { syncSignedOperation(operation) }
+            signedResult.getOrNull()?.let { return it }
+            val error = signedResult.exceptionOrNull()
+            if (error !is FscmApiException || error.statusCode != 404) throw error ?: IllegalStateException()
+            if (operation.actorUserId != activeSession.user?.id) {
+                error("Signed offline sync endpoint is required for a previous account operation")
+            }
+        } else if (operation.actorUserId > 0 && operation.actorUserId != activeSession.user?.id) {
+            error("Legacy offline operation belongs to another account")
+        }
+        syncLegacy(operation)
+        return SyncOutcome(SyncOutcomeStatus.Accepted)
+    }
+
+    private suspend fun syncSignedOperation(operation: PendingSyncOperationEntity): SyncOutcome {
+        val body = json.encodeToJsonElement(OfflineOperationSyncRequest(listOf(operation.toEnvelope())))
+        val response = api.post<OfflineOperationSyncResponse>(
+            path = "mobile/offline-operations/sync",
+            headers = deviceIdentityManager.proofHeaders(
+                method = "POST",
+                path = "mobile/offline-operations/sync",
+                body = body.toString(),
+                timestampMillis = trustedClock.trustedNowMillis() ?: System.currentTimeMillis(),
+            ),
+            body = body,
+        )
+        val result = response.results.firstOrNull { it.idempotencyKey == operation.idempotencyKey }
+            ?: error("Offline sync response did not acknowledge ${operation.idempotencyKey}")
+        return when (result.status.lowercase()) {
+            "accepted", "acked", "synced", "duplicate" -> SyncOutcome(SyncOutcomeStatus.Accepted, result.message)
+            "conflict" -> SyncOutcome(SyncOutcomeStatus.Conflict, result.message)
+            "rejected", "invalid", "forbidden" -> SyncOutcome(SyncOutcomeStatus.Rejected, result.message)
+            else -> error(result.message.ifBlank { "Unknown offline sync status: ${result.status}" })
+        }
+    }
+
+    private suspend fun syncLegacy(operation: PendingSyncOperationEntity) {
         when ("${operation.module}:${operation.action}") {
             "receiving:scan" -> {
                 val payload = json.decodeFromString<ReceivingScanOperationPayload>(operation.payload)
@@ -163,6 +363,39 @@ class OfflineSyncRepository @Inject constructor(
                         put("damaged", payload.damaged)
                         put("tally_count", true)
                         payload.actualReceivedQty?.let { put("actual_received_qty", it) }
+                    },
+                )
+            }
+
+            "receiving:quick_scan" -> {
+                val payload = json.decodeFromString<ReceivingQuickScanOperationPayload>(operation.payload)
+                api.post<JsonObject>(
+                    "receiving-sessions/scan",
+                    buildJsonObject {
+                        put("raw_code", payload.rawCode)
+                        payload.actualReceivedQty?.let { put("actual_received_qty", it) }
+                    },
+                )
+            }
+
+            "central_receiving:quick_scan" -> {
+                val payload = json.decodeFromString<CentralReceivingScanOperationPayload>(operation.payload)
+                api.post<JsonObject>(
+                    "central-receipts/box-labels/scan",
+                    buildJsonObject {
+                        put("raw_code", payload.rawCode)
+                        payload.actualBoxQty?.let { put("actual_box_qty", it) }
+                    },
+                )
+            }
+
+            "central_receiving:scan" -> {
+                val payload = json.decodeFromString<CentralReceivingScanOperationPayload>(operation.payload)
+                api.post<JsonObject>(
+                    "central-receipts/${payload.receiptId}/box-labels/scan",
+                    buildJsonObject {
+                        put("raw_code", payload.rawCode)
+                        payload.actualBoxQty?.let { put("actual_box_qty", it) }
                     },
                 )
             }
@@ -181,11 +414,89 @@ class OfflineSyncRepository @Inject constructor(
             }
         }
     }
+}
 
-    private companion object {
-        const val MAX_RETRY_COUNT = 5
+private data class SyncOutcome(val status: SyncOutcomeStatus, val message: String = "")
+
+private enum class SyncOutcomeStatus {
+    Accepted,
+    Conflict,
+    Rejected,
+}
+
+private val PendingSyncOperationEntity.hasSignedEnvelope: Boolean
+    get() = actorUserId > 0 &&
+        deviceId.isNotBlank() &&
+        offlineLeaseId.isNotBlank() &&
+        idempotencyKey.isNotBlank() &&
+        deviceSignature.isNotBlank()
+
+private fun PendingSyncOperationEntity.toEnvelope(): OfflineOperationEnvelope = OfflineOperationEnvelope(
+    actorUserId = actorUserId,
+    namespaceId = namespaceId,
+    deviceId = deviceId,
+    deviceKeyAlgorithm = deviceKeyAlgorithm,
+    offlineLeaseId = offlineLeaseId,
+    idempotencyKey = idempotencyKey,
+    module = module,
+    action = action,
+    resourceId = resourceId,
+    payload = payload,
+    occurredAt = createdAt,
+    deviceSignature = deviceSignature,
+)
+
+private fun offlineOperationCanonicalValue(
+    actorUserId: Long,
+    namespaceId: Long,
+    deviceId: String,
+    offlineLeaseId: String,
+    idempotencyKey: String,
+    module: String,
+    action: String,
+    resourceId: String,
+    payload: String,
+    occurredAt: Long,
+): String = listOf(
+    actorUserId,
+    namespaceId,
+    deviceId,
+    offlineLeaseId,
+    idempotencyKey,
+    module,
+    action,
+    resourceId,
+    payload,
+    occurredAt,
+).joinToString("\n")
+
+internal enum class OfflineSyncFailureDisposition {
+    Retry,
+    Conflict,
+    Rejected,
+}
+
+internal fun Throwable.offlineSyncFailureDisposition(): OfflineSyncFailureDisposition {
+    if (this !is FscmApiException) return OfflineSyncFailureDisposition.Retry
+    return when (statusCode) {
+        401, 408, 425, 429 -> OfflineSyncFailureDisposition.Retry
+        409 -> OfflineSyncFailureDisposition.Conflict
+        in 400..499 -> OfflineSyncFailureDisposition.Rejected
+        else -> OfflineSyncFailureDisposition.Retry
     }
 }
+
+internal fun SessionState.requireOfflineOperationPermission(module: String) {
+    if (!isOffline) return
+    check(hasValidOfflineSession && offlineLeaseId.isNotBlank()) { "离线租约无效或已过期" }
+    val requiredScope = when (module) {
+        "receiving", "central_receiving" -> "receiving.write"
+        else -> null
+    }
+    check(requiredScope == null || requiredScope in offlineScopes) { "离线租约不允许执行收货操作" }
+}
+
+internal fun receivingScanResourceId(sessionId: Long, labelCode: String): String = "$sessionId:$labelCode"
 
 @HiltWorker
 class OfflineSyncWorker @AssistedInject constructor(
@@ -194,5 +505,7 @@ class OfflineSyncWorker @AssistedInject constructor(
     private val repository: OfflineSyncRepository,
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result =
-        if (repository.syncPending()) Result.success() else Result.retry()
+        runCatching {
+            if (repository.syncPending()) Result.success() else Result.retry()
+        }.getOrElse { Result.retry() }
 }

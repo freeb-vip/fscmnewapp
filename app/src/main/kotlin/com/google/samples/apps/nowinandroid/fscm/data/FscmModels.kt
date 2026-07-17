@@ -18,7 +18,9 @@ package com.google.samples.apps.nowinandroid.fscm.data
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 
 enum class SessionMode {
     Online,
@@ -51,6 +53,14 @@ data class AuthPayload(
     val token: String = "",
     @SerialName("refresh_token") val refreshToken: String = "",
     @SerialName("expires_in") val expiresIn: Long = 0,
+    @SerialName("access_expires_at") val accessExpiresAt: Long = 0,
+    @SerialName("refresh_expires_at") val refreshExpiresAt: Long = 0,
+    @SerialName("offline_lease") val offlineLease: String = "",
+    @SerialName("offline_lease_id") val offlineLeaseId: String = "",
+    @SerialName("offline_lease_public_key") val offlineLeasePublicKey: String = "",
+    @SerialName("device_session_id") val deviceSessionId: String = "",
+    @SerialName("server_time") val serverTime: Long = 0,
+    @SerialName("offline_scopes") val offlineScopes: List<String> = emptyList(),
     val user: UserProfile = UserProfile(),
     val permissions: List<String> = emptyList(),
     @SerialName("effective_role") val effectiveRole: String = "",
@@ -83,6 +93,17 @@ data class SessionState(
     val namespaces: List<NamespaceProfile> = emptyList(),
     val currentNamespace: NamespaceProfile? = null,
     val sessionMode: SessionMode = SessionMode.Online,
+    val connectivityMode: ConnectivityMode = ConnectivityMode.CenterOnline,
+    val deviceId: String = "",
+    val deviceKeyAlgorithm: String = "",
+    val deviceSessionId: String = "",
+    val accessExpiresAt: Long = 0,
+    val refreshExpiresAt: Long = 0,
+    val offlineLease: String = "",
+    val offlineLeaseId: String = "",
+    val offlineLeasePublicKey: String = "",
+    val offlineLeaseExpiresAt: Long = 0,
+    val offlineScopes: List<String> = emptyList(),
     val offlineCredentialId: String = "",
     val offlineUsername: String = "",
     val offlinePasswordSalt: String = "",
@@ -95,15 +116,30 @@ data class SessionState(
     val isLoggedIn: Boolean get() = user != null && (token.isNotBlank() || isOffline)
     val isOffline: Boolean get() = sessionMode == SessionMode.Offline
     val hasValidOfflineSession: Boolean get() =
-        maxOf(offlineSessionExpiresAt, offlineExpiresAt) > System.currentTimeMillis()
+        offlineLease.isNotBlank() && offlineLeaseExpiresAt > System.currentTimeMillis()
     val hasUsableOfflineCredential: Boolean get() =
-        hasValidOfflineSession &&
+        maxOf(offlineSessionExpiresAt, offlineExpiresAt) > System.currentTimeMillis() &&
             user != null &&
             offlineCredentialId.isNotBlank() &&
             offlineUsername.isNotBlank() &&
             offlinePasswordSalt.isNotBlank() &&
             offlinePasswordVerifier.isNotBlank()
 }
+
+enum class ConnectivityMode {
+    CenterOnline,
+    EdgeOnly,
+    LocalOnly,
+    ReauthRequired,
+}
+
+@Serializable
+data class DeviceRegistration(
+    @SerialName("device_id") val deviceId: String,
+    @SerialName("public_key") val publicKey: String,
+    @SerialName("key_algorithm") val keyAlgorithm: String,
+    val platform: String = "android",
+)
 
 @Serializable
 data class MobileWorkbenchOverview(
@@ -154,6 +190,7 @@ data class MobileAppEntry(
     @SerialName("offline_syncable") val offlineSyncable: Boolean = false,
     @SerialName("offline_data_scope") val offlineDataScope: String = "",
     @SerialName("offline_required_permissions") val offlineRequiredPermissions: List<String> = emptyList(),
+    @Transient val localFallback: Boolean = false,
 )
 
 @Serializable
@@ -307,6 +344,7 @@ data class ReceivingScanItem(
     val status: String = "",
     @SerialName("exception_reason") val exceptionReason: String = "",
     @SerialName("scanned_at") val scannedAt: String = "",
+    @Transient val localFallback: Boolean = false,
 )
 
 @Serializable
@@ -442,7 +480,7 @@ data class EdgePrintNodeStatus(
 @Serializable
 data class EdgeTerminalRegistrationRequest(
     @SerialName("terminal_id") val terminalId: String,
-    @SerialName("edge_node_id") val edgeNodeId: String,
+    @SerialName("edge_node_id") val edgeNodeId: String? = null,
     @SerialName("terminal_name") val terminalName: String,
     @SerialName("app_version") val appVersion: String,
     val platform: String,
@@ -501,7 +539,13 @@ data class Sku(
 data class BoxLabelDocumentRef(
     val id: Long = 0,
     val code: String = "",
+    val name: String = "",
     val status: String = "",
+    val destination: String = "",
+    @SerialName("warehouse_name") val warehouseName: String = "",
+    @SerialName("container_no") val containerNo: String = "",
+    val manufacturer: ManufacturerRef? = null,
+    @SerialName("purchase_order") val purchaseOrder: PurchaseOrderRef? = null,
 )
 
 @Serializable
@@ -512,10 +556,14 @@ data class BoxLabelSKUItem(
 
 @Serializable
 data class BoxLabel(
+    val id: Long = 0,
+    val recognized: Boolean = false,
+    @SerialName("valid_for_current_context") val validForCurrentContext: Boolean = true,
     @SerialName("box_uid") val boxUid: String = "",
     @SerialName("label_code") val labelCode: String = "",
     @SerialName("box_no") val boxNo: String = "",
     val status: String = "",
+    @SerialName("tracking_status") val trackingStatus: String = "",
     @SerialName("warning_code") val warningCode: String = "",
     @SerialName("warning_message") val warningMessage: String = "",
     @SerialName("product_code") val productCode: String = "",
@@ -527,6 +575,7 @@ data class BoxLabel(
     @SerialName("actual_box_qty") val actualBoxQty: Int = 0,
     @SerialName("warehouse_code") val warehouseCode: String = "",
     @SerialName("location_code") val locationCode: String = "",
+    @SerialName("central_received_at") val centralReceivedAt: String = "",
     @SerialName("supplier_order") val supplierOrder: BoxLabelDocumentRef? = null,
     @SerialName("purchase_order") val purchaseOrder: BoxLabelDocumentRef? = null,
     @SerialName("central_receipt") val centralReceipt: BoxLabelDocumentRef? = null,
@@ -534,5 +583,8 @@ data class BoxLabel(
     @SerialName("receiving_session") val receivingSession: BoxLabelDocumentRef? = null,
     @SerialName("receiving_record") val receivingRecord: BoxLabelDocumentRef? = null,
     @SerialName("sku_items") val skuItems: List<BoxLabelSKUItem> = emptyList(),
+    val printable: Boolean = false,
+    @SerialName("print_snapshot") val printSnapshot: JsonObject? = null,
     val warnings: List<String> = emptyList(),
+    @Transient val localFallback: Boolean = false,
 )

@@ -23,9 +23,7 @@ plugins {
     alias(libs.plugins.nowinandroid.android.application.compose)
     alias(libs.plugins.nowinandroid.android.application.flavors)
     alias(libs.plugins.nowinandroid.android.application.jacoco)
-    alias(libs.plugins.nowinandroid.android.application.firebase)
     alias(libs.plugins.nowinandroid.hilt)
-    alias(libs.plugins.google.osslicenses)
     alias(libs.plugins.baselineprofile)
     alias(libs.plugins.roborazzi)
     alias(libs.plugins.kotlin.serialization)
@@ -71,6 +69,10 @@ android {
         resources {
             excludes.add("/META-INF/{AL2.0,LGPL2.1}")
         }
+    }
+    lint {
+        // FSCM intentionally wraps Material 3 directly instead of using the NIA business UI layer.
+        disable += "DesignSystem"
     }
     testOptions.unitTests.isIncludeAndroidResources = true
     namespace = "com.google.samples.apps.nowinandroid"
@@ -124,6 +126,7 @@ dependencies {
     implementation(projects.core.ui)
 
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.appcompat)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.iconsExtended)
     implementation(libs.androidx.navigation3.ui)
@@ -150,10 +153,12 @@ dependencies {
     implementation(libs.coil.kt)
     implementation(libs.coil.kt.compose)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.jose4j)
     implementation(libs.okhttp.logging)
     implementation(libs.retrofit.core)
     implementation(libs.retrofit.kotlin.serialization)
     implementation(libs.escpos.printer)
+    implementation(libs.sqlcipher)
 
     ksp(libs.hilt.compiler)
     ksp(libs.hilt.ext.compiler)
@@ -174,6 +179,7 @@ dependencies {
     testDemoImplementation(libs.roborazzi)
 
     androidTestImplementation(libs.androidx.test.espresso.core)
+    androidTestImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.compose.ui.test)
     androidTestImplementation(libs.hilt.android.testing)
     androidTestImplementation(libs.kotlin.test)

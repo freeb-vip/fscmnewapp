@@ -17,6 +17,7 @@
 package com.google.samples.apps.nowinandroid.core.datastore
 
 import com.google.samples.apps.nowinandroid.core.datastore.test.InMemoryDataStore
+import com.google.samples.apps.nowinandroid.core.model.data.DisplayMode
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -24,6 +25,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Test
 import kotlin.test.assertFalse
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class NiaPreferencesDataSourceTest {
@@ -85,5 +87,26 @@ class NiaPreferencesDataSourceTest {
     fun userShouldUseDynamicColorIsTrueWhenSet() = testScope.runTest {
         subject.setDynamicColorPreference(true)
         assertTrue(subject.userData.first().useDynamicColor)
+    }
+
+    @Test
+    fun displayModeDefaultsToFull() = testScope.runTest {
+        assertEquals(DisplayMode.FULL, subject.userData.first().displayMode)
+    }
+
+    @Test
+    fun displayModePersistsCompactPreference() = testScope.runTest {
+        subject.setDisplayMode(DisplayMode.COMPACT)
+
+        assertEquals(DisplayMode.COMPACT, subject.userData.first().displayMode)
+    }
+
+    @Test
+    fun defaultBoxMarkPrintNodePersistsIndependently() = testScope.runTest {
+        subject.setDefaultBoxMarkPrintNode(42)
+
+        val userData = subject.userData.first()
+        assertEquals(42, userData.defaultBoxMarkPrintNodeId)
+        assertEquals(null, userData.defaultSkuPrintNodeId)
     }
 }

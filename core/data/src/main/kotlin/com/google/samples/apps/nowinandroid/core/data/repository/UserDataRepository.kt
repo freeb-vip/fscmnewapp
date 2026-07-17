@@ -17,6 +17,7 @@
 package com.google.samples.apps.nowinandroid.core.data.repository
 
 import com.google.samples.apps.nowinandroid.core.model.data.DarkThemeConfig
+import com.google.samples.apps.nowinandroid.core.model.data.DisplayMode
 import com.google.samples.apps.nowinandroid.core.model.data.ThemeBrand
 import com.google.samples.apps.nowinandroid.core.model.data.UserData
 import kotlinx.coroutines.flow.Flow
@@ -77,4 +78,22 @@ interface UserDataRepository {
      * Sets the Bluetooth printer MAC address.
      */
     suspend fun setBluetoothPrinterMac(mac: String)
+
+    /**
+     * Clears the legacy language preference after migration to AppCompat locales.
+     */
+    suspend fun clearLegacyLanguage()
+
+    /**
+     * Sets the workbench display density preference.
+     */
+    suspend fun setDisplayMode(displayMode: DisplayMode)
+
+    /**
+     * Sets this device's default edge node and label prefix for SKU quick printing.
+     */
+    suspend fun setSkuQuickPrintPreferences(defaultNodeId: Long?, labelPrefix: String)
+
+    /** Sets this device's default edge node for manufacturer box-mark printing. */
+    suspend fun setDefaultBoxMarkPrintNode(defaultNodeId: Long?)
 }

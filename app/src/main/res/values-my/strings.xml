@@ -43,4 +43,17 @@
     <string name="submit_failed">ပေးပို့ခြင်း မအောင်မြင်ပါ</string>
     <string name="cancel_scan_failed">စကန်ဖတ်ခြင်းကို ပယ်ဖျက်ခြင်း မအောင်မြင်ပါ</string>
     <string name="finish_receiving_failed">လက်ခံခြင်းကို အပြီးသတ်ခြင်း မအောင်မြင်ပါ</string>
+
+    <string name="search_failed">ရှာဖွေမှု မအောင်မြင်ပါ</string>
+    <string name="product_load_failed">ကုန်ပစ္စည်းများ ဖွင့်မရပါ</string>
+
+    <string name="settings_language">အက်ပ်ဘာသာစကား</string>
+    <string name="settings_display_mode">ပြသမှု ဆက်တင်များ</string>
+    <string name="display_mode_full">အပြည့်မုဒ်</string>
+    <string name="display_mode_compact">ကျစ်လစ်မုဒ်</string>
+    <string name="language_default">စနစ်ပုံသေ</string>
+    <string name="language_zh_hans">简体中文</string>
+    <string name="language_en">English</string>
+    <string name="language_th">ไทย</string>
+    <string name="language_my">မြန်မာ</string>
 </resources>

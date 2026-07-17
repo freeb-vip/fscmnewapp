@@ -16,25 +16,26 @@
 
 package com.google.samples.apps.nowinandroid.fscm.data
 
+import java.text.NumberFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import kotlin.math.abs
+import java.util.Locale
 
-fun formatAmount(value: Double): String {
-    val prefix = if (value < 0) "-" else ""
-    val absValue = abs(value)
-    return when {
-        absValue >= 10000 -> "$prefix${"%.1f".format(absValue / 10000)}万"
-        else -> "$prefix${"%.2f".format(absValue)}"
+fun formatAmount(value: Double): String = NumberFormat.getNumberInstance(Locale.getDefault())
+    .apply {
+        minimumFractionDigits = 2
+        maximumFractionDigits = 2
     }
-}
+    .format(value)
 
-fun formatCount(value: Int): String = when {
-    value >= 10000 -> "${"%.1f".format(value / 10000.0)}万"
-    else -> value.toString()
-}
+fun formatCount(value: Int): String = NumberFormat.getIntegerInstance(Locale.getDefault()).format(value)
 
-fun formatPercent(value: Double): String = "${"%.1f".format(value * 100)}%"
+fun formatPercent(value: Double): String = NumberFormat.getPercentInstance(Locale.getDefault())
+    .apply {
+        minimumFractionDigits = 1
+        maximumFractionDigits = 1
+    }
+    .format(value)
 
 fun shortTime(value: String): String =
     value.takeIf { it.length >= 16 }?.substring(5, 16)?.replace('T', ' ') ?: value
@@ -44,21 +45,4 @@ fun todayRange(days: Long = 6): Pair<String, String> {
     val start = end.minusDays(days)
     val formatter = DateTimeFormatter.ISO_LOCAL_DATE
     return start.format(formatter) to end.format(formatter)
-}
-
-fun statusText(status: String): String = when (status.lowercase()) {
-    "completed", "done", "finished" -> "已完成"
-    "processing", "in_progress", "working", "scanning" -> "处理中"
-    "cancelled" -> "已取消"
-    "draft" -> "草稿"
-    "tally" -> "清点中"
-    "normal" -> "正常"
-    "damaged" -> "破损"
-    "duplicate" -> "重复"
-    "voided" -> "已作废"
-    "shorted" -> "短装"
-    "received" -> "已收货"
-    "exception" -> "异常"
-    "unknown" -> "未知"
-    else -> status.ifBlank { "待处理" }
 }

@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="brand_mark">F</string>
+    <string name="mobile_workbench">FSCM မိုဘိုင်း အလုပ်ခွင်</string>
+    <string name="connecting_fscm">FSCM သို့ ချိတ်ဆက်နေသည်</string>
+    <string name="account_login">အကောင့်ဖြင့် ဝင်ရန်</string>
+    <string name="account_login_description">မိုဘိုင်းအက်ပ်သို့ ဝင်ရန် FSCM အကောင့်ကို အသုံးပြုပါ</string>
+    <string name="exit_confirm">ထွက်ရန် နောက်သို့ခလုတ်ကို ထပ်နှိပ်ပါ</string>
+    <string name="common_close">ပိတ်ရန်</string>
+    <string name="common_confirm">အတည်ပြုရန်</string>
+    <string name="common_cancel">ပယ်ဖျက်ရန်</string>
+    <string name="common_search">ရှာဖွေရန်</string>
+    <string name="common_retry">ထပ်စမ်းရန်</string>
+    <string name="common_save">သိမ်းရန်</string>
+    <string name="common_delete">ဖျက်ရန်</string>
+    <string name="common_edit">ပြင်ဆင်ရန်</string>
+    <string name="common_copy">ကူးယူရန်</string>
+    <string name="common_refresh">ပြန်လည်စတင်ရန်</string>
+    <string name="common_all">အားလုံး</string>
+    <string name="common_unknown">မသိရသေး</string>
+    <string name="common_unavailable">အသုံးမပြုနိုင်ပါ</string>
+    <string name="common_success">အောင်မြင်သည်</string>
+    <string name="common_failed">မအောင်မြင်ပါ</string>
+    <string name="common_more">နောက်ထပ်</string>
+    <string name="common_load_more">နောက်ထပ်ဖွင့်ရန်</string>
+    <string name="feature_central_receiving">စုစည်းကုန်လက်ခံခြင်း</string>
+    <string name="feature_central_receiving_detail">စုစည်းကုန်လက်ခံမှု အသေးစိတ်</string>
+    <string name="feature_supplier_orders">ထုတ်လုပ်သူ အော်ဒါများ</string>
+    <string name="feature_supplier_order_detail">ထုတ်လုပ်သူ အော်ဒါအသေးစိတ်</string>
+    <string name="feature_product_management">ကုန်ပစ္စည်း စီမံခန့်ခွဲမှု</string>
+    <string name="feature_sku_detail">SKU အသေးစိတ်</string>
+    <string name="feature_box_label_detail">ပုံးတံဆိပ် အသေးစိတ်</string>
+    <string name="feature_box_label_management">ပုံးတံဆိပ် စီမံခန့်ခွဲမှု</string>
+    <string name="feature_pda_scan_mode">PDA စကန်မုဒ်</string>
+    <string name="feature_pda_settings">PDA ဆက်တင်များ</string>
+    <string name="feature_edge_nodes">Edge Node များ</string>
+    <string name="feature_label_printing">တံဆိပ်ပုံနှိပ်ခြင်း</string>
+    <string name="profile_fallback_user">FSCM အသုံးပြုသူ</string>
+    <string name="profile_mobile_role">မိုဘိုင်း</string>
+    <string name="profile_workspace">အလုပ်ခွင်</string>
+    <string name="profile_logout">အကောင့်မှ ထွက်ရန်</string>
+    <string name="apps_visible_count">သင့်ခွင့်ပြုချက်အရ အက်ပ် %1$d ခု ရနိုင်သည်</string>
+    <string name="pin_app">အကြိုက်ဆုံးသို့ ထည့်ရန်</string>
+    <string name="unpin_app">အကြိုက်ဆုံးမှ ဖယ်ရန်</string>
+    <string name="app_pinned">အကြိုက်ဆုံးသို့ ထည့်ပြီးပါပြီ</string>
+    <string name="app_unpinned">အကြိုက်ဆုံးမှ ဖယ်ပြီးပါပြီ</string>
+    <string name="hide_app">အက်ပ်ကို ဖျောက်ရန်</string>
+    <string name="app_hidden">အက်ပ်ကို ဖျောက်ပြီးပါပြီ</string>
+    <string name="hidden_apps">ဖျောက်ထားသော အက်ပ်များ</string>
+    <string name="hidden_apps_count">ဖျောက်ထားသော အက်ပ်များ (%1$d)</string>
+    <string name="show_app">အက်ပ်ကို ပြရန်</string>
+    <string name="app_shown">အက်ပ်ကို ပြန်ပြပြီးပါပြီ</string>
+    <string name="messages_summary">မက်ဆေ့ခ်ျနှင့် အလုပ် %1$d ခု</string>
+    <string name="loading_messages">မက်ဆေ့ခ်ျများ ဖွင့်နေသည်</string>
+    <string name="no_messages">မက်ဆေ့ခ်ျမရှိပါ</string>
+    <string name="message_preview">မက်ဆေ့ခ်ျ အစမ်းကြည့်ရန်</string>
+    <string name="message_todo">လုပ်ဆောင်ရန်</string>
+    <string name="message_announcement">ကြေညာချက်</string>
+    <string name="native_page_unavailable">%1$s အတွက် native စာမျက်နှာ မရသေးပါ</string>
+    <string name="business_type_unsupported">ဤဗားရှင်းတွင် ဤလုပ်ငန်းအမျိုးအစားကို မပံ့ပိုးသေးပါ: %1$s</string>
+    <string name="session_expired">အကောင့် သို့မဟုတ် စကားဝှက် မမှန်တော့ပါ။ အွန်လိုင်းမှ ပြန်ဝင်ပါ။</string>
+    <string name="status_completed">ပြီးစီးပြီ</string>
+    <string name="status_processing">ဆောင်ရွက်နေသည်</string>
+    <string name="status_cancelled">ပယ်ဖျက်ပြီး</string>
+    <string name="status_draft">မူကြမ်း</string>
+    <string name="status_tallying">ရေတွက်နေသည်</string>
+    <string name="status_normal">ပုံမှန်</string>
+    <string name="status_damaged">ပျက်စီး</string>
+    <string name="status_duplicate">ထပ်နေသည်</string>
+    <string name="status_voided">ပယ်ဖျက်ထားသည်</string>
+    <string name="status_shorted">လိုအပ်နေသည်</string>
+    <string name="status_received">လက်ခံပြီး</string>
+    <string name="status_exception">မူမမှန်</string>
+    <string name="status_pending">စောင့်ဆိုင်းနေသည်</string>
+    <string name="status_open">ဖွင့်ထားသည်</string>
+    <string name="status_resolved">ဖြေရှင်းပြီး</string>
+    <string name="status_closed">ပိတ်ပြီး</string>
+    <string name="status_on_hold">ရပ်ဆိုင်းထားသည်</string>
+    <string name="status_archived">မှတ်တမ်းတင်ပြီး</string>
+    <string name="priority_low">နိမ့်</string>
+    <string name="priority_normal">ပုံမှန်</string>
+    <string name="priority_high">မြင့်</string>
+    <string name="priority_urgent">အရေးပေါ်</string>
+    <string name="local_app_todos_title">လုပ်ဆောင်ရန်</string><string name="local_app_todos_description">ဆောင်ရွက်ရန် လိုအပ်သည့် အရာများ</string>
+    <string name="local_app_notes_title">မှတ်စုများ</string><string name="local_app_notes_description">အလုပ်မှတ်တမ်းများ</string>
+    <string name="local_app_tickets_title">အလုပ်လက်မှတ်များ</string><string name="local_app_tickets_description">ဝန်ဆောင်မှု ပူးပေါင်းဆောင်ရွက်မှု</string>
+    <string name="local_app_documents_title">စာရွက်စာတမ်းများ</string><string name="local_app_documents_description">စာရွက်စာတမ်း စင်တာ</string>
+    <string name="local_app_receiving_title">ဂိုဒေါင် ကုန်လက်ခံမှု</string><string name="local_app_receiving_description">စကင်ဖတ်၍ ဂိုဒေါင်သို့သွင်းရန်</string>
+    <string name="local_app_central_receiving_title">ပေါင်းစည်းပို့ဆောင်ရေး လက်ခံမှု</string><string name="local_app_central_receiving_description">ပေါင်းစည်းဂိုဒေါင်တွင် စကင်ဖတ်လက်ခံရန်</string>
+    <string name="local_app_profit_title">အမြတ်</string><string name="local_app_profit_description">အမြတ် ဒက်ရှ်ဘုတ်</string>
+    <string name="local_app_product_management_title">ကုန်ပစ္စည်း စီမံခန့်ခွဲမှု</string><string name="local_app_product_management_description">SKU အချက်အလက် ထိန်းသိမ်းမှု</string>
+    <string name="local_app_box_labels_title">ကုန်ပုံး အညွှန်းများ</string><string name="local_app_box_labels_description">ကုန်ပုံးအညွှန်း လုပ်ငန်းစဉ်တစ်လျှောက် ရှာဖွေမှု</string>
+    <string name="local_app_supplier_orders_title">ထုတ်လုပ်သူ အမှာစာများ</string><string name="local_app_supplier_orders_description">ထုတ်လုပ်မှုနှင့် ပို့ဆောင်မှု အခြေအနေ</string>
+    <string name="local_app_purchase_approvals_title">ဝယ်ယူမှု အတည်ပြုချက်များ</string><string name="local_app_purchase_approvals_description">ဈေးနှုန်းနှင့် အမှာစာ အတည်ပြုမှု</string>
+    <string name="local_app_label_print_title">အညွှန်း ပရင့်ခြင်း</string><string name="local_app_label_print_description">စာသားနှင့် ဘားကုဒ် အညွှန်းများ</string>
+    <string name="local_app_edge_nodes_title">Edge Node များ</string><string name="local_app_edge_nodes_description">ဝန်ဆောင်မှုစင်တာနှင့် LAN ရှာဖွေမှု</string>
+    <string name="local_app_pda_settings_title">PDA ဆက်တင်များ</string><string name="local_app_pda_settings_description">စကင် စစ်ဆေးချက်များ</string>
+    <string name="box_label_scan_not_detected">ကတ်ထူပုံးတံဆိပ်ကုဒ်ကို မတွေ့ရှိပါ</string>
+    <string name="box_label_scan_retry_prompt">တွေ့ရှိသောကုဒ်သည် SKU ကုဒ်ဖြစ်နိုင်သည်။ ကတ်ထူပုံးတံဆိပ် QR ကုဒ်ကို ချိန်ပြီး ထပ်မံစကင်ဖတ်ပါ</string>
+    <string name="box_label_scan_retry">ပြန်လည်စကင်ဖတ်မည်</string>
+    <string name="local_offline_data_reset">စက်တွင်း အော့ဖ်လိုင်းဒေတာကို အဆင့်မြှင့်၍မရသဖြင့် ပြန်လည်သတ်မှတ်ထားသည်။</string>
+</resources>

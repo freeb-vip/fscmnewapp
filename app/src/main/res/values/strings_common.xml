@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="brand_mark">F</string>
+    <string name="mobile_workbench">FSCM Mobile Workbench</string>
+    <string name="connecting_fscm">Connecting to FSCM</string>
+    <string name="account_login">Account login</string>
+    <string name="account_login_description">Use your FSCM account to access the mobile app</string>
+    <string name="exit_confirm">Press back again to exit</string>
+    <string name="common_close">Close</string>
+    <string name="common_confirm">Confirm</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_search">Search</string>
+    <string name="common_retry">Retry</string>
+    <string name="common_save">Save</string>
+    <string name="common_delete">Delete</string>
+    <string name="common_edit">Edit</string>
+    <string name="common_copy">Copy</string>
+    <string name="common_refresh">Refresh</string>
+    <string name="common_all">All</string>
+    <string name="common_unknown">Unknown</string>
+    <string name="common_unavailable">Unavailable</string>
+    <string name="common_success">Success</string>
+    <string name="common_failed">Failed</string>
+    <string name="common_more">More</string>
+    <string name="common_load_more">Load more</string>
+    <string name="feature_central_receiving">Consolidation Receiving</string>
+    <string name="feature_central_receiving_detail">Consolidation Receiving Details</string>
+    <string name="feature_supplier_orders">Supplier Orders</string>
+    <string name="feature_supplier_order_detail">Supplier Order Details</string>
+    <string name="feature_product_management">Product Management</string>
+    <string name="feature_sku_detail">SKU Details</string>
+    <string name="feature_box_label_detail">Carton Label Details</string>
+    <string name="feature_box_label_management">Carton Label Management</string>
+    <string name="feature_pda_scan_mode">PDA Scan Mode</string>
+    <string name="feature_pda_settings">PDA Settings</string>
+    <string name="feature_edge_nodes">Edge Nodes</string>
+    <string name="feature_label_printing">Label Printing</string>
+    <string name="profile_fallback_user">FSCM User</string>
+    <string name="profile_mobile_role">Mobile</string>
+    <string name="profile_workspace">Workspace</string>
+    <string name="profile_logout">Log out</string>
+    <string name="apps_visible_count">%1$d apps available for your permissions</string>
+    <string name="pin_app">Add to favorites</string>
+    <string name="unpin_app">Remove from favorites</string>
+    <string name="app_pinned">Added to favorites</string>
+    <string name="app_unpinned">Removed from favorites</string>
+    <string name="hide_app">Hide app</string>
+    <string name="app_hidden">App hidden</string>
+    <string name="hidden_apps">Hidden apps</string>
+    <string name="hidden_apps_count">Hidden apps (%1$d)</string>
+    <string name="show_app">Show app</string>
+    <string name="app_shown">App shown</string>
+    <string name="messages_summary">%1$d messages and tasks</string>
+    <string name="loading_messages">Loading messages</string>
+    <string name="no_messages">No messages</string>
+    <string name="message_preview">Message preview</string>
+    <string name="message_todo">Task</string>
+    <string name="message_announcement">Announcement</string>
+    <string name="native_page_unavailable">%1$s is not yet available as a native screen</string>
+    <string name="business_type_unsupported">This business type is not supported in this version: %1$s</string>
+    <string name="session_expired">Your account or password is no longer valid. Sign in online again.</string>
+    <string name="status_completed">Completed</string>
+    <string name="status_processing">Processing</string>
+    <string name="status_cancelled">Cancelled</string>
+    <string name="status_draft">Draft</string>
+    <string name="status_tallying">Tallying</string>
+    <string name="status_normal">Normal</string>
+    <string name="status_damaged">Damaged</string>
+    <string name="status_duplicate">Duplicate</string>
+    <string name="status_voided">Voided</string>
+    <string name="status_shorted">Short</string>
+    <string name="status_received">Received</string>
+    <string name="status_exception">Exception</string>
+    <string name="status_pending">Pending</string>
+    <string name="status_open">Open</string>
+    <string name="status_resolved">Resolved</string>
+    <string name="status_closed">Closed</string>
+    <string name="status_on_hold">On hold</string>
+    <string name="status_archived">Archived</string>
+    <string name="priority_low">Low</string>
+    <string name="priority_normal">Normal</string>
+    <string name="priority_high">High</string>
+    <string name="priority_urgent">Urgent</string>
+    <string name="local_app_todos_title">Tasks</string><string name="local_app_todos_description">Items requiring action</string>
+    <string name="local_app_notes_title">Notes</string><string name="local_app_notes_description">Work notes</string>
+    <string name="local_app_tickets_title">Tickets</string><string name="local_app_tickets_description">Service collaboration</string>
+    <string name="local_app_documents_title">Documents</string><string name="local_app_documents_description">Document center</string>
+    <string name="local_app_receiving_title">Warehouse Receiving</string><string name="local_app_receiving_description">Scan into warehouse</string>
+    <string name="local_app_central_receiving_title">Consolidation Receiving</string><string name="local_app_central_receiving_description">Scan receiving at consolidation warehouse</string>
+    <string name="local_app_profit_title">Profit</string><string name="local_app_profit_description">Profit dashboard</string>
+    <string name="local_app_product_management_title">Product Management</string><string name="local_app_product_management_description">Maintain SKU information</string>
+    <string name="local_app_box_labels_title">Carton Labels</string><string name="local_app_box_labels_description">End-to-end carton label lookup</string>
+    <string name="local_app_supplier_orders_title">Supplier Orders</string><string name="local_app_supplier_orders_description">Production and shipping progress</string>
+    <string name="local_app_purchase_approvals_title">Purchase Approvals</string><string name="local_app_purchase_approvals_description">Price and order approval</string>
+    <string name="local_app_label_print_title">Label Printing</string><string name="local_app_label_print_description">Text and barcode labels</string>
+    <string name="local_app_edge_nodes_title">Edge Nodes</string><string name="local_app_edge_nodes_description">Service center and LAN discovery</string>
+    <string name="local_app_pda_settings_title">PDA Settings</string><string name="local_app_pda_settings_description">Scan diagnostics</string>
+    <string name="box_label_scan_not_detected">Carton label not detected</string>
+    <string name="box_label_scan_retry_prompt">The detected code may be a SKU code. Point the camera at the carton label QR code and scan again.</string>
+    <string name="box_label_scan_retry">Scan again</string>
+    <string name="local_offline_data_reset">Local offline data could not be upgraded and was reset.</string>
+</resources>

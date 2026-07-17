@@ -28,6 +28,14 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
+enum class PrintFailureReason {
+    BluetoothPermissionRequired,
+    PrinterNotConfigured,
+    PrinterNotPaired,
+}
+
+class PrintFailureException(val reason: PrintFailureReason) : IllegalStateException()
+
 @Singleton
 class PrintManager @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -41,14 +49,14 @@ class PrintManager @Inject constructor(
     suspend fun printReceipt(content: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             if (!PdaPermissions.hasBluetoothRuntimePermissions(context)) {
-                return@withContext Result.failure(Exception("缺少蓝牙权限，请先授权后再打印"))
+                return@withContext Result.failure(PrintFailureException(PrintFailureReason.BluetoothPermissionRequired))
             }
             val mac = userDataRepository.userData.first().bluetoothPrinterMac
-            if (mac.isBlank()) return@withContext Result.failure(Exception("未配置打印机"))
+            if (mac.isBlank()) return@withContext Result.failure(PrintFailureException(PrintFailureReason.PrinterNotConfigured))
 
             val connection = BluetoothPrintersConnections().list
                 ?.find { it.device.address == mac }
-                ?: return@withContext Result.failure(Exception("打印机未配对"))
+                ?: return@withContext Result.failure(PrintFailureException(PrintFailureReason.PrinterNotPaired))
 
             val printer = EscPosPrinter(connection, 203, 48f, 32)
             printer.printFormattedText(content)

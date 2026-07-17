@@ -52,5 +52,13 @@ message UserPreferences {
     string scanner_action = 21;
     string bluetooth_printer_mac = 22;
 
-    // NEXT AVAILABLE ID: 23
+    string language = 23 [deprecated = true];
+
+    int64 default_sku_print_node_id = 24;
+    string sku_label_prefix = 25;
+    bool has_sku_label_prefix = 26;
+    bool use_compact_display_mode = 27;
+    int64 default_box_mark_print_node_id = 28;
+
+    // NEXT AVAILABLE ID: 29
 }

@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="brand_mark">四</string>
+    <string name="mobile_workbench">FSCM 移动工作台</string>
+    <string name="connecting_fscm">正在连接 FSCM</string>
+    <string name="account_login">账号登录</string>
+    <string name="account_login_description">使用 FSCM 后台账号进入移动端</string>
+    <string name="exit_confirm">再按一次退出应用</string>
+    <string name="common_close">关闭</string>
+    <string name="common_confirm">确认</string>
+    <string name="common_cancel">取消</string>
+    <string name="common_search">搜索</string>
+    <string name="common_retry">重试</string>
+    <string name="common_save">保存</string>
+    <string name="common_delete">删除</string>
+    <string name="common_edit">编辑</string>
+    <string name="common_copy">复制</string>
+    <string name="common_refresh">刷新</string>
+    <string name="common_all">全部</string>
+    <string name="common_unknown">未知</string>
+    <string name="common_unavailable">不可用</string>
+    <string name="common_success">成功</string>
+    <string name="common_failed">失败</string>
+    <string name="common_more">更多</string>
+    <string name="common_load_more">加载更多</string>
+    <string name="feature_central_receiving">集运收货</string>
+    <string name="feature_central_receiving_detail">集运收货详情</string>
+    <string name="feature_supplier_orders">厂家订单</string>
+    <string name="feature_supplier_order_detail">厂家订单详情</string>
+    <string name="feature_product_management">产品管理</string>
+    <string name="feature_sku_detail">SKU 详情</string>
+    <string name="feature_box_label_detail">箱唛详情</string>
+    <string name="feature_box_label_management">箱唛管理</string>
+    <string name="feature_pda_scan_mode">PDA 扫描模式</string>
+    <string name="feature_pda_settings">PDA 设置</string>
+    <string name="feature_edge_nodes">边缘节点</string>
+    <string name="feature_label_printing">标签打印</string>
+    <string name="profile_fallback_user">FSCM 用户</string>
+    <string name="profile_mobile_role">移动端</string>
+    <string name="profile_workspace">工作空间</string>
+    <string name="profile_logout">退出登录</string>
+    <string name="apps_visible_count">按权限展示 %1$d 个应用</string>
+    <string name="pin_app">设为常用</string>
+    <string name="unpin_app">取消常用</string>
+    <string name="app_pinned">已设为常用</string>
+    <string name="app_unpinned">已取消常用</string>
+    <string name="hide_app">隐藏应用</string>
+    <string name="app_hidden">应用已隐藏</string>
+    <string name="hidden_apps">已隐藏应用</string>
+    <string name="hidden_apps_count">已隐藏应用（%1$d）</string>
+    <string name="show_app">显示应用</string>
+    <string name="app_shown">应用已恢复显示</string>
+    <string name="messages_summary">%1$d 条消息与事项</string>
+    <string name="loading_messages">正在加载消息</string>
+    <string name="no_messages">暂无消息</string>
+    <string name="message_preview">消息预览</string>
+    <string name="message_todo">待办</string>
+    <string name="message_announcement">公告</string>
+    <string name="native_page_unavailable">%1$s 暂未开放原生页面</string>
+    <string name="business_type_unsupported">当前版本不支持该业务类型：%1$s</string>
+    <string name="session_expired">账号或密码已失效，请重新联网登录</string>
+    <string name="status_completed">已完成</string>
+    <string name="status_processing">处理中</string>
+    <string name="status_cancelled">已取消</string>
+    <string name="status_draft">草稿</string>
+    <string name="status_tallying">清点中</string>
+    <string name="status_normal">正常</string>
+    <string name="status_damaged">破损</string>
+    <string name="status_duplicate">重复</string>
+    <string name="status_voided">已作废</string>
+    <string name="status_shorted">短装</string>
+    <string name="status_received">已收货</string>
+    <string name="status_exception">异常</string>
+    <string name="status_pending">待处理</string>
+    <string name="status_open">待处理</string>
+    <string name="status_resolved">已解决</string>
+    <string name="status_closed">已关闭</string>
+    <string name="status_on_hold">已挂起</string>
+    <string name="status_archived">已归档</string>
+    <string name="priority_low">低</string>
+    <string name="priority_normal">普通</string>
+    <string name="priority_high">高</string>
+    <string name="priority_urgent">紧急</string>
+    <string name="local_app_todos_title">待办</string><string name="local_app_todos_description">待处理事项</string>
+    <string name="local_app_notes_title">笔记</string><string name="local_app_notes_description">工作记录</string>
+    <string name="local_app_tickets_title">工单</string><string name="local_app_tickets_description">服务协同</string>
+    <string name="local_app_documents_title">文档</string><string name="local_app_documents_description">文档中心</string>
+    <string name="local_app_receiving_title">仓库收货</string><string name="local_app_receiving_description">扫码入库</string>
+    <string name="local_app_central_receiving_title">集运收货</string><string name="local_app_central_receiving_description">集运仓扫码收货</string>
+    <string name="local_app_profit_title">利润</string><string name="local_app_profit_description">利润看板</string>
+    <string name="local_app_product_management_title">产品管理</string><string name="local_app_product_management_description">SKU 信息维护</string>
+    <string name="local_app_box_labels_title">箱唛管理</string><string name="local_app_box_labels_description">箱唛全链路查询</string>
+    <string name="local_app_supplier_orders_title">厂家订单</string><string name="local_app_supplier_orders_description">生产与发货进度</string>
+    <string name="local_app_purchase_approvals_title">采购审核</string><string name="local_app_purchase_approvals_description">价格与订单审核</string>
+    <string name="local_app_label_print_title">标签打印</string><string name="local_app_label_print_description">字符与条码标签</string>
+    <string name="local_app_edge_nodes_title">边缘节点</string><string name="local_app_edge_nodes_description">服务中心与局域网探测</string>
+    <string name="local_app_pda_settings_title">PDA 设置</string><string name="local_app_pda_settings_description">扫码诊断</string>
+    <string name="box_label_scan_not_detected">未识别到箱唛码</string>
+    <string name="box_label_scan_retry_prompt">当前识别到的可能是 SKU 码，请对准箱唛二维码重新扫描</string>
+    <string name="box_label_scan_retry">重新扫描</string>
+    <string name="local_offline_data_reset">本地离线数据升级失败，已重置本地缓存</string>
+</resources>

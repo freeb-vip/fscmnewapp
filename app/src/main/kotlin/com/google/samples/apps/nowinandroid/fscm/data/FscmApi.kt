@@ -16,6 +16,7 @@
 
 package com.google.samples.apps.nowinandroid.fscm.data
 
+import androidx.appcompat.app.AppCompatDelegate
 import com.google.samples.apps.nowinandroid.BuildConfig
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -28,7 +29,6 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -43,6 +43,7 @@ import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.HeaderMap
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.QueryMap
@@ -69,6 +70,13 @@ interface FscmRetrofitApi {
         @Body body: JsonElement = JsonObject(emptyMap()),
     ): Response<JsonElement>
 
+    @POST
+    suspend fun postWithHeaders(
+        @Url url: String,
+        @HeaderMap headers: Map<String, String>,
+        @Body body: JsonElement = JsonObject(emptyMap()),
+    ): Response<JsonElement>
+
     @PUT
     suspend fun put(
         @Url url: String,
@@ -83,6 +91,7 @@ class FscmApiException(
     message: String,
     val statusCode: Int,
     val payload: JsonElement? = null,
+    val serverMessage: String? = null,
 ) : RuntimeException(message)
 
 @Singleton
@@ -91,6 +100,8 @@ class FscmApiClient @Inject constructor(
     @PublishedApi internal val sessionStore: SessionStore,
     @param:FscmJson
     @PublishedApi internal val json: Json,
+    private val deviceIdentityManager: DeviceIdentityManager,
+    private val trustedClock: TrustedClock,
 ) {
     @PublishedApi internal val refreshMutex = Mutex()
 
@@ -99,6 +110,13 @@ class FscmApiClient @Inject constructor(
         params: Map<String, String> = emptyMap(),
         auth: Boolean = true,
     ): T = send(auth) { api.get(path, params) }
+
+    suspend inline fun <reified T> post(
+        path: String,
+        headers: Map<String, String>,
+        body: JsonElement = JsonObject(emptyMap()),
+        auth: Boolean = true,
+    ): T = send(auth) { api.postWithHeaders(path, headers, body) }
 
     suspend inline fun <reified T> post(
         path: String,
@@ -119,12 +137,9 @@ class FscmApiClient @Inject constructor(
 
     suspend inline fun <reified T> send(
         auth: Boolean,
-        crossinline call: suspend () -> Response<JsonElement>,
+        noinline call: suspend () -> Response<JsonElement>,
     ): T {
-        var response = call()
-        if (auth && response.code() == 401 && refreshSession()) {
-            response = call()
-        }
+        val response = retryAuthenticatedRequest(auth, call, ::refreshSession)
         return decode(response)
     }
 
@@ -132,32 +147,72 @@ class FscmApiClient @Inject constructor(
     internal suspend fun refreshSession(): Boolean = refreshMutex.withLock {
         val refreshToken = sessionStore.current().refreshToken
         if (refreshToken.isBlank()) return false
-        val response = api.post(
+        val body = buildJsonObject { put("refresh_token", refreshToken) }
+        val headers = deviceIdentityManager.proofHeaders(
+            method = "POST",
+            path = "auth/refresh",
+            body = body.toString(),
+            timestampMillis = trustedClock.trustedNowMillis() ?: System.currentTimeMillis(),
+        )
+        val response = api.postWithHeaders(
             "auth/refresh",
-            buildJsonObject { put("refresh_token", refreshToken) },
+            headers,
+            body,
         )
         val payload = runCatching { decode<AuthPayload>(response) }.getOrNull() ?: return false
-        if (payload.token.isBlank() || payload.refreshToken.isBlank()) return false
-        sessionStore.replaceTokens(payload.token, payload.refreshToken)
+        if (payload.token.isBlank()) return false
+        sessionStore.applyRefresh(payload)
         true
     }
 
     @PublishedApi
     internal inline fun <reified T> decode(response: Response<JsonElement>): T {
-        val payload = response.body()
+        val payload = response.payloadOrError(json)
         if (!response.isSuccessful) {
-            val message = payload?.messageFromPayload() ?: response.message().ifBlank { "请求失败" }
-            throw FscmApiException(message, response.code(), payload)
+            val serverMessage = payload?.messageFromPayload()
+            val message = serverMessage ?: response.message().ifBlank { "Request failed" }
+            throw FscmApiException(message, response.code(), payload, serverMessage)
         }
         val data = payload.unwrapStandardPayload(response.code())
         if (T::class == Unit::class) return Unit as T
         return try {
             json.decodeFromJsonElement(serializer<T>(), data)
         } catch (error: SerializationException) {
-            throw FscmApiException(error.message ?: "响应解析失败", response.code(), data)
+            throw FscmApiException(error.message ?: "Response parsing failed", response.code(), data)
         }
     }
 }
+
+@PublishedApi
+internal suspend fun retryAuthenticatedRequest(
+    auth: Boolean,
+    request: suspend () -> Response<JsonElement>,
+    refreshSession: suspend () -> Boolean,
+): Response<JsonElement> {
+    val initialResponse = request()
+    if (!auth || !initialResponse.isAuthenticationFailure() || !refreshSession()) {
+        return initialResponse
+    }
+    return request()
+}
+
+@PublishedApi
+internal fun Response<JsonElement>.isAuthenticationFailure(): Boolean =
+    code() == 401 || body().standardResponseCode() == 401
+
+@PublishedApi
+internal fun Response<JsonElement>.payloadOrError(json: Json): JsonElement? =
+    body() ?: if (!isSuccessful) {
+        errorBody()?.string()?.takeIf(String::isNotBlank)?.let { raw ->
+            runCatching { json.parseToJsonElement(raw) }.getOrNull()
+        }
+    } else {
+        null
+    }
+
+@PublishedApi
+internal fun JsonElement?.standardResponseCode(): Int? =
+    (this as? JsonObject)?.get("code")?.jsonPrimitive?.intOrNull
 
 @PublishedApi
 internal fun JsonElement?.unwrapStandardPayload(statusCode: Int): JsonElement {
@@ -166,17 +221,16 @@ internal fun JsonElement?.unwrapStandardPayload(statusCode: Int): JsonElement {
     val code = obj["code"]?.jsonPrimitive?.intOrNull
     if (code == null) return element
     if (code == 0) return obj["data"] ?: JsonNull
-    throw FscmApiException(obj.messageFromPayload(), statusCode, element)
+    val serverMessage = obj.messageFromPayload()
+    throw FscmApiException(serverMessage ?: "Request failed", statusCode, element, serverMessage)
 }
 
 @PublishedApi
-internal fun JsonElement.messageFromPayload(): String {
-    val obj = this as? JsonObject ?: return "请求失败"
+internal fun JsonElement.messageFromPayload(): String? {
+    val obj = this as? JsonObject ?: return null
     return obj["msg"]?.jsonPrimitive?.contentOrNull
         ?: obj["message"]?.jsonPrimitive?.contentOrNull
         ?: obj["error"]?.jsonPrimitive?.contentOrNull
-        ?: obj["code"]?.jsonPrimitive?.doubleOrNull?.let { "请求失败：$it" }
-        ?: "请求失败"
 }
 
 class FscmAuthInterceptor @Inject constructor(
@@ -184,10 +238,15 @@ class FscmAuthInterceptor @Inject constructor(
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): OkHttpResponse {
         val session = runBlocking { sessionStore.session.first() }
+        val applicationLocales = AppCompatDelegate.getApplicationLocales()
+        val languageTag = effectiveLanguageTag(
+            applicationTag = applicationLocales.get(0)?.toLanguageTag(),
+            systemTag = java.util.Locale.getDefault().toLanguageTag(),
+        )
         val requestBuilder = chain.request().newBuilder()
             .header("X-FSCM-Client", "mobile-app")
             .header("Content-Type", "application/json")
-            .header("Accept-Language", java.util.Locale.getDefault().toLanguageTag())
+            .header("Accept-Language", languageTag)
         if (session.token.isNotBlank()) {
             requestBuilder.header("Authorization", "Bearer ${session.token}")
         }
@@ -195,6 +254,17 @@ class FscmAuthInterceptor @Inject constructor(
             requestBuilder.header("X-Namespace-ID", it.toString())
         }
         return chain.proceed(requestBuilder.build())
+    }
+}
+
+internal fun effectiveLanguageTag(applicationTag: String?, systemTag: String): String {
+    val tag = applicationTag?.takeIf(String::isNotBlank) ?: systemTag
+    return when {
+        tag.equals("zh", ignoreCase = true) || tag.startsWith("zh-Hans", ignoreCase = true) -> "zh-Hans"
+        tag.startsWith("en", ignoreCase = true) -> "en"
+        tag.startsWith("th", ignoreCase = true) -> "th"
+        tag.startsWith("my", ignoreCase = true) -> "my"
+        else -> "en"
     }
 }
 

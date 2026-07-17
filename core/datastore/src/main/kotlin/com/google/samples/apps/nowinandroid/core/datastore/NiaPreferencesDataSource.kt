@@ -19,6 +19,7 @@ package com.google.samples.apps.nowinandroid.core.datastore
 import android.util.Log
 import androidx.datastore.core.DataStore
 import com.google.samples.apps.nowinandroid.core.model.data.DarkThemeConfig
+import com.google.samples.apps.nowinandroid.core.model.data.DisplayMode
 import com.google.samples.apps.nowinandroid.core.model.data.ThemeBrand
 import com.google.samples.apps.nowinandroid.core.model.data.UserData
 import kotlinx.coroutines.flow.firstOrNull
@@ -58,6 +59,11 @@ class NiaPreferencesDataSource @Inject constructor(
                 shouldHideOnboarding = it.shouldHideOnboarding,
                 scannerAction = it.scannerAction,
                 bluetoothPrinterMac = it.bluetoothPrinterMac,
+                language = it.language,
+                defaultSkuPrintNodeId = it.defaultSkuPrintNodeId.takeIf { id -> id > 0L },
+                defaultBoxMarkPrintNodeId = it.defaultBoxMarkPrintNodeId.takeIf { id -> id > 0L },
+                skuLabelPrefix = if (it.hasSkuLabelPrefix) it.skuLabelPrefix else "T",
+                displayMode = if (it.useCompactDisplayMode) DisplayMode.COMPACT else DisplayMode.FULL,
             )
         }
 
@@ -203,6 +209,34 @@ class NiaPreferencesDataSource @Inject constructor(
     suspend fun setBluetoothPrinterMac(mac: String) {
         userPreferences.updateData {
             it.copy { this.bluetoothPrinterMac = mac }
+        }
+    }
+
+    suspend fun setLanguage(language: String) {
+        userPreferences.updateData {
+            it.copy { this.language = language }
+        }
+    }
+
+    suspend fun setDisplayMode(displayMode: DisplayMode) {
+        userPreferences.updateData {
+            it.copy { useCompactDisplayMode = displayMode == DisplayMode.COMPACT }
+        }
+    }
+
+    suspend fun setSkuQuickPrintPreferences(defaultNodeId: Long?, labelPrefix: String) {
+        userPreferences.updateData {
+            it.copy {
+                defaultSkuPrintNodeId = defaultNodeId ?: 0L
+                skuLabelPrefix = labelPrefix
+                hasSkuLabelPrefix = true
+            }
+        }
+    }
+
+    suspend fun setDefaultBoxMarkPrintNode(defaultNodeId: Long?) {
+        userPreferences.updateData {
+            it.copy { defaultBoxMarkPrintNodeId = defaultNodeId ?: 0L }
         }
     }
 }

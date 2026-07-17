@@ -43,4 +43,17 @@
     <string name="submit_failed">ส่งข้อมูลล้มเหลว</string>
     <string name="cancel_scan_failed">ยกเลิกการสแกนล้มเหลว</string>
     <string name="finish_receiving_failed">เสร็จสิ้นการรับสินค้าล้มเหลว</string>
+
+    <string name="search_failed">ค้นหาไม่สำเร็จ</string>
+    <string name="product_load_failed">โหลดสินค้าไม่สำเร็จ</string>
+
+    <string name="settings_language">ภาษาของแอป</string>
+    <string name="settings_display_mode">การแสดงผล</string>
+    <string name="display_mode_full">โหมดเต็ม</string>
+    <string name="display_mode_compact">โหมดกะทัดรัด</string>
+    <string name="language_default">ค่าเริ่มต้นของระบบ</string>
+    <string name="language_zh_hans">简体中文</string>
+    <string name="language_en">English</string>
+    <string name="language_th">ไทย</string>
+    <string name="language_my">မြန်မာ</string>
 </resources>

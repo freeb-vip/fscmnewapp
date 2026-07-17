@@ -29,4 +29,14 @@ data class UserData(
     val shouldHideOnboarding: Boolean,
     val scannerAction: String = "",
     val bluetoothPrinterMac: String = "",
+    val language: String = "",
+    val defaultSkuPrintNodeId: Long? = null,
+    val defaultBoxMarkPrintNodeId: Long? = null,
+    val skuLabelPrefix: String = "T",
+    val displayMode: DisplayMode = DisplayMode.FULL,
 )
+
+enum class DisplayMode {
+    FULL,
+    COMPACT,
+}

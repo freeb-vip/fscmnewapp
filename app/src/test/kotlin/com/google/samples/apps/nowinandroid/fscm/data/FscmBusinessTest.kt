@@ -1,0 +1,96 @@
+/*
+ * Copyright 2026 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.google.samples.apps.nowinandroid.fscm.data
+
+import com.google.samples.apps.nowinandroid.R
+import com.google.samples.apps.nowinandroid.fscm.ui.businessStatusTextRes
+import com.google.samples.apps.nowinandroid.fscm.ui.supplierStatusTextRes
+import kotlinx.serialization.json.Json
+import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+
+class FscmBusinessTest {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    @Test
+    fun decodeBusinessList_acceptsRawArrayAndCommonEnvelopeKeys() {
+        val raw = json.parseToJsonElement("""[{"id":1,"code":"SO-1"}]""")
+        val data = json.parseToJsonElement("""{"data":[{"id":2,"code":"SO-2"}]}""")
+        val items = json.parseToJsonElement("""{"items":[{"id":3,"code":"SO-3"}]}""")
+        val records = json.parseToJsonElement("""{"records":[{"id":4,"code":"SO-4"}]}""")
+
+        assertEquals("SO-1", decodeBusinessList<SupplierOrder>(raw, json).single().code)
+        assertEquals("SO-2", decodeBusinessList<SupplierOrder>(data, json).single().code)
+        assertEquals("SO-3", decodeBusinessList<SupplierOrder>(items, json).single().code)
+        assertEquals("SO-4", decodeBusinessList<SupplierOrder>(records, json).single().code)
+    }
+
+    @Test
+    fun decodeBusinessObject_acceptsDataEnvelopeAndDirectObject() {
+        val wrapped = json.parseToJsonElement("""{"data":{"id":9,"code":"CR-9"}}""")
+        val direct = json.parseToJsonElement("""{"id":10,"code":"CR-10"}""")
+
+        assertEquals("CR-9", decodeBusinessObject<CentralReceipt>(wrapped, json).code)
+        assertEquals("CR-10", decodeBusinessObject<CentralReceipt>(direct, json).code)
+    }
+
+    @Test
+    fun decodeBusinessPage_preservesPagination() {
+        val payload = json.parseToJsonElement(
+            """{"data":[{"id":1,"code":"SO-1"}],"total":23,"page":2,"pageSize":10}""",
+        )
+
+        val page = decodeBusinessPage<SupplierOrder>(payload, json)
+
+        assertEquals(23, page.total)
+        assertEquals(2, page.page)
+        assertEquals(10, page.pageSize)
+        assertEquals(1, page.rows.size)
+    }
+
+    @Test
+    fun supplierOrderTransitions_matchBackendStateMachine() {
+        assertEquals(listOf("pending_quote"), allowedSupplierOrderStatuses("draft"))
+        assertEquals(emptyList(), allowedSupplierOrderStatuses("pending_quote"))
+        assertEquals(listOf("producing"), allowedSupplierOrderStatuses("ready_to_order"))
+        assertEquals(listOf("shipped", "same_day_delivery"), allowedSupplierOrderStatuses("producing"))
+        assertEquals(listOf("same_day_delivery"), allowedSupplierOrderStatuses("shipped"))
+        assertEquals(listOf("shipped"), allowedSupplierOrderStatuses("same_day_delivery"))
+        assertEquals(emptyList(), allowedSupplierOrderStatuses("arrived_central_warehouse"))
+    }
+
+    @Test
+    fun approvalValidation_enforcesBackendRules() {
+        assertNull(validateApprovalInput(ApprovalAdjustment.None, null, "", 100.0))
+        assertEquals(ApprovalValidationError.AmountMustBePositive, validateApprovalInput(ApprovalAdjustment.Amount, 0.0, "原因", 100.0))
+        assertEquals(ApprovalValidationError.AmountExceedsTotal, validateApprovalInput(ApprovalAdjustment.Amount, 101.0, "原因", 100.0))
+        assertEquals(ApprovalValidationError.AmountRemarkRequired, validateApprovalInput(ApprovalAdjustment.Amount, 10.0, "", 100.0))
+        assertNull(validateApprovalInput(ApprovalAdjustment.Amount, 10.0, "协商减免", 100.0))
+        assertEquals(ApprovalValidationError.RateOutOfRange, validateApprovalInput(ApprovalAdjustment.Rate, 1.0, "原因", 100.0))
+        assertEquals(ApprovalValidationError.RateRemarkRequired, validateApprovalInput(ApprovalAdjustment.Rate, 0.1, "", 100.0))
+        assertNull(validateApprovalInput(ApprovalAdjustment.Rate, 0.1, "九折", 100.0))
+    }
+
+    @Test
+    fun businessStatusLabels_coverReceivingAndPurchaseStates() {
+        assertEquals(R.string.business_save_pending_sync, businessStatusTextRes("pending_sync"))
+        assertEquals(R.string.business_status_wrong_order, businessStatusTextRes("wrong_order"))
+        assertEquals(R.string.business_status_pending_review, supplierStatusTextRes("pending_quote"))
+        assertEquals(R.string.business_status_arrived_central, supplierStatusTextRes("arrived_central_warehouse"))
+    }
+}

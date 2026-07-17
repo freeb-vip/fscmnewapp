@@ -39,6 +39,8 @@ dependencies {
     implementation(libs.androidx.camera.view)
     implementation(libs.google.mlkit.barcode.scanning)
 
+    testImplementation(libs.junit)
+
     androidTestImplementation(libs.bundles.androidx.compose.ui.test)
     androidTestImplementation(projects.core.testing)
 }

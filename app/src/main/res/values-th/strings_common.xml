@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="brand_mark">F</string>
+    <string name="mobile_workbench">พื้นที่ทำงานมือถือ FSCM</string>
+    <string name="connecting_fscm">กำลังเชื่อมต่อ FSCM</string>
+    <string name="account_login">เข้าสู่ระบบด้วยบัญชี</string>
+    <string name="account_login_description">ใช้บัญชี FSCM เพื่อเข้าสู่แอปมือถือ</string>
+    <string name="exit_confirm">กดย้อนกลับอีกครั้งเพื่อออก</string>
+    <string name="common_close">ปิด</string>
+    <string name="common_confirm">ยืนยัน</string>
+    <string name="common_cancel">ยกเลิก</string>
+    <string name="common_search">ค้นหา</string>
+    <string name="common_retry">ลองอีกครั้ง</string>
+    <string name="common_save">บันทึก</string>
+    <string name="common_delete">ลบ</string>
+    <string name="common_edit">แก้ไข</string>
+    <string name="common_copy">คัดลอก</string>
+    <string name="common_refresh">รีเฟรช</string>
+    <string name="common_all">ทั้งหมด</string>
+    <string name="common_unknown">ไม่ทราบ</string>
+    <string name="common_unavailable">ใช้งานไม่ได้</string>
+    <string name="common_success">สำเร็จ</string>
+    <string name="common_failed">ล้มเหลว</string>
+    <string name="common_more">เพิ่มเติม</string>
+    <string name="common_load_more">โหลดเพิ่มเติม</string>
+    <string name="feature_central_receiving">รับสินค้าเข้าคลังรวม</string>
+    <string name="feature_central_receiving_detail">รายละเอียดการรับสินค้าเข้าคลังรวม</string>
+    <string name="feature_supplier_orders">คำสั่งซื้อจากผู้ผลิต</string>
+    <string name="feature_supplier_order_detail">รายละเอียดคำสั่งซื้อจากผู้ผลิต</string>
+    <string name="feature_product_management">จัดการสินค้า</string>
+    <string name="feature_sku_detail">รายละเอียด SKU</string>
+    <string name="feature_box_label_detail">รายละเอียดฉลากกล่อง</string>
+    <string name="feature_box_label_management">จัดการฉลากกล่อง</string>
+    <string name="feature_pda_scan_mode">โหมดสแกน PDA</string>
+    <string name="feature_pda_settings">การตั้งค่า PDA</string>
+    <string name="feature_edge_nodes">โหนดเอดจ์</string>
+    <string name="feature_label_printing">พิมพ์ฉลาก</string>
+    <string name="profile_fallback_user">ผู้ใช้ FSCM</string>
+    <string name="profile_mobile_role">มือถือ</string>
+    <string name="profile_workspace">พื้นที่ทำงาน</string>
+    <string name="profile_logout">ออกจากระบบ</string>
+    <string name="apps_visible_count">มี %1$d แอปตามสิทธิ์ของคุณ</string>
+    <string name="pin_app">เพิ่มในรายการโปรด</string>
+    <string name="unpin_app">นำออกจากรายการโปรด</string>
+    <string name="app_pinned">เพิ่มในรายการโปรดแล้ว</string>
+    <string name="app_unpinned">นำออกจากรายการโปรดแล้ว</string>
+    <string name="hide_app">ซ่อนแอป</string>
+    <string name="app_hidden">ซ่อนแอปแล้ว</string>
+    <string name="hidden_apps">แอปที่ซ่อน</string>
+    <string name="hidden_apps_count">แอปที่ซ่อน (%1$d)</string>
+    <string name="show_app">แสดงแอป</string>
+    <string name="app_shown">แสดงแอปแล้ว</string>
+    <string name="messages_summary">%1$d ข้อความและงาน</string>
+    <string name="loading_messages">กำลังโหลดข้อความ</string>
+    <string name="no_messages">ไม่มีข้อความ</string>
+    <string name="message_preview">ตัวอย่างข้อความ</string>
+    <string name="message_todo">งาน</string>
+    <string name="message_announcement">ประกาศ</string>
+    <string name="native_page_unavailable">%1$s ยังไม่มีหน้าจอเนทีฟ</string>
+    <string name="business_type_unsupported">เวอร์ชันนี้ยังไม่รองรับประเภทธุรกิจนี้: %1$s</string>
+    <string name="session_expired">บัญชีหรือรหัสผ่านใช้ไม่ได้แล้ว โปรดเข้าสู่ระบบออนไลน์อีกครั้ง</string>
+    <string name="status_completed">เสร็จสิ้น</string>
+    <string name="status_processing">กำลังดำเนินการ</string>
+    <string name="status_cancelled">ยกเลิกแล้ว</string>
+    <string name="status_draft">ฉบับร่าง</string>
+    <string name="status_tallying">กำลังตรวจนับ</string>
+    <string name="status_normal">ปกติ</string>
+    <string name="status_damaged">เสียหาย</string>
+    <string name="status_duplicate">ซ้ำ</string>
+    <string name="status_voided">ยกเลิกเอกสารแล้ว</string>
+    <string name="status_shorted">ขาด</string>
+    <string name="status_received">รับแล้ว</string>
+    <string name="status_exception">ผิดปกติ</string>
+    <string name="status_pending">รอดำเนินการ</string>
+    <string name="status_open">เปิดอยู่</string>
+    <string name="status_resolved">แก้ไขแล้ว</string>
+    <string name="status_closed">ปิดแล้ว</string>
+    <string name="status_on_hold">พักไว้</string>
+    <string name="status_archived">เก็บถาวรแล้ว</string>
+    <string name="priority_low">ต่ำ</string>
+    <string name="priority_normal">ปกติ</string>
+    <string name="priority_high">สูง</string>
+    <string name="priority_urgent">เร่งด่วน</string>
+    <string name="local_app_todos_title">งาน</string><string name="local_app_todos_description">รายการที่ต้องดำเนินการ</string>
+    <string name="local_app_notes_title">บันทึก</string><string name="local_app_notes_description">บันทึกการทำงาน</string>
+    <string name="local_app_tickets_title">ใบงาน</string><string name="local_app_tickets_description">การประสานงานบริการ</string>
+    <string name="local_app_documents_title">เอกสาร</string><string name="local_app_documents_description">ศูนย์เอกสาร</string>
+    <string name="local_app_receiving_title">รับสินค้าเข้าคลัง</string><string name="local_app_receiving_description">สแกนเข้าคลัง</string>
+    <string name="local_app_central_receiving_title">รับสินค้ารวมขนส่ง</string><string name="local_app_central_receiving_description">สแกนรับที่คลังรวมขนส่ง</string>
+    <string name="local_app_profit_title">กำไร</string><string name="local_app_profit_description">แดชบอร์ดกำไร</string>
+    <string name="local_app_product_management_title">จัดการสินค้า</string><string name="local_app_product_management_description">ดูแลข้อมูล SKU</string>
+    <string name="local_app_box_labels_title">ฉลากกล่อง</string><string name="local_app_box_labels_description">ค้นหาฉลากกล่องตลอดกระบวนการ</string>
+    <string name="local_app_supplier_orders_title">คำสั่งซื้อผู้ผลิต</string><string name="local_app_supplier_orders_description">ความคืบหน้าการผลิตและจัดส่ง</string>
+    <string name="local_app_purchase_approvals_title">อนุมัติการจัดซื้อ</string><string name="local_app_purchase_approvals_description">อนุมัติราคาและคำสั่งซื้อ</string>
+    <string name="local_app_label_print_title">พิมพ์ฉลาก</string><string name="local_app_label_print_description">ฉลากข้อความและบาร์โค้ด</string>
+    <string name="local_app_edge_nodes_title">โหนดเอดจ์</string><string name="local_app_edge_nodes_description">ศูนย์บริการและค้นหา LAN</string>
+    <string name="local_app_pda_settings_title">ตั้งค่า PDA</string><string name="local_app_pda_settings_description">วิเคราะห์การสแกน</string>
+    <string name="box_label_scan_not_detected">ไม่พบรหัสฉลากกล่อง</string>
+    <string name="box_label_scan_retry_prompt">รหัสที่ตรวจพบอาจเป็นรหัส SKU โปรดเล็งกล้องไปที่คิวอาร์โค้ดของฉลากกล่องแล้วสแกนอีกครั้ง</string>
+    <string name="box_label_scan_retry">สแกนอีกครั้ง</string>
+    <string name="local_offline_data_reset">ไม่สามารถอัปเกรดข้อมูลออฟไลน์ในเครื่องได้ จึงรีเซ็ตข้อมูลแล้ว</string>
+</resources>

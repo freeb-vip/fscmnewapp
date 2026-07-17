@@ -72,6 +72,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -89,6 +90,7 @@ import com.google.samples.apps.nowinandroid.fscm.data.SessionState
 import com.google.samples.apps.nowinandroid.fscm.data.visibleMobileApps
 import com.google.samples.apps.nowinandroid.fscm.device.PdaPermissions
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerInputMode
+import com.google.samples.apps.nowinandroid.fscm.ui.FscmAppIcon
 import com.google.samples.apps.nowinandroid.fscm.ui.WorkbenchViewModel
 import com.google.samples.apps.nowinandroid.fscm.ui.components.FscmBadge
 import com.google.samples.apps.nowinandroid.fscm.ui.components.FscmCard
@@ -345,29 +347,23 @@ private fun AppGrid(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Box {
-                    AppIcon(app, size = 48)
+                    FscmAppIcon(app, size = 48)
                     if (app.badgeCount > 0) {
                         Box(Modifier.align(Alignment.TopEnd)) { FscmBadge(app.badgeCount.toString(), FscmDanger) }
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                Text(app.title, color = FscmInkStrong, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
+                Text(
+                    app.title,
+                    color = FscmInkStrong,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelMedium,
+                )
             }
         }
-    }
-}
-
-@Composable
-private fun AppIcon(app: MobileAppEntry, size: Int = 44) {
-    val color = runCatching { Color(android.graphics.Color.parseColor(app.color)) }.getOrNull() ?: FscmBrandMain
-    Box(
-        modifier = Modifier
-            .size(size.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(Brush.linearGradient(listOf(color, color.copy(alpha = 0.8f)))),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(app.icon.ifBlank { app.title.take(1) }, color = Color.White, fontWeight = FontWeight.Black)
     }
 }
 
