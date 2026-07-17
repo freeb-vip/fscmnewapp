@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Edge nodes advertise dynamic RFC1918 addresses, which cannot be enumerated as domains. -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
