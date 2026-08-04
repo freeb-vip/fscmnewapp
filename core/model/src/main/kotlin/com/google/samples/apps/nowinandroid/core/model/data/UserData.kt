@@ -30,8 +30,9 @@ data class UserData(
     val scannerAction: String = "",
     val bluetoothPrinterMac: String = "",
     val language: String = "",
-    val defaultSkuPrintNodeId: Long? = null,
-    val defaultBoxMarkPrintNodeId: Long? = null,
+    val defaultEdgePrintNodeId: Long? = null,
+    val defaultSkuPrintTemplateCode: String = "",
+    val defaultBoxMarkPrintTemplateCode: String = "",
     val skuLabelPrefix: String = "T",
     val displayMode: DisplayMode = DisplayMode.FULL,
 )

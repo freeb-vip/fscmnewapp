@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="receiving_product_details_title">รายละเอียดงานตามสินค้า</string>
+    <string name="receiving_product_details_action">รายละเอียด</string>
+    <string name="receiving_product_search">ค้นหารหัสหรือชื่อสินค้า</string>
+    <string name="receiving_product_filter_all">ทั้งหมด</string>
+    <string name="receiving_product_filter_pending">รอดำเนินการ</string>
+    <string name="receiving_product_filter_exception">ผิดปกติ</string>
+    <string name="receiving_product_filter_completed">เสร็จแล้ว</string>
+    <string name="receiving_product_cache_preparing">กำลังอัปเดตความคืบหน้าสินค้าเบื้องหลัง</string>
+    <string name="receiving_product_cache_partial">กำลังแสดงแคชและอัปเดตเบื้องหลัง</string>
+    <string name="receiving_product_cache_time">อัปเดตแคช %1$s</string>
+    <string name="receiving_product_empty">ไม่มีสินค้าตรงกับตัวกรอง</string>
+    <string name="receiving_product_received">รับแล้ว</string>
+    <string name="receiving_product_inbounded">จัดเก็บแล้ว</string>
+    <string name="receiving_product_document_receiving_progress">รับแล้ว %1$d / %2$d กล่อง</string>
+    <string name="receiving_product_document_inbound_progress">จัดเก็บแล้ว %1$d / %2$d กล่อง</string>
+    <string name="receiving_product_pending_count">คงเหลือ %1$d</string>
+    <string name="receiving_product_exception_count">ผิดปกติ %1$d</string>
+    <string name="receiving_product_local_pending_count">รอซิงก์ในเครื่อง %1$d รายการ (ไม่รวมในส่วนกลาง)</string>
+    <string name="receiving_product_unknown_code">ยังไม่มีรหัสสินค้า</string>
+    <string name="receiving_product_sku_count">%1$d SKU</string>
+    <string name="receiving_product_progress_value">%1$s %2$d / %3$d</string>
+    <string name="receiving_product_box_progress">ความคืบหน้าส่วนกลาง %1$d / %2$d กล่อง</string>
+    <string name="receiving_product_no_boxes">ไม่มีรายละเอียดกล่องในแคช</string>
+    <string name="receiving_product_location">ตำแหน่ง</string>
+    <string name="receiving_product_operator">ผู้ปฏิบัติงาน</string>
+    <string name="receiving_product_time">เวลา</string>
+    <string name="receiving_product_status_completed">เสร็จแล้ว</string>
+    <string name="receiving_product_status_closed_exception">ปิดพร้อมข้อผิดปกติ</string>
+    <string name="receiving_product_status_local_pending">รอซิงก์</string>
+    <string name="receiving_product_status_exception">ผิดปกติ</string>
+    <string name="receiving_product_status_pending">รอดำเนินการ</string>
+</resources>

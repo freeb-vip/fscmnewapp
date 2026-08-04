@@ -86,9 +86,15 @@ internal class OfflineFirstUserDataRepository @Inject constructor(
     override suspend fun setDisplayMode(displayMode: DisplayMode) =
         niaPreferencesDataSource.setDisplayMode(displayMode)
 
-    override suspend fun setSkuQuickPrintPreferences(defaultNodeId: Long?, labelPrefix: String) =
-        niaPreferencesDataSource.setSkuQuickPrintPreferences(defaultNodeId, labelPrefix)
-
-    override suspend fun setDefaultBoxMarkPrintNode(defaultNodeId: Long?) =
-        niaPreferencesDataSource.setDefaultBoxMarkPrintNode(defaultNodeId)
+    override suspend fun setEdgePrintPreferences(
+        defaultNodeId: Long?,
+        skuTemplateCode: String,
+        boxMarkTemplateCode: String,
+        labelPrefix: String,
+    ) = niaPreferencesDataSource.setEdgePrintPreferences(
+        defaultNodeId = defaultNodeId,
+        skuTemplateCode = skuTemplateCode,
+        boxMarkTemplateCode = boxMarkTemplateCode,
+        labelPrefix = labelPrefix,
+    )
 }

@@ -23,8 +23,10 @@ import androidx.work.Configuration
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import com.google.samples.apps.nowinandroid.core.data.repository.UserDataRepository
+import com.google.samples.apps.nowinandroid.fscm.data.CentralReceivingSyncScheduler
 import com.google.samples.apps.nowinandroid.fscm.data.LocalInboundSyncScheduler
 import com.google.samples.apps.nowinandroid.fscm.data.LocalReceivingSyncScheduler
+import com.google.samples.apps.nowinandroid.fscm.data.OfflineSyncScheduler
 import com.google.samples.apps.nowinandroid.fscm.ui.AppLanguage
 import com.google.samples.apps.nowinandroid.fscm.ui.setAppLanguage
 import dagger.hilt.android.HiltAndroidApp
@@ -54,12 +56,20 @@ class FscmApplication : Application(), ImageLoaderFactory, Configuration.Provide
     @Inject
     lateinit var localInboundSyncScheduler: LocalInboundSyncScheduler
 
+    @Inject
+    lateinit var offlineSyncScheduler: OfflineSyncScheduler
+
+    @Inject
+    lateinit var centralReceivingSyncScheduler: CentralReceivingSyncScheduler
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onCreate() {
         super.onCreate()
         localReceivingSyncScheduler.schedulePeriodic()
         localInboundSyncScheduler.schedulePeriodic()
+        offlineSyncScheduler.schedulePeriodic()
+        centralReceivingSyncScheduler.schedulePeriodic()
         val legacyTag = runBlocking {
             withContext(Dispatchers.IO) { userDataRepository.userData.first().language }
         }

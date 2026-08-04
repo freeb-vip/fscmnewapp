@@ -1,0 +1,4 @@
+- [ ] Correct passwords in `local.properties`
+- [ ] Escape path in `local.properties`
+- [ ] Improve encoding in `app/build.gradle.kts`
+- [ ] Verify signing configuration

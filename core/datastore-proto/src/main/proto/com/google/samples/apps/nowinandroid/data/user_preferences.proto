@@ -59,6 +59,9 @@ message UserPreferences {
     bool has_sku_label_prefix = 26;
     bool use_compact_display_mode = 27;
     int64 default_box_mark_print_node_id = 28;
+    string default_sku_print_template_code = 29;
+    string default_box_mark_print_template_code = 30;
+    int64 default_edge_print_node_id = 31;
 
-    // NEXT AVAILABLE ID: 29
+    // NEXT AVAILABLE ID: 32
 }

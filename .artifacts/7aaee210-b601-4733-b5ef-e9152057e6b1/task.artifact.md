@@ -1,0 +1,2 @@
+- [x] Fix keystore path in `local.properties`
+- [x] Verify change

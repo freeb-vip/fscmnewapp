@@ -1,0 +1,421 @@
+/*
+ * Copyright 2026 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.google.samples.apps.nowinandroid.fscm.data
+
+import androidx.room.Dao
+import androidx.room.Entity
+import androidx.room.Index
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Transaction
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import java.util.Locale
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Entity(
+    tableName = "local_warehouse_locations",
+    primaryKeys = ["userId", "namespaceId", "locationId"],
+    indices = [
+        Index(value = ["userId", "namespaceId", "warehouseCode", "code"], unique = true),
+        Index(value = ["userId", "namespaceId", "code"]),
+    ],
+)
+data class LocalWarehouseLocationEntity(
+    val userId: Long,
+    val namespaceId: Long,
+    val locationId: Long,
+    val warehouseId: Long,
+    val warehouseCode: String,
+    val warehouseName: String,
+    val zoneId: Long,
+    val zoneCode: String,
+    val zoneName: String,
+    val code: String,
+    val name: String,
+    val type: String,
+    val isActive: Boolean,
+    val remoteUpdatedAt: String,
+    val syncedAt: Long,
+)
+
+@Entity(tableName = "warehouse_location_cache_meta", primaryKeys = ["userId", "namespaceId"])
+data class WarehouseLocationCacheMetaEntity(
+    val userId: Long,
+    val namespaceId: Long,
+    val refreshedAt: Long,
+    val complete: Boolean,
+    val totalCount: Int,
+)
+
+@Dao
+interface WarehouseLocationDao {
+    @Query(
+        """
+        SELECT * FROM local_warehouse_locations
+        WHERE userId = :userId AND namespaceId = :namespaceId
+          AND warehouseCode = :warehouseCode COLLATE NOCASE
+          AND code = :code COLLATE NOCASE AND isActive = 1
+        LIMIT 1
+        """,
+    )
+    suspend fun findActive(
+        userId: Long,
+        namespaceId: Long,
+        warehouseCode: String,
+        code: String,
+    ): LocalWarehouseLocationEntity?
+
+    @Query(
+        """
+        SELECT * FROM local_warehouse_locations
+        WHERE userId = :userId AND namespaceId = :namespaceId
+          AND locationId = :locationId AND isActive = 1
+        LIMIT 1
+        """,
+    )
+    suspend fun findActiveById(userId: Long, namespaceId: Long, locationId: Long): LocalWarehouseLocationEntity?
+
+    @Query(
+        """
+        SELECT * FROM local_warehouse_locations
+        WHERE userId = :userId AND namespaceId = :namespaceId
+          AND code = :code COLLATE NOCASE AND isActive = 1
+        """,
+    )
+    suspend fun findActiveByCode(userId: Long, namespaceId: Long, code: String): List<LocalWarehouseLocationEntity>
+
+    @Query(
+        """
+        SELECT code FROM local_warehouse_locations
+        WHERE userId = :userId AND namespaceId = :namespaceId
+          AND warehouseCode = :warehouseCode COLLATE NOCASE AND isActive = 1
+        """,
+    )
+    suspend fun activeCodes(userId: Long, namespaceId: Long, warehouseCode: String): List<String>
+
+    @Query(
+        """
+        SELECT warehouseId FROM local_warehouse_locations
+        WHERE userId = :userId AND namespaceId = :namespaceId
+          AND warehouseCode = :warehouseCode COLLATE NOCASE
+        LIMIT 1
+        """,
+    )
+    suspend fun warehouseId(userId: Long, namespaceId: Long, warehouseCode: String): Long?
+
+    @Query("SELECT * FROM warehouse_location_cache_meta WHERE userId = :userId AND namespaceId = :namespaceId LIMIT 1")
+    suspend fun meta(userId: Long, namespaceId: Long): WarehouseLocationCacheMetaEntity?
+
+    @Query("DELETE FROM local_warehouse_locations WHERE userId = :userId AND namespaceId = :namespaceId")
+    suspend fun deleteScope(userId: Long, namespaceId: Long)
+
+    @Query(
+        """
+        DELETE FROM local_warehouse_locations
+        WHERE userId = :userId AND namespaceId = :namespaceId
+          AND warehouseCode = :warehouseCode COLLATE NOCASE
+          AND code = :code COLLATE NOCASE
+        """,
+    )
+    suspend fun deleteCode(userId: Long, namespaceId: Long, warehouseCode: String, code: String)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(rows: List<LocalWarehouseLocationEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertMeta(meta: WarehouseLocationCacheMetaEntity)
+
+    @Transaction
+    suspend fun replaceScope(
+        userId: Long,
+        namespaceId: Long,
+        rows: List<LocalWarehouseLocationEntity>,
+        meta: WarehouseLocationCacheMetaEntity,
+    ) {
+        deleteScope(userId, namespaceId)
+        if (rows.isNotEmpty()) upsertAll(rows)
+        upsertMeta(meta)
+    }
+}
+
+@Serializable
+data class WarehouseLocationOption(
+    val id: Long = 0,
+    @SerialName("warehouse_id") val warehouseId: Long = 0,
+    @SerialName("zone_id") val zoneId: Long = 0,
+    val code: String = "",
+    val name: String = "",
+    val type: String = "",
+    @SerialName("is_active") val isActive: Boolean = false,
+    @SerialName("updated_at") val updatedAt: String = "",
+    val warehouse: WarehouseLocationWarehouse = WarehouseLocationWarehouse(),
+    val zone: WarehouseLocationZone = WarehouseLocationZone(),
+)
+
+@Serializable
+data class WarehouseLocationWarehouse(
+    val id: Long = 0,
+    val code: String = "",
+    val name: String = "",
+)
+
+@Serializable
+data class WarehouseLocationZone(
+    val id: Long = 0,
+    val code: String = "",
+    val name: String = "",
+)
+
+@Serializable
+data class WarehouseLocationPage(
+    val items: List<WarehouseLocationOption> = emptyList(),
+    val total: Int = 0,
+    val page: Int = 1,
+    @SerialName("page_size") val pageSize: Int = WAREHOUSE_LOCATION_PAGE_SIZE,
+)
+
+data class WarehouseLocationCacheState(
+    val complete: Boolean = false,
+    val refreshedAt: Long = 0,
+    val totalCount: Int = 0,
+)
+
+data class ResolvedWarehouseLocation(
+    val location: LocalWarehouseLocationEntity,
+    val fromCache: Boolean,
+)
+
+@Singleton
+class WarehouseLocationRepository @Inject constructor(
+    private val api: FscmApiClient,
+    private val sessionStore: SessionStore,
+    private val dao: WarehouseLocationDao,
+) {
+    private val refreshMutex = Mutex()
+
+    suspend fun refreshIfStale(force: Boolean = false): WarehouseLocationCacheState = refreshMutex.withLock {
+        val scope = scope()
+        val cached = dao.meta(scope.userId, scope.namespaceId)
+        if (sessionStore.current().isOffline) return cached.toState()
+        if (
+            !force && cached?.complete == true &&
+            System.currentTimeMillis() - cached.refreshedAt < CACHE_REFRESH_INTERVAL_MS
+        ) {
+            return cached.toState()
+        }
+
+        val options = mutableListOf<WarehouseLocationOption>()
+        var page = 1
+        var total = Int.MAX_VALUE
+        while (options.size < total) {
+            val response: WarehouseLocationPage = api.get(
+                "warehouse-location-options",
+                mapOf(
+                    "is_active" to "true",
+                    "page" to page.toString(),
+                    "page_size" to WAREHOUSE_LOCATION_PAGE_SIZE.toString(),
+                ),
+            )
+            options += response.items
+            total = response.total
+            if (response.items.isEmpty() || options.size >= total) break
+            page++
+        }
+        val now = System.currentTimeMillis()
+        val rows = options
+            .asSequence()
+            .filter { it.id > 0 && it.code.isNotBlank() && it.warehouseCode().isNotBlank() }
+            .distinctBy { it.id }
+            .map { it.toEntity(scope, now) }
+            .toList()
+        val meta = WarehouseLocationCacheMetaEntity(
+            userId = scope.userId,
+            namespaceId = scope.namespaceId,
+            refreshedAt = now,
+            complete = true,
+            totalCount = rows.size,
+        )
+        dao.replaceScope(scope.userId, scope.namespaceId, rows, meta)
+        return meta.toState()
+    }
+
+    suspend fun resolve(rawCode: String, warehouseCode: String): ResolvedWarehouseLocation {
+        val normalizedCode = normalizeInboundLocation(rawCode)
+        val normalizedWarehouse = warehouseCode.trim().uppercase(Locale.ROOT)
+        if (normalizedWarehouse.isBlank()) throw InboundClientException(InboundClientError.TargetWarehouseMissing)
+        val scope = scope()
+        if (sessionStore.current().isOffline) {
+            return ResolvedWarehouseLocation(
+                location = requireCached(scope, normalizedWarehouse, normalizedCode),
+                fromCache = true,
+            )
+        }
+
+        return try {
+            val warehouseId = dao.warehouseId(scope.userId, scope.namespaceId, normalizedWarehouse)
+            val remote = queryExact(normalizedCode, normalizedWarehouse, warehouseId)
+            if (remote == null) {
+                dao.deleteCode(scope.userId, scope.namespaceId, normalizedWarehouse, normalizedCode)
+                val otherWarehouses = dao.findActiveByCode(scope.userId, scope.namespaceId, normalizedCode)
+                if (otherWarehouses.any { !it.warehouseCode.equals(normalizedWarehouse, true) }) {
+                    throw InboundClientException(InboundClientError.LocationWarehouseMismatch)
+                }
+                throw InboundClientException(InboundClientError.LocationNotFound)
+            }
+            val entity = remote.toEntity(scope, System.currentTimeMillis())
+            dao.upsertAll(listOf(entity))
+            ResolvedWarehouseLocation(entity, fromCache = false)
+        } catch (error: Throwable) {
+            if (!error.canUseWarehouseLocationCache()) throw error
+            val cachedLocation = try {
+                requireCached(scope, normalizedWarehouse, normalizedCode)
+            } catch (cacheError: InboundClientException) {
+                if (cacheError.reason == InboundClientError.LocationCacheUnavailable) throw error
+                throw cacheError
+            }
+            ResolvedWarehouseLocation(location = cachedLocation, fromCache = true)
+        }
+    }
+
+    suspend fun resolvePersisted(
+        locationId: Long,
+        locationCode: String,
+        warehouseCode: String,
+    ): ResolvedWarehouseLocation {
+        val scope = scope()
+        if (locationId > 0) {
+            dao.findActiveById(scope.userId, scope.namespaceId, locationId)
+                ?.takeIf { it.warehouseCode.equals(warehouseCode, true) && it.code.equals(locationCode, true) }
+                ?.let { return ResolvedWarehouseLocation(it, fromCache = true) }
+        }
+        return resolve(locationCode, warehouseCode)
+    }
+
+    suspend fun cacheState(): WarehouseLocationCacheState {
+        val scope = scope()
+        return dao.meta(scope.userId, scope.namespaceId).toState()
+    }
+
+    suspend fun knownCodes(warehouseCode: String): Set<String> {
+        val scope = scope()
+        return dao.activeCodes(scope.userId, scope.namespaceId, warehouseCode)
+            .mapTo(mutableSetOf()) { it.uppercase(Locale.ROOT) }
+    }
+
+    private suspend fun queryExact(
+        code: String,
+        warehouseCode: String,
+        warehouseId: Long?,
+    ): WarehouseLocationOption? {
+        var page = 1
+        var loaded = 0
+        var total = Int.MAX_VALUE
+        while (loaded < total) {
+            val response: WarehouseLocationPage = api.get(
+                "warehouse-location-options",
+                buildMap {
+                    put("keyword", code)
+                    put("is_active", "true")
+                    put("page", page.toString())
+                    put("page_size", WAREHOUSE_LOCATION_PAGE_SIZE.toString())
+                    warehouseId?.takeIf { it > 0 }?.let { put("warehouse_id", it.toString()) }
+                },
+            )
+            selectWarehouseLocation(response.items, code, warehouseCode)?.let { return it }
+            loaded += response.items.size
+            total = response.total
+            if (response.items.isEmpty() || loaded >= total) break
+            page++
+        }
+        return null
+    }
+
+    private suspend fun requireCached(
+        scope: WarehouseLocationScope,
+        warehouseCode: String,
+        code: String,
+    ): LocalWarehouseLocationEntity {
+        val meta = dao.meta(scope.userId, scope.namespaceId)
+        if (meta?.complete != true) throw InboundClientException(InboundClientError.LocationCacheUnavailable)
+        dao.findActive(scope.userId, scope.namespaceId, warehouseCode, code)?.let { return it }
+        if (
+            dao.findActiveByCode(scope.userId, scope.namespaceId, code)
+                .any { !it.warehouseCode.equals(warehouseCode, true) }
+        ) {
+            throw InboundClientException(InboundClientError.LocationWarehouseMismatch)
+        }
+        throw InboundClientException(InboundClientError.LocationNotFound)
+    }
+
+    private suspend fun scope(): WarehouseLocationScope {
+        val session = sessionStore.current()
+        return WarehouseLocationScope(session.user?.id ?: 0, session.currentNamespace?.id ?: 0)
+    }
+
+    private fun WarehouseLocationOption.toEntity(scope: WarehouseLocationScope, syncedAt: Long) =
+        LocalWarehouseLocationEntity(
+            userId = scope.userId,
+            namespaceId = scope.namespaceId,
+            locationId = id,
+            warehouseId = warehouseId.takeIf { it > 0 } ?: warehouse.id,
+            warehouseCode = warehouseCode().uppercase(Locale.ROOT),
+            warehouseName = warehouse.name,
+            zoneId = zoneId.takeIf { it > 0 } ?: zone.id,
+            zoneCode = zone.code,
+            zoneName = zone.name,
+            code = code.trim().uppercase(Locale.ROOT),
+            name = name,
+            type = type,
+            isActive = isActive,
+            remoteUpdatedAt = updatedAt,
+            syncedAt = syncedAt,
+        )
+
+    private fun WarehouseLocationOption.warehouseCode(): String = warehouse.code.trim()
+
+    private data class WarehouseLocationScope(val userId: Long, val namespaceId: Long)
+
+    private companion object {
+        const val CACHE_REFRESH_INTERVAL_MS = 5 * 60 * 1000L
+    }
+}
+
+private fun WarehouseLocationCacheMetaEntity?.toState() = WarehouseLocationCacheState(
+    complete = this?.complete == true,
+    refreshedAt = this?.refreshedAt ?: 0,
+    totalCount = this?.totalCount ?: 0,
+)
+
+private fun Throwable.canUseWarehouseLocationCache(): Boolean =
+    this !is InboundClientException && (this !is FscmApiException || statusCode >= 500)
+
+const val WAREHOUSE_LOCATION_PAGE_SIZE = 200
+
+internal fun selectWarehouseLocation(
+    options: List<WarehouseLocationOption>,
+    code: String,
+    warehouseCode: String,
+): WarehouseLocationOption? = options.firstOrNull {
+    it.isActive &&
+        it.code.equals(code, ignoreCase = true) &&
+        it.warehouse.code.equals(warehouseCode, ignoreCase = true)
+}

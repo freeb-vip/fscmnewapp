@@ -36,9 +36,11 @@ data class ReceivingQuickScanResponse(
 @Serializable
 data class CentralReceiptItem(
     val id: Long = 0,
+    @SerialName("product_id") val productCode: String = "",
     @SerialName("sku_code") val skuCode: String = "",
     @SerialName("sku_name") val skuName: String = "",
     @SerialName("product_name") val productName: String = "",
+    @SerialName("product_image") val productImage: String = "",
     @SerialName("expected_box_count") val expectedBoxCount: Int = 0,
     @SerialName("received_box_count") val receivedBoxCount: Int = 0,
     @SerialName("pending_box_count") val pendingBoxCount: Int = 0,
@@ -76,6 +78,7 @@ data class CentralReceiptStatistics(
 @Serializable
 data class CentralReceiptBoxLabel(
     val id: Long = 0,
+    @SerialName("central_receipt_item_id") val centralReceiptItemId: Long = 0,
     @SerialName("box_uid") val boxUid: String = "",
     @SerialName("label_code") val labelCode: String = "",
     @SerialName("box_no") val boxNo: String = "",
@@ -142,6 +145,59 @@ data class SupplierOrder(
     val manufacturer: ManufacturerRef? = null,
     @SerialName("purchase_order") val purchaseOrder: PurchaseOrderRef? = null,
 )
+
+@Serializable
+data class SupplierOrderWarehouse(
+    val id: Long = 0,
+    val code: String = "",
+    val name: String = "",
+    @SerialName("is_active") val isActive: Boolean = true,
+)
+
+enum class SupplierOrderCategory(val statusGroup: String) {
+    InProgress("in_progress"),
+    Completed("completed"),
+    All("all"),
+}
+
+data class SupplierOrderFilters(
+    val warehouseCode: String = "",
+    val productCode: String = "",
+    val manufacturerName: String = "",
+    val purchaseOrderCode: String = "",
+) {
+    val activeCount: Int
+        get() = listOf(warehouseCode, productCode, manufacturerName, purchaseOrderCode)
+            .count { it.isNotBlank() }
+
+    fun normalized() = copy(
+        warehouseCode = warehouseCode.trim(),
+        productCode = productCode.trim(),
+        manufacturerName = manufacturerName.trim(),
+        purchaseOrderCode = purchaseOrderCode.trim(),
+    )
+}
+
+data class SupplierOrderQuery(
+    val category: SupplierOrderCategory = SupplierOrderCategory.InProgress,
+    val keyword: String = "",
+    val filters: SupplierOrderFilters = SupplierOrderFilters(),
+    val page: Int = 1,
+    val pageSize: Int = 20,
+) {
+    fun toQueryParams(): Map<String, String> = buildMap {
+        put("status_group", category.statusGroup)
+        put("page", page.coerceAtLeast(1).toString())
+        put("pageSize", pageSize.coerceAtLeast(1).toString())
+        keyword.trim().takeIf(String::isNotEmpty)?.let { put("keyword", it) }
+        filters.normalized().let { values ->
+            values.warehouseCode.takeIf(String::isNotEmpty)?.let { put("warehouse_code", it) }
+            values.productCode.takeIf(String::isNotEmpty)?.let { put("product_code", it) }
+            values.manufacturerName.takeIf(String::isNotEmpty)?.let { put("manufacturer_name", it) }
+            values.purchaseOrderCode.takeIf(String::isNotEmpty)?.let { put("purchase_order_code", it) }
+        }
+    }
+}
 
 @Serializable
 data class PurchaseApprovalLog(

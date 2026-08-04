@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="receiving_product_details_title">Product work details</string>
+    <string name="receiving_product_details_action">Details</string>
+    <string name="receiving_product_search">Search product code or name</string>
+    <string name="receiving_product_filter_all">All</string>
+    <string name="receiving_product_filter_pending">Pending</string>
+    <string name="receiving_product_filter_exception">Issues</string>
+    <string name="receiving_product_filter_completed">Done</string>
+    <string name="receiving_product_cache_preparing">Product progress is updating in the background</string>
+    <string name="receiving_product_cache_partial">Showing cached product progress while updating</string>
+    <string name="receiving_product_cache_time">Cached %1$s</string>
+    <string name="receiving_product_empty">No products match the current filter</string>
+    <string name="receiving_product_received">Received</string>
+    <string name="receiving_product_inbounded">Put away</string>
+    <string name="receiving_product_document_receiving_progress">Received %1$d / %2$d boxes</string>
+    <string name="receiving_product_document_inbound_progress">Put away %1$d / %2$d boxes</string>
+    <string name="receiving_product_pending_count">Pending %1$d</string>
+    <string name="receiving_product_exception_count">Issues %1$d</string>
+    <string name="receiving_product_local_pending_count">Local sync items %1$d (not included in center progress)</string>
+    <string name="receiving_product_unknown_code">Unassigned product code</string>
+    <string name="receiving_product_sku_count">%1$d SKUs</string>
+    <string name="receiving_product_progress_value">%1$s %2$d / %3$d</string>
+    <string name="receiving_product_box_progress">Center progress %1$d / %2$d boxes</string>
+    <string name="receiving_product_no_boxes">No cached carton details for this product</string>
+    <string name="receiving_product_location">Location</string>
+    <string name="receiving_product_operator">Operator</string>
+    <string name="receiving_product_time">Time</string>
+    <string name="receiving_product_status_completed">Completed</string>
+    <string name="receiving_product_status_closed_exception">Closed with issues</string>
+    <string name="receiving_product_status_local_pending">Pending sync</string>
+    <string name="receiving_product_status_exception">Issue</string>
+    <string name="receiving_product_status_pending">Pending</string>
+</resources>

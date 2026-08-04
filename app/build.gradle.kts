@@ -15,6 +15,7 @@
  */
 import com.google.samples.apps.nowinandroid.NiaBuildType
 import com.android.build.api.variant.BuildConfigField
+import org.gradle.api.GradleException
 import java.io.StringReader
 import java.util.Properties
 
@@ -29,15 +30,72 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+val localProperties = providers.fileContents(
+    isolated.rootProject.projectDirectory.file("local.properties"),
+).asText.map { text ->
+    Properties().apply {
+        load(StringReader(text))
+    }
+}.orElse(Properties())
+
+val appVersionCode = localProperties.map { properties ->
+    val configured = properties.getProperty("FSCM_VERSION_CODE") ?: return@map 9
+    configured.trim().toIntOrNull()?.takeIf { it > 0 }
+        ?: throw GradleException("FSCM_VERSION_CODE in local.properties must be a positive integer")
+}
+val appVersionName = localProperties.map { properties ->
+    val configured = properties.getProperty("FSCM_VERSION_NAME") ?: return@map "0.1.3"
+    configured.trim().takeIf { it.isNotBlank() }
+        ?: throw GradleException("FSCM_VERSION_NAME in local.properties must not be blank")
+}
+
+fun releaseSigningValue(name: String) = providers.gradleProperty(name)
+    .orElse(providers.environmentVariable(name))
+    .orElse(localProperties.map { it.getProperty(name).orEmpty() })
+    .orNull
+    ?.trim()
+    ?.takeIf(String::isNotBlank)
+
+val releaseStoreFile = releaseSigningValue("FSCM_RELEASE_STORE_FILE")
+val releaseStorePassword = releaseSigningValue("FSCM_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = releaseSigningValue("FSCM_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = releaseSigningValue("FSCM_RELEASE_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { it != null }
+val prodReleaseRequested = gradle.startParameter.taskNames.any {
+    it.contains("ProdRelease", ignoreCase = true)
+}
+if (prodReleaseRequested && !hasReleaseSigning) {
+    throw GradleException(
+        "prodRelease requires FSCM_RELEASE_STORE_FILE, FSCM_RELEASE_STORE_PASSWORD, " +
+            "FSCM_RELEASE_KEY_ALIAS and FSCM_RELEASE_KEY_PASSWORD",
+    )
+}
+
 android {
     buildFeatures {
         buildConfig = true
     }
 
+    val fscmReleaseSigning = if (hasReleaseSigning) {
+        signingConfigs.create("fscmRelease") {
+            storeFile = file(checkNotNull(releaseStoreFile))
+            storePassword = checkNotNull(releaseStorePassword)
+            keyAlias = checkNotNull(releaseKeyAlias)
+            keyPassword = checkNotNull(releaseKeyPassword)
+        }
+    } else {
+        null
+    }
+
     defaultConfig {
         applicationId = "com.fscm.app"
-        versionCode = 8
-        versionName = "0.1.2" // X.Y.Z; X = Major, Y = minor, Z = Patch level
+        versionCode = appVersionCode.get()
+        versionName = appVersionName.get()
 
         // Custom test runner to set up Hilt dependency graph
         testInstrumentationRunner = "com.google.samples.apps.nowinandroid.core.testing.NiaTestRunner"
@@ -58,10 +116,7 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"),
                           "proguard-rules.pro")
 
-            // To publish on the Play store a private signing key is required, but to allow anyone
-            // who clones the code to sign and run the release variant, use the debug signing key.
-            // TODO: Abstract the signing configuration to a separate file to avoid hardcoding this.
-            signingConfig = signingConfigs.named("debug").get()
+            signingConfig = fscmReleaseSigning
         }
     }
 
@@ -77,14 +132,6 @@ android {
     testOptions.unitTests.isIncludeAndroidResources = true
     namespace = "com.google.samples.apps.nowinandroid"
 }
-
-val localProperties = providers.fileContents(
-    isolated.rootProject.projectDirectory.file("local.properties"),
-).asText.map { text ->
-    Properties().apply {
-        load(StringReader(text))
-    }
-}.orElse(Properties())
 
 androidComponents {
     onVariants { variant ->

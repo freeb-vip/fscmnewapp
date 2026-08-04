@@ -77,6 +77,26 @@ data class LoginConfig(
 )
 
 @Serializable
+data class LoginCaptcha(
+    @SerialName("captcha_id") val captchaId: String = "",
+    val question: String = "",
+    @SerialName("expires_at") val expiresAt: String = "",
+)
+
+@Serializable
+data class LoginSecurityState(
+    @SerialName("failed_count") val failedCount: Int = 0,
+    @SerialName("captcha_threshold") val captchaThreshold: Int = 0,
+    @SerialName("max_failed_attempts") val maxFailedAttempts: Int = 0,
+    @SerialName("remaining_attempts") val remainingAttempts: Int = 0,
+    @SerialName("require_captcha") val requireCaptcha: Boolean = false,
+    @SerialName("locked_until") val lockedUntil: String = "",
+    @SerialName("lock_remaining_seconds") val lockRemainingSeconds: Int = 0,
+    val captcha: LoginCaptcha? = null,
+    @SerialName("reason_code") val reasonCode: String = "",
+)
+
+@Serializable
 data class SwitchNamespaceResponse(
     @SerialName("namespace_id") val namespaceId: Long = 0,
     val namespace: NamespaceProfile? = null,
@@ -316,6 +336,7 @@ data class ShopDetail(
 data class ReceivingSession(
     val id: Long = 0,
     val code: String = "",
+    @SerialName("warehouse_code") val warehouseCode: String = "",
     @SerialName("warehouse_name") val warehouseName: String = "",
     @SerialName("container_no") val containerNo: String = "",
     @SerialName("expected_box_count") val expectedBoxCount: Int = 0,
@@ -325,24 +346,44 @@ data class ReceivingSession(
     @SerialName("exception_box_count") val exceptionBoxCount: Int = 0,
     val status: String = "",
     val remark: String = "",
+    @SerialName("tally_items") val tallyItems: List<ReceivingTallyItem> = emptyList(),
     @SerialName("scan_items") val scanItems: List<ReceivingScanItem> = emptyList(),
+    @Transient val localCached: Boolean = false,
+    @Transient val localSyncedAt: Long = 0,
+)
+
+@Serializable
+data class ReceivingTallyItem(
+    val id: Long = 0,
+    @SerialName("consolidation_order_item_id") val consolidationOrderItemId: Long = 0,
+    @SerialName("product_id") val productCode: String = "",
+    @SerialName("product_name") val productName: String = "",
+    @SerialName("sku_code") val skuCode: String = "",
+    @SerialName("planned_box_count") val plannedBoxCount: Int = 0,
+    @SerialName("tallied_box_count") val talliedBoxCount: Int = 0,
+    @SerialName("pending_box_count") val pendingBoxCount: Int = 0,
+    @SerialName("damaged_box_count") val damagedBoxCount: Int = 0,
 )
 
 @Serializable
 data class ReceivingScanItem(
     val id: Long = 0,
+    @SerialName("consolidation_order_item_id") val consolidationOrderItemId: Long = 0,
     @SerialName("box_uid") val boxUid: String = "",
     @SerialName("label_code") val labelCode: String = "",
     @SerialName("box_no") val boxNo: String = "",
     @SerialName("raw_code") val rawCode: String = "",
     @SerialName("sku_code") val skuCode: String = "",
     @SerialName("sku_name") val skuName: String = "",
+    @SerialName("product_code") val productCode: String = "",
     @SerialName("product_name") val productName: String = "",
     @SerialName("box_qty") val boxQty: Int = 0,
     @SerialName("qty_per_carton") val qtyPerCarton: Int = 0,
     @SerialName("actual_received_qty") val actualReceivedQty: Int = 0,
     val status: String = "",
     @SerialName("exception_reason") val exceptionReason: String = "",
+    @SerialName("location_code") val locationCode: String = "",
+    @SerialName("scanned_by") val scannedBy: String = "",
     @SerialName("scanned_at") val scannedAt: String = "",
     @Transient val localFallback: Boolean = false,
 )
@@ -434,11 +475,16 @@ data class EdgePrinter(
 data class EdgePrintTemplate(
     val type: String = "label",
     val code: String = "",
+    val number: String = "",
     val name: String = "",
     @SerialName("printer_name") val printerName: String = "",
     @SerialName("width_mm") val widthMM: Double = 0.0,
     @SerialName("height_mm") val heightMM: Double = 0.0,
     val orientation: String = "",
+    @SerialName("layout_style") val layoutStyle: String = "stacked",
+    @SerialName("text_font_size_pt") val textFontSizePoints: Double = 0.0,
+    @SerialName("max_display_length") val maxDisplayLength: Int = 16,
+    @SerialName("label_qr_prefix") val labelQrPrefix: String = "",
     val version: String = "",
     val available: Boolean = false,
 )
@@ -466,7 +512,25 @@ data class EdgePrintNodeOption(
     val template: EdgePrintTemplate,
     val localReachable: Boolean,
 ) {
-    val selectionKey: String get() = "${node.id}:${template.code}"
+    val selectionKey: String
+        get() {
+            val nodeKey = node.id.takeIf { it > 0 }?.toString()
+                ?: node.nodeId.ifBlank { node.lanBaseUrl }
+            return "$nodeKey:${template.code}:${template.version}"
+        }
+}
+
+internal fun List<EdgePrintNodeOption>.defaultPrintOption(
+    nodeId: Long?,
+    templateCode: String,
+): EdgePrintNodeOption? {
+    if (nodeId == null) return null
+    val nodeOptions = filter { option -> option.node.id == nodeId }
+    return if (templateCode.isBlank()) {
+        nodeOptions.firstOrNull()
+    } else {
+        nodeOptions.firstOrNull { option -> option.template.code == templateCode }
+    }
 }
 
 data class EdgePrintNodeStatus(
@@ -507,6 +571,15 @@ data class EdgePrintSubmission(
 )
 
 @Serializable
+data class MediaRef(
+    val id: String = "",
+    val version: String = "",
+    @SerialName("thumbnail_path") val thumbnailPath: String = "",
+    @SerialName("original_path") val originalPath: String = "",
+    @SerialName("central_url") val centralUrl: String = "",
+)
+
+@Serializable
 data class Product(
     val id: Long = 0,
     val code: String = "",
@@ -515,9 +588,11 @@ data class Product(
     val material: String = "",
     @SerialName("image_url") val imageUrl: String = "",
     @SerialName("thumbnail_url") val thumbnailUrl: String = "",
+    val media: MediaRef? = null,
     val features: String = "",
     val detail: String = "",
     val skus: List<Sku> = emptyList(),
+    @Transient val catalogMedia: CatalogMediaRequest? = null,
 )
 
 @Serializable
@@ -532,7 +607,9 @@ data class Sku(
     val weight: Double = 0.0,
     @SerialName("image_url") val imageUrl: String = "",
     @SerialName("thumbnail_url") val thumbnailUrl: String = "",
+    val media: MediaRef? = null,
     val product: Product? = null,
+    @Transient val catalogMedia: CatalogMediaRequest? = null,
 )
 
 @Serializable
@@ -575,6 +652,11 @@ data class BoxLabel(
     @SerialName("actual_box_qty") val actualBoxQty: Int = 0,
     @SerialName("warehouse_code") val warehouseCode: String = "",
     @SerialName("location_code") val locationCode: String = "",
+    @SerialName("scanned_code") val scannedCode: String = "",
+    @SerialName("resolved_via") val resolvedVia: String = "",
+    @SerialName("jifeng_box_no") val jifengBoxNo: String = "",
+    @SerialName("jifeng_qr_code_text") val jifengQrCodeText: String = "",
+    @SerialName("supplier_label_code") val supplierLabelCode: String = "",
     @SerialName("central_received_at") val centralReceivedAt: String = "",
     @SerialName("supplier_order") val supplierOrder: BoxLabelDocumentRef? = null,
     @SerialName("purchase_order") val purchaseOrder: BoxLabelDocumentRef? = null,
@@ -588,3 +670,20 @@ data class BoxLabel(
     val warnings: List<String> = emptyList(),
     @Transient val localFallback: Boolean = false,
 )
+
+internal enum class BoxMarkPrintAvailability {
+    Ready,
+    OfflineFallback,
+    NotPrintable,
+    SnapshotMissing,
+}
+
+internal fun BoxLabel.hasCompleteBoxMarkPrintContract(): Boolean =
+    id > 0 && printable && printSnapshot != null
+
+internal fun BoxLabel.boxMarkPrintAvailability(): BoxMarkPrintAvailability = when {
+    localFallback -> BoxMarkPrintAvailability.OfflineFallback
+    !printable -> BoxMarkPrintAvailability.NotPrintable
+    !hasCompleteBoxMarkPrintContract() -> BoxMarkPrintAvailability.SnapshotMissing
+    else -> BoxMarkPrintAvailability.Ready
+}

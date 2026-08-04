@@ -28,11 +28,14 @@ internal fun resolvePreferredBarcodes(
     candidates: Collection<String>,
     preferredMatcher: (String) -> Boolean,
     timedOut: Boolean,
+    allowNonPreferredFallback: Boolean = false,
 ): PreferredBarcodeDecision {
     val uniqueCandidates = candidates.distinct()
     val preferredCandidates = uniqueCandidates.filter(preferredMatcher)
     return when {
         preferredCandidates.isNotEmpty() -> PreferredBarcodeDecision.Accept(preferredCandidates)
+        timedOut && allowNonPreferredFallback && uniqueCandidates.isNotEmpty() ->
+            PreferredBarcodeDecision.Accept(uniqueCandidates)
         timedOut && uniqueCandidates.isNotEmpty() -> PreferredBarcodeDecision.Retry
         else -> PreferredBarcodeDecision.Wait
     }

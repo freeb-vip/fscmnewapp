@@ -16,8 +16,16 @@
 
 package com.google.samples.apps.nowinandroid.fscm.ui
 
+import android.Manifest
 import android.app.Activity
+import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
+import android.media.AudioManager
+import android.net.Uri
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -33,6 +41,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -63,6 +72,7 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.ListAlt
 import androidx.compose.material.icons.rounded.Mail
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Print
@@ -74,6 +84,7 @@ import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Workspaces
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -88,6 +99,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -141,6 +153,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
@@ -149,27 +162,35 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.google.samples.apps.nowinandroid.BuildConfig
 import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.core.model.data.DisplayMode
 import com.google.samples.apps.nowinandroid.core.ui.BarcodeScanner
 import com.google.samples.apps.nowinandroid.fscm.data.BoxLabel
 import com.google.samples.apps.nowinandroid.fscm.data.BoxLabelDocumentRef
+import com.google.samples.apps.nowinandroid.fscm.data.BoxMarkPrintAvailability
 import com.google.samples.apps.nowinandroid.fscm.data.BusinessTypeCode
+import com.google.samples.apps.nowinandroid.fscm.data.CatalogMediaRequest
+import com.google.samples.apps.nowinandroid.fscm.data.CatalogSource
 import com.google.samples.apps.nowinandroid.fscm.data.ConnectivityMode
+import com.google.samples.apps.nowinandroid.fscm.data.EdgePrintNodeOption
 import com.google.samples.apps.nowinandroid.fscm.data.EdgePrintNodeStatus
+import com.google.samples.apps.nowinandroid.fscm.data.EdgePrintTemplate
 import com.google.samples.apps.nowinandroid.fscm.data.GlobalSearchHit
 import com.google.samples.apps.nowinandroid.fscm.data.GlobalSearchResponse
 import com.google.samples.apps.nowinandroid.fscm.data.MobileAppEntry
 import com.google.samples.apps.nowinandroid.fscm.data.MobileAppUsage
 import com.google.samples.apps.nowinandroid.fscm.data.MobileWorkbenchOverview
 import com.google.samples.apps.nowinandroid.fscm.data.NamespaceProfile
-import com.google.samples.apps.nowinandroid.fscm.data.Product
 import com.google.samples.apps.nowinandroid.fscm.data.ProfitOverview
+import com.google.samples.apps.nowinandroid.fscm.data.ReceivingProductBusiness
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingScanItem
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingSession
 import com.google.samples.apps.nowinandroid.fscm.data.SearchDestination
@@ -177,19 +198,25 @@ import com.google.samples.apps.nowinandroid.fscm.data.SessionMode
 import com.google.samples.apps.nowinandroid.fscm.data.SessionState
 import com.google.samples.apps.nowinandroid.fscm.data.ShopOverview
 import com.google.samples.apps.nowinandroid.fscm.data.Sku
+import com.google.samples.apps.nowinandroid.fscm.data.boxMarkPrintAvailability
 import com.google.samples.apps.nowinandroid.fscm.data.commonMobileApps
 import com.google.samples.apps.nowinandroid.fscm.data.formatAmount
 import com.google.samples.apps.nowinandroid.fscm.data.formatCount
 import com.google.samples.apps.nowinandroid.fscm.data.formatPercent
 import com.google.samples.apps.nowinandroid.fscm.data.hiddenMobileApps
-import com.google.samples.apps.nowinandroid.fscm.data.isLikelyBoxLabelQr
 import com.google.samples.apps.nowinandroid.fscm.data.shortTime
 import com.google.samples.apps.nowinandroid.fscm.data.shownMobileApps
 import com.google.samples.apps.nowinandroid.fscm.data.toBusinessTypeCode
 import com.google.samples.apps.nowinandroid.fscm.data.visibleMobileApps
 import com.google.samples.apps.nowinandroid.fscm.device.PdaPermissions
+import com.google.samples.apps.nowinandroid.fscm.device.ScanAudioDiagnostics
+import com.google.samples.apps.nowinandroid.fscm.device.ScanFeedbackPlaybackResult
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerInputMode
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerRuntimeState
+import com.google.samples.apps.nowinandroid.fscm.device.TerminalFindConnectionStatus
+import com.google.samples.apps.nowinandroid.fscm.device.TerminalFindService
+import com.google.samples.apps.nowinandroid.fscm.device.TerminalFindState
+import okhttp3.Headers
 import java.io.Serializable
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -213,18 +240,31 @@ private val Teal = Color(0xFF13A8A8)
 @Composable
 fun FscmApp(
     rootViewModel: FscmRootViewModel = hiltViewModel(),
+    appUpdateViewModel: AppUpdateViewModel = hiltViewModel(),
 ) {
-    val session by rootViewModel.session.collectAsStateWithLifecycle()
-    val bootstrapping by rootViewModel.bootstrapping.collectAsStateWithLifecycle()
+    val startupState by rootViewModel.startupState.collectAsStateWithLifecycle()
+    val session = (startupState as? FscmStartupUiState.Ready)?.session ?: SessionState()
     val message by rootViewModel.message.collectAsStateWithLifecycle()
+    val loginState by rootViewModel.loginState.collectAsStateWithLifecycle()
     val globalScanResult by rootViewModel.globalScanResult.collectAsStateWithLifecycle()
     val pendingSyncCount by rootViewModel.pendingSyncCount.collectAsStateWithLifecycle()
     val userData by rootViewModel.userData.collectAsStateWithLifecycle()
+    val appUpdateState by appUpdateViewModel.state.collectAsStateWithLifecycle()
+    val terminalFindState by rootViewModel.terminalFindState.collectAsStateWithLifecycle()
+    val appUpdateMessage by appUpdateViewModel.message.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
+    val devicePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
+    ) { }
+    val unknownSourcesLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        appUpdateViewModel.onUnknownSourcesResult()
+    }
+    val installerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
     ) { }
 
     LaunchedEffect(message) {
@@ -233,13 +273,28 @@ fun FscmApp(
         rootViewModel.clearMessage()
     }
 
+    LaunchedEffect(appUpdateMessage) {
+        val current = appUpdateMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(current.resolve(context))
+        appUpdateViewModel.clearMessage()
+    }
+
+    LaunchedEffect(appUpdateViewModel) {
+        appUpdateViewModel.effects.collect { effect ->
+            when (effect) {
+                is AppUpdateEffect.OpenUnknownSourcesSettings -> unknownSourcesLauncher.launch(effect.intent)
+                is AppUpdateEffect.OpenInstaller -> installerLauncher.launch(effect.intent)
+            }
+        }
+    }
+
     LaunchedEffect(session.isLoggedIn) {
-        if (
-            session.isLoggedIn &&
-            PdaPermissions.bluetoothRuntimePermissions.isNotEmpty() &&
-            !PdaPermissions.hasBluetoothRuntimePermissions(context)
-        ) {
-            bluetoothPermissionLauncher.launch(PdaPermissions.bluetoothRuntimePermissions)
+        if (session.isLoggedIn) {
+            val permissions = buildList {
+                addAll(PdaPermissions.bluetoothRuntimePermissions.asList())
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(Manifest.permission.POST_NOTIFICATIONS)
+            }.filter { ContextCompat.checkSelfPermission(context, it) != android.content.pm.PackageManager.PERMISSION_GRANTED }
+            if (permissions.isNotEmpty()) devicePermissionLauncher.launch(permissions.toTypedArray())
         }
     }
 
@@ -264,30 +319,174 @@ fun FscmApp(
     }
 
     FscmTheme {
-        Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .background(Brush.verticalGradient(listOf(PageTop, PageBottom))),
-            ) {
-                when {
-                    bootstrapping -> LoadingScreen(stringResource(R.string.connecting_fscm))
-                    !session.isLoggedIn -> LoginScreen(onLogin = rootViewModel::login)
-                    else -> MainShell(
-                        session = session,
-                        pendingSyncCount = pendingSyncCount,
-                        onLogout = rootViewModel::logout,
-                        onSwitchNamespace = rootViewModel::switchNamespace,
-                        language = AppLanguage.selected(),
-                        onUpdateLanguage = ::setAppLanguage,
-                        displayMode = userData.displayMode,
-                        onUpdateDisplayMode = rootViewModel::updateDisplayMode,
-                    )
+        Box(Modifier.fillMaxSize()) {
+            Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .background(Brush.verticalGradient(listOf(PageTop, PageBottom))),
+                ) {
+                    when {
+                        startupState is FscmStartupUiState.Restoring ->
+                            LoadingScreen(stringResource(R.string.connecting_fscm))
+                        !session.isLoggedIn -> LoginScreen(
+                            state = loginState,
+                            onUsernameChanged = rootViewModel::onLoginUsernameChanged,
+                            onRefreshCaptcha = rootViewModel::refreshLoginCaptcha,
+                            onLogin = rootViewModel::login,
+                        )
+                        else -> MainShell(
+                            session = session,
+                            pendingSyncCount = pendingSyncCount,
+                            onLogout = rootViewModel::logout,
+                            onSwitchNamespace = rootViewModel::switchNamespace,
+                            language = AppLanguage.selected(),
+                            onUpdateLanguage = ::setAppLanguage,
+                            displayMode = userData.displayMode,
+                            onUpdateDisplayMode = rootViewModel::updateDisplayMode,
+                            onCheckForUpdate = appUpdateViewModel::checkManually,
+                            terminalFindState = terminalFindState,
+                        )
+                    }
                 }
             }
+            AppUpdateDialog(
+                state = appUpdateState,
+                onDownload = appUpdateViewModel::startDownload,
+                onPostpone = appUpdateViewModel::postpone,
+                onCancelDownload = appUpdateViewModel::cancelDownload,
+                onInstall = appUpdateViewModel::requestInstall,
+                onExit = { (context as? Activity)?.finishAffinity() },
+            )
         }
     }
+}
+
+@Composable
+private fun AppUpdateDialog(
+    state: AppUpdateUiState,
+    onDownload: () -> Unit,
+    onPostpone: () -> Unit,
+    onCancelDownload: () -> Unit,
+    onInstall: () -> Unit,
+    onExit: () -> Unit,
+) {
+    if (state is AppUpdateUiState.Idle || state is AppUpdateUiState.Checking && !state.manual) return
+
+    val context = LocalContext.current
+    val release = when (state) {
+        is AppUpdateUiState.Available -> state.release
+        is AppUpdateUiState.Downloading -> state.release
+        is AppUpdateUiState.Ready -> state.release
+        is AppUpdateUiState.Failed -> state.release
+        else -> null
+    }
+    val forceUpdate = when (state) {
+        is AppUpdateUiState.Available -> state.forceUpdate
+        is AppUpdateUiState.Downloading -> state.forceUpdate
+        is AppUpdateUiState.Ready -> state.forceUpdate
+        is AppUpdateUiState.Failed -> state.forceUpdate
+        else -> false
+    }
+    val title = when {
+        state is AppUpdateUiState.Checking -> stringResource(R.string.app_update)
+        forceUpdate -> stringResource(R.string.app_update_required_title)
+        else -> stringResource(R.string.app_update_available_title)
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!forceUpdate) onPostpone() },
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                when (state) {
+                    is AppUpdateUiState.Checking -> {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                            Text(stringResource(R.string.app_update_checking))
+                        }
+                    }
+                    is AppUpdateUiState.Available -> {
+                        Text(
+                            stringResource(
+                                R.string.app_update_available_message,
+                                state.release.versionName,
+                                state.release.versionCode,
+                            ),
+                        )
+                    }
+                    is AppUpdateUiState.Downloading -> {
+                        Text(stringResource(R.string.app_update_downloading))
+                        val progress = if (state.totalBytes > 0) {
+                            (state.downloadedBytes.toFloat() / state.totalBytes).coerceIn(0f, 1f)
+                        } else {
+                            0f
+                        }
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        if (state.totalBytes > 0) {
+                            Text(
+                                stringResource(
+                                    R.string.app_update_download_progress,
+                                    (progress * 100).toInt(),
+                                ),
+                                color = InkSoft,
+                            )
+                        }
+                    }
+                    is AppUpdateUiState.Ready -> Text(stringResource(R.string.app_update_ready))
+                    is AppUpdateUiState.Failed -> Text(state.message.resolve(context), color = Danger)
+                    AppUpdateUiState.Idle -> Unit
+                }
+                if (!release?.releaseNotes.isNullOrBlank()) {
+                    Text(
+                        stringResource(R.string.app_update_release_notes),
+                        color = InkStrong,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(release.releaseNotes, color = InkSoft)
+                }
+            }
+        },
+        confirmButton = {
+            when (state) {
+                is AppUpdateUiState.Available -> Button(onClick = onDownload) {
+                    Text(stringResource(R.string.app_update_now))
+                }
+                is AppUpdateUiState.Ready -> Button(onClick = onInstall) {
+                    Text(stringResource(R.string.app_update_install))
+                }
+                is AppUpdateUiState.Failed -> Button(onClick = onDownload) {
+                    Text(stringResource(R.string.app_update_retry))
+                }
+                else -> Unit
+            }
+        },
+        dismissButton = {
+            when {
+                forceUpdate -> TextButton(onClick = onExit) {
+                    Text(stringResource(R.string.app_update_exit))
+                }
+                state is AppUpdateUiState.Downloading -> TextButton(onClick = onCancelDownload) {
+                    Text(stringResource(R.string.app_update_cancel_download))
+                }
+                state is AppUpdateUiState.Available || state is AppUpdateUiState.Failed ->
+                    TextButton(onClick = onPostpone) {
+                        Text(stringResource(R.string.app_update_later))
+                    }
+            }
+        },
+        properties = DialogProperties(
+            dismissOnBackPress = !forceUpdate,
+            dismissOnClickOutside = !forceUpdate,
+        ),
+    )
 }
 
 @Composable
@@ -332,9 +531,20 @@ private fun fscmTextFieldColors() = OutlinedTextFieldDefaults.colors(
 )
 
 @Composable
-private fun LoginScreen(onLogin: (String, String) -> Unit) {
+private fun LoginScreen(
+    state: LoginUiState,
+    onUsernameChanged: (String) -> Unit,
+    onRefreshCaptcha: (String) -> Unit,
+    onLogin: (String, String, String) -> Unit,
+) {
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
+    var captchaAnswer by rememberSaveable { mutableStateOf("") }
+    val captcha = state.security?.captcha
+    val loginEnabled = isLoginSubmissionEnabled(username, password, captchaAnswer, state)
+    LaunchedEffect(captcha?.captchaId) {
+        captchaAnswer = ""
+    }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(28.dp),
@@ -370,9 +580,13 @@ private fun LoginScreen(onLogin: (String, String) -> Unit) {
                     Spacer(Modifier.height(18.dp))
                     OutlinedTextField(
                         value = username,
-                        onValueChange = { username = it },
+                        onValueChange = {
+                            username = it
+                            onUsernameChanged(it)
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text(stringResource(R.string.username)) },
+                        enabled = !state.submitting,
                         singleLine = true,
                         shape = RoundedCornerShape(8.dp),
                         colors = fscmTextFieldColors(),
@@ -383,21 +597,101 @@ private fun LoginScreen(onLogin: (String, String) -> Unit) {
                         onValueChange = { password = it },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text(stringResource(R.string.password)) },
+                        enabled = !state.submitting,
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true,
                         shape = RoundedCornerShape(8.dp),
                         colors = fscmTextFieldColors(),
                     )
+                    if (state.requiresCaptcha) {
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            OutlinedTextField(
+                                value = captchaAnswer,
+                                onValueChange = { captchaAnswer = it.filter(Char::isDigit) },
+                                modifier = Modifier.weight(1f),
+                                label = { Text(stringResource(R.string.login_captcha)) },
+                                enabled = !state.isLocked && !state.submitting,
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Done,
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onDone = {
+                                        if (loginEnabled) onLogin(username.trim(), password, captchaAnswer)
+                                    },
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = fscmTextFieldColors(),
+                            )
+                            OutlinedButton(
+                                onClick = { onRefreshCaptcha(username.trim()) },
+                                modifier = Modifier.width(124.dp),
+                                enabled = !state.isLocked && !state.submitting && !state.refreshingCaptcha,
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 15.dp),
+                            ) {
+                                if (state.refreshingCaptcha) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Refresh,
+                                        contentDescription = stringResource(R.string.login_captcha_refresh),
+                                    )
+                                    captcha?.question?.takeIf(String::isNotBlank)?.let { question ->
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(question, maxLines = 1)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    state.security?.takeIf { it.failedCount > 0 || it.lockRemainingSeconds > 0 }?.let { security ->
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = if (state.isLocked) {
+                                stringResource(
+                                    R.string.login_security_locked,
+                                    security.failedCount,
+                                    security.lockRemainingSeconds,
+                                )
+                            } else {
+                                stringResource(
+                                    R.string.login_security_failed_hint,
+                                    security.failedCount,
+                                    security.remainingAttempts,
+                                )
+                            },
+                            color = if (state.isLocked) Danger else Warning,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                     Spacer(Modifier.height(18.dp))
                     Button(
-                        onClick = { onLogin(username.trim(), password) },
+                        onClick = { onLogin(username.trim(), password, captchaAnswer) },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = username.isNotBlank() && password.isNotBlank(),
+                        enabled = loginEnabled,
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = BrandMain),
                         contentPadding = PaddingValues(vertical = 14.dp),
                     ) {
-                        Icon(Icons.AutoMirrored.Rounded.Login, contentDescription = null)
+                        if (state.submitting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(Icons.AutoMirrored.Rounded.Login, contentDescription = null)
+                        }
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.login))
                     }
@@ -423,10 +717,13 @@ private sealed interface FeatureRoute : Serializable {
     data class InboundSession(val id: Long) : FeatureRoute
     data object CentralReceivingList : FeatureRoute
     data class CentralReceivingDetail(val id: Long) : FeatureRoute
+    data class ReceivingProductProgress(val business: ReceivingProductBusiness, val documentId: Long) : FeatureRoute
     data object SupplierOrders : FeatureRoute
     data class SupplierOrderDetail(val id: Long) : FeatureRoute
     data object CameraScanner : FeatureRoute
     data object ProductManagement : FeatureRoute
+    data object ProductCountingList : FeatureRoute
+    data class ProductCountingDetail(val taskId: String) : FeatureRoute
     data class ProductSkuList(val productId: Long, val productName: String) : FeatureRoute
     data class SkuDetail(val idOrCode: String) : FeatureRoute
     data class BoxLabelDetail(val code: String) : FeatureRoute
@@ -434,6 +731,7 @@ private sealed interface FeatureRoute : Serializable {
     data object PdaMode : FeatureRoute
     data object PdaSettings : FeatureRoute
     data object EdgeNodes : FeatureRoute
+    data class EdgeNodeDetail(val nodeId: Long) : FeatureRoute
     data object LabelPrint : FeatureRoute
 }
 
@@ -441,11 +739,18 @@ private fun FeatureRoute.parentRoute(): FeatureRoute = when (this) {
     is FeatureRoute.ReceivingDetail -> FeatureRoute.ReceivingList
     is FeatureRoute.InboundSession -> FeatureRoute.InboundManagement
     is FeatureRoute.CentralReceivingDetail -> FeatureRoute.CentralReceivingList
+    is FeatureRoute.ReceivingProductProgress -> when (business) {
+        ReceivingProductBusiness.Warehouse -> FeatureRoute.ReceivingDetail(documentId)
+        ReceivingProductBusiness.Central -> FeatureRoute.CentralReceivingDetail(documentId)
+        ReceivingProductBusiness.Inbound -> FeatureRoute.InboundSession(documentId)
+    }
     is FeatureRoute.SupplierOrderDetail -> FeatureRoute.SupplierOrders
+    is FeatureRoute.ProductCountingDetail -> FeatureRoute.ProductCountingList
     is FeatureRoute.ProductSkuList,
     is FeatureRoute.SkuDetail,
     -> FeatureRoute.ProductManagement
     is FeatureRoute.BoxLabelDetail -> FeatureRoute.CartonManagement
+    is FeatureRoute.EdgeNodeDetail -> FeatureRoute.EdgeNodes
     else -> FeatureRoute.None
 }
 
@@ -461,6 +766,8 @@ private fun MainShell(
     onUpdateLanguage: (AppLanguage) -> Unit,
     displayMode: DisplayMode,
     onUpdateDisplayMode: (DisplayMode) -> Unit,
+    onCheckForUpdate: () -> Unit,
+    terminalFindState: TerminalFindState,
 ) {
     val rootViewModel: FscmRootViewModel = hiltViewModel()
     val workbenchViewModel: WorkbenchViewModel = hiltViewModel()
@@ -570,6 +877,8 @@ private fun MainShell(
                     onUpdateLanguage = onUpdateLanguage,
                     displayMode = displayMode,
                     onUpdateDisplayMode = onUpdateDisplayMode,
+                    onCheckForUpdate = onCheckForUpdate,
+                    terminalFindState = terminalFindState,
                     displayPolicy = displayPolicy,
                 )
             }
@@ -586,6 +895,27 @@ private fun FeatureScreen(
     onOpenReceivingDetail: (Long) -> Unit,
     onScanResult: (String) -> Unit = {},
 ) {
+    val receivingDetailId = (route as? FeatureRoute.ReceivingDetail)?.id
+    val receivingDetailViewModel: ReceivingDetailViewModel? =
+        if (receivingDetailId != null) {
+            hiltViewModel(key = "receiving-detail-$receivingDetailId")
+        } else {
+            null
+        }
+    val productCountingTaskId = (route as? FeatureRoute.ProductCountingDetail)?.taskId
+    val productCountingDetailViewModel: ProductCountingDetailViewModel? =
+        if (productCountingTaskId != null) {
+            hiltViewModel(key = "product-counting-detail-$productCountingTaskId")
+        } else {
+            null
+        }
+    val supplierOrdersViewModel: SupplierOrdersViewModel? =
+        if (route == FeatureRoute.SupplierOrders) {
+            hiltViewModel(key = "supplier-orders")
+        } else {
+            null
+        }
+
     Scaffold(
         topBar = {
             if (route != FeatureRoute.CameraScanner) {
@@ -598,9 +928,12 @@ private fun FeatureScreen(
                         is FeatureRoute.InboundSession -> stringResource(R.string.inbound_title)
                         FeatureRoute.CentralReceivingList -> stringResource(R.string.feature_central_receiving)
                         is FeatureRoute.CentralReceivingDetail -> stringResource(R.string.feature_central_receiving_detail)
+                        is FeatureRoute.ReceivingProductProgress -> stringResource(R.string.receiving_product_details_title)
                         FeatureRoute.SupplierOrders -> stringResource(R.string.feature_supplier_orders)
                         is FeatureRoute.SupplierOrderDetail -> stringResource(R.string.feature_supplier_order_detail)
                         FeatureRoute.ProductManagement -> stringResource(R.string.feature_product_management)
+                        FeatureRoute.ProductCountingList -> stringResource(R.string.feature_product_counting)
+                        is FeatureRoute.ProductCountingDetail -> stringResource(R.string.feature_product_counting)
                         is FeatureRoute.ProductSkuList -> route.productName
                         is FeatureRoute.SkuDetail -> stringResource(R.string.feature_sku_detail)
                         is FeatureRoute.BoxLabelDetail -> stringResource(R.string.feature_box_label_detail)
@@ -608,11 +941,86 @@ private fun FeatureScreen(
                         FeatureRoute.PdaMode -> stringResource(R.string.feature_pda_scan_mode)
                         FeatureRoute.PdaSettings -> stringResource(R.string.feature_pda_settings)
                         FeatureRoute.EdgeNodes -> stringResource(R.string.feature_edge_nodes)
+                        is FeatureRoute.EdgeNodeDetail -> stringResource(R.string.feature_edge_nodes)
                         FeatureRoute.LabelPrint -> stringResource(R.string.feature_label_printing)
                         FeatureRoute.None -> ""
                         FeatureRoute.CameraScanner -> ""
                     },
                     onBack = onBack,
+                    actions = {
+                        receivingDetailViewModel?.let { viewModel ->
+                            val detailState by viewModel.state.collectAsStateWithLifecycle()
+                            IconButton(
+                                onClick = { viewModel.sync(requireNotNull(receivingDetailId)) },
+                                enabled = !detailState.syncing,
+                            ) {
+                                if (detailState.syncing) {
+                                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Icon(
+                                        Icons.Rounded.Refresh,
+                                        contentDescription = stringResource(R.string.receiving_sync_now),
+                                    )
+                                }
+                            }
+                        }
+                        productCountingDetailViewModel?.let { viewModel ->
+                            val detailState by viewModel.state.collectAsStateWithLifecycle()
+                            if (detailState.task?.task?.status == com.google.samples.apps.nowinandroid.fscm.data.ProductCountTaskStatus.InProgress.value) {
+                                TextButton(
+                                    onClick = viewModel::requestReset,
+                                    enabled = detailState.editable && !detailState.processing,
+                                ) {
+                                    Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(stringResource(R.string.product_counting_reset))
+                                }
+                            }
+                        }
+                        supplierOrdersViewModel?.let { viewModel ->
+                            val supplierState by viewModel.state.collectAsStateWithLifecycle()
+                            IconButton(onClick = viewModel::openFilters) {
+                                Box {
+                                    Icon(
+                                        Icons.Rounded.FilterList,
+                                        contentDescription = stringResource(R.string.business_supplier_filters),
+                                    )
+                                    if (supplierState.appliedFilters.activeCount > 0) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .offset(x = 8.dp, y = (-8).dp),
+                                        ) {
+                                            Badge(supplierState.appliedFilters.activeCount.toString(), BrandMain)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        val productContext = when (route) {
+                            is FeatureRoute.ReceivingDetail -> ReceivingProductBusiness.Warehouse to route.id
+                            is FeatureRoute.CentralReceivingDetail -> ReceivingProductBusiness.Central to route.id
+                            is FeatureRoute.InboundSession -> ReceivingProductBusiness.Inbound to route.id
+                            else -> null
+                        }
+                        productContext?.let { (business, documentId) ->
+                            TextButton(
+                                onClick = {
+                                    onNavigate(
+                                        FeatureRoute.ReceivingProductProgress(
+                                            business = business,
+                                            documentId = documentId,
+                                        ),
+                                    )
+                                },
+                            ) {
+                                Icon(Icons.Rounded.ListAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(stringResource(R.string.receiving_product_details_action))
+                            }
+                        }
+                    },
                 )
             }
         },
@@ -622,7 +1030,11 @@ private fun FeatureScreen(
             when (route) {
                 FeatureRoute.Profit -> ProfitScreen(session)
                 FeatureRoute.ReceivingList -> WarehouseReceivingScreen(onOpenReceivingDetail)
-                is FeatureRoute.ReceivingDetail -> ReceivingDetailScreen(route.id, onOpenCamera = { onScanResult("") })
+                is FeatureRoute.ReceivingDetail -> ReceivingDetailScreen(
+                    route.id,
+                    onOpenCamera = { onScanResult("") },
+                    viewModel = requireNotNull(receivingDetailViewModel),
+                )
                 FeatureRoute.InboundManagement -> InboundSessionListScreen(
                     onOpenSession = { onNavigate(FeatureRoute.InboundSession(it)) },
                 )
@@ -631,14 +1043,25 @@ private fun FeatureScreen(
                     onOpenDetail = { onNavigate(FeatureRoute.CentralReceivingDetail(it)) },
                 )
                 is FeatureRoute.CentralReceivingDetail -> CentralReceiptDetailScreen(route.id)
+                is FeatureRoute.ReceivingProductProgress -> ReceivingProductProgressScreen(
+                    business = route.business,
+                    documentId = route.documentId,
+                )
                 FeatureRoute.SupplierOrders -> SupplierOrdersScreen(
                     onOpenDetail = { onNavigate(FeatureRoute.SupplierOrderDetail(it)) },
+                    viewModel = requireNotNull(supplierOrdersViewModel),
                 )
                 is FeatureRoute.SupplierOrderDetail -> SupplierOrderDetailScreen(route.id)
                 FeatureRoute.CameraScanner -> CameraScannerScreen(onBack = onBack, onResult = onScanResult)
                 FeatureRoute.ProductManagement -> ProductManagementScreen(
-                    onOpenSkuList = { id, name -> onNavigate(FeatureRoute.ProductSkuList(id, name)) },
                     onOpenSkuDetail = { onNavigate(FeatureRoute.SkuDetail(it)) },
+                )
+                FeatureRoute.ProductCountingList -> ProductCountingTaskListScreen(
+                    onOpenTask = { onNavigate(FeatureRoute.ProductCountingDetail(it)) },
+                )
+                is FeatureRoute.ProductCountingDetail -> ProductCountingTaskDetailScreen(
+                    taskId = route.taskId,
+                    viewModel = requireNotNull(productCountingDetailViewModel),
                 )
                 is FeatureRoute.ProductSkuList -> ProductManagementScreen(
                     productId = route.productId,
@@ -649,7 +1072,8 @@ private fun FeatureScreen(
                 FeatureRoute.CartonManagement -> CartonManagementScreen(onNavigate = onNavigate)
                 FeatureRoute.PdaMode -> PdaModeScreen()
                 FeatureRoute.PdaSettings -> PdaSettingsScreen()
-                FeatureRoute.EdgeNodes -> EdgeNodesScreen()
+                FeatureRoute.EdgeNodes -> EdgeNodesScreen(onOpenDetail = { onNavigate(FeatureRoute.EdgeNodeDetail(it)) })
+                is FeatureRoute.EdgeNodeDetail -> EdgeNodeDetailScreen(route.nodeId)
                 FeatureRoute.LabelPrint -> LabelPrintScreen()
                 FeatureRoute.None -> Unit
             }
@@ -659,7 +1083,11 @@ private fun FeatureScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FscmTopBar(title: String, onBack: (() -> Unit)? = null) {
+private fun FscmTopBar(
+    title: String,
+    onBack: (() -> Unit)? = null,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
     TopAppBar(
         title = { Text(title, color = InkStrong, fontWeight = FontWeight.Bold) },
         navigationIcon = {
@@ -669,6 +1097,7 @@ private fun FscmTopBar(title: String, onBack: (() -> Unit)? = null) {
                 }
             }
         },
+        actions = actions,
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
     )
 }
@@ -1372,6 +1801,8 @@ private fun ProfileScreen(
     onUpdateLanguage: (AppLanguage) -> Unit,
     displayMode: DisplayMode,
     onUpdateDisplayMode: (DisplayMode) -> Unit,
+    onCheckForUpdate: () -> Unit,
+    terminalFindState: TerminalFindState,
     displayPolicy: FscmDisplayPolicy,
 ) {
     var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
@@ -1431,6 +1862,28 @@ private fun ProfileScreen(
                         contentDescription = stringResource(R.string.settings_display_mode),
                         tint = InkSoft,
                     )
+                }
+            }
+        }
+        item {
+            TerminalFindSettingsCard(terminalFindState, displayPolicy)
+        }
+        item {
+            FscmCard(modifier = Modifier.clickable(onClick = onCheckForUpdate), padding = displayPolicy.cardPadding()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.app_update), color = InkStrong, fontWeight = FontWeight.Black)
+                        Text(
+                            stringResource(
+                                R.string.app_update_current_version,
+                                BuildConfig.VERSION_NAME,
+                                BuildConfig.VERSION_CODE,
+                            ),
+                            color = InkSoft,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Icon(Icons.Rounded.Refresh, contentDescription = stringResource(R.string.app_update), tint = BrandMain)
                 }
             }
         }
@@ -1526,6 +1979,96 @@ private fun ProfileScreen(
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun TerminalFindSettingsCard(
+    state: TerminalFindState,
+    displayPolicy: FscmDisplayPolicy,
+) {
+    val context = LocalContext.current
+    val notificationManager = context.getSystemService(NotificationManager::class.java)
+    val powerManager = context.getSystemService(PowerManager::class.java)
+    val notificationReady = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED
+    val batteryReady = powerManager.isIgnoringBatteryOptimizations(context.packageName)
+    val dndReady = notificationManager.isNotificationPolicyAccessGranted
+    val statusText = when (state.status) {
+        TerminalFindConnectionStatus.Online -> stringResource(R.string.terminal_find_status_online, state.nodeName)
+        TerminalFindConnectionStatus.Ringing -> stringResource(R.string.terminal_find_status_ringing)
+        TerminalFindConnectionStatus.Connecting -> stringResource(R.string.terminal_find_status_connecting)
+        TerminalFindConnectionStatus.Reconnecting -> stringResource(R.string.terminal_find_status_reconnecting)
+        TerminalFindConnectionStatus.Stopped -> stringResource(R.string.terminal_find_status_stopped)
+    }
+    FscmCard(padding = displayPolicy.cardPadding()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.terminal_find_title), color = InkStrong, fontWeight = FontWeight.Black)
+                Text(statusText, color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                if (state.lastError.isNotBlank()) {
+                    Text(state.lastError, color = Danger, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            StatusChip(
+                stringResource(
+                    if (
+                        state.status == TerminalFindConnectionStatus.Online ||
+                        state.status == TerminalFindConnectionStatus.Ringing
+                    ) {
+                        R.string.terminal_find_ready
+                    } else {
+                        R.string.terminal_find_not_ready
+                    },
+                ),
+                if (
+                    state.status == TerminalFindConnectionStatus.Online ||
+                    state.status == TerminalFindConnectionStatus.Ringing
+                ) {
+                    Success
+                } else {
+                    Warning
+                },
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AssistChip(
+                onClick = { TerminalFindService.testAlarm(context) },
+                label = { Text(stringResource(R.string.terminal_find_test)) },
+                leadingIcon = { Icon(Icons.Rounded.VolumeUp, contentDescription = null) },
+            )
+            if (!batteryReady) {
+                AssistChip(
+                    onClick = {
+                        context.startActivity(
+                            Intent(
+                                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                Uri.parse("package:${context.packageName}"),
+                            ),
+                        )
+                    },
+                    label = { Text(stringResource(R.string.terminal_find_allow_background)) },
+                )
+            }
+        }
+        if (!notificationReady || !dndReady) {
+            TextButton(
+                onClick = {
+                    val action = if (!dndReady) {
+                        Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS
+                    } else {
+                        Settings.ACTION_APP_NOTIFICATION_SETTINGS
+                    }
+                    context.startActivity(
+                        Intent(action).apply { putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName) },
+                    )
+                },
+            ) {
+                Text(stringResource(R.string.terminal_find_complete_permissions))
+            }
+        }
     }
 }
 
@@ -1689,7 +2232,6 @@ private fun ShopRanking(shops: List<ShopOverview>) {
 @Composable
 private fun ProductManagementScreen(
     productId: Long? = null,
-    onOpenSkuList: ((Long, String) -> Unit)? = null,
     onOpenSkuDetail: ((String) -> Unit)? = null,
     viewModel: ProductManagementViewModel = hiltViewModel(),
 ) {
@@ -1728,7 +2270,7 @@ private fun ProductManagementScreen(
                 BarcodeScanner(
                     onBarcodeDetected = { barcode ->
                         showCamera = false
-                        viewModel.setQuery(barcode)
+                        viewModel.scanSku(barcode)
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -1744,18 +2286,38 @@ private fun ProductManagementScreen(
                 .padding(horizontal = 20.dp, vertical = 10.dp),
             padding = 12,
         ) {
+            val isLocalCatalog = state.catalogSource == CatalogSource.Edge
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                StatusChip(
+                    text = if (isLocalCatalog) "本地" else "远程",
+                    color = when {
+                        isLocalCatalog && state.catalogStale -> Warning
+                        isLocalCatalog -> Success
+                        else -> BrandMain
+                    },
+                    containerColor = when {
+                        isLocalCatalog && state.catalogStale -> Warning.copy(alpha = 0.12f)
+                        isLocalCatalog -> Success.copy(alpha = 0.12f)
+                        else -> BrandSoft
+                    },
+                )
+            }
+            Spacer(Modifier.height(6.dp))
             if (productId == null) {
                 if (state.isBroadcastMode) {
-                    OutlinedTextField(
-                        value = state.query,
-                        onValueChange = viewModel::setQuery,
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(stringResource(R.string.product_broadcast_search)) },
-                        placeholder = { Text(stringResource(R.string.product_manual_search)) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = { viewModel.load(reset = true) }),
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = state.query,
+                            onValueChange = viewModel::setQuery,
+                            modifier = Modifier.weight(1f),
+                            label = { Text(stringResource(R.string.product_broadcast_search)) },
+                            placeholder = { Text(stringResource(R.string.product_manual_search)) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(onSearch = { viewModel.load(reset = true) }),
+                        )
+                        ExactSearchButton(state.exactSearch, viewModel::toggleExactSearch)
+                    }
                 } else {
                     Row(
                         modifier = Modifier
@@ -1777,7 +2339,7 @@ private fun ProductManagementScreen(
                             onValueChange = { viewModel.setQuery(it) },
                             placeholder = {
                                 Text(
-                                    stringResource(R.string.product_search_hint),
+                                    stringResource(R.string.product_manual_search),
                                     color = InkSoft,
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
@@ -1800,6 +2362,7 @@ private fun ProductManagementScreen(
                                     }) {
                                         Icon(Icons.Rounded.ContentPaste, contentDescription = stringResource(R.string.product_paste), tint = BrandMain, modifier = Modifier.size(18.dp))
                                     }
+                                    ExactSearchButton(state.exactSearch, viewModel::toggleExactSearch)
                                 }
                             },
                             singleLine = true,
@@ -1815,11 +2378,6 @@ private fun ProductManagementScreen(
                         }) {
                             Icon(Icons.Rounded.QrCodeScanner, contentDescription = stringResource(R.string.scan_receiving), tint = BrandMain)
                         }
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        TabButton(stringResource(R.string.product_view), !state.isSkuView, Modifier.weight(1f)) { viewModel.switchView(false) }
-                        TabButton("SKU", state.isSkuView, Modifier.weight(1f)) { viewModel.switchView(true) }
                     }
                 }
             } else {
@@ -1837,7 +2395,7 @@ private fun ProductManagementScreen(
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 30.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (state.loading && (state.products.isEmpty() && !state.isSkuView || state.skus.isEmpty() && (state.isSkuView || state.isBroadcastMode))) {
+            if (state.loading && state.skus.isEmpty()) {
                 item { LinearLoadingCard(stringResource(R.string.product_loading)) }
             }
             state.error?.let { item { FscmErrorCard(it, onRetry = { viewModel.load(reset = true) }) } }
@@ -1845,30 +2403,24 @@ private fun ProductManagementScreen(
                 item { StatusChip(message.resolve(), Success, Success.copy(alpha = 0.12f)) }
             }
 
-            if (state.isSkuView || state.isBroadcastMode) {
-                items(state.skus) { sku ->
-                    SkuItem(
-                        sku = sku,
-                        printing = state.printingSkuId == sku.id,
-                        directPrint = state.isBroadcastMode,
-                        onClick = {
-                            if (state.isBroadcastMode) {
-                                viewModel.printSku(sku)
-                            } else {
-                                onOpenSkuDetail?.invoke(
-                                    sku.id.takeIf { it > 0 }?.toString() ?: sku.code,
-                                )
-                            }
-                        },
-                    )
-                }
-            } else {
-                items(state.products) { product ->
-                    ProductItem(product, onClick = { onOpenSkuList?.invoke(product.id, product.name) })
-                }
+            items(state.skus) { sku ->
+                SkuItem(
+                    sku = sku,
+                    printing = state.printingSkuId == sku.id,
+                    directPrint = state.isBroadcastMode,
+                    onClick = {
+                        if (state.isBroadcastMode) {
+                            viewModel.printSku(sku)
+                        } else {
+                            onOpenSkuDetail?.invoke(
+                                sku.id.takeIf { it > 0 }?.toString() ?: sku.code,
+                            )
+                        }
+                    },
+                )
             }
 
-            if (state.hasMore && !state.loading && (state.products.isNotEmpty() || state.skus.isNotEmpty())) {
+            if (state.hasMore && !state.loading && state.skus.isNotEmpty()) {
                 item {
                     LaunchedEffect(Unit) { viewModel.loadMore() }
                     Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
@@ -1877,7 +2429,7 @@ private fun ProductManagementScreen(
                 }
             }
 
-            if (!state.loading && !state.hasMore && (state.products.isEmpty() && !state.isSkuView || state.skus.isEmpty() && (state.isSkuView || state.isBroadcastMode))) {
+            if (!state.loading && !state.hasMore && state.skus.isEmpty() && state.error == null) {
                 item { EmptyCard(stringResource(R.string.product_no_match)) }
             }
         }
@@ -1885,49 +2437,64 @@ private fun ProductManagementScreen(
 }
 
 @Composable
-private fun TabButton(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (selected) BrandMain else SurfaceMuted)
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text, color = if (selected) Color.White else InkSoft, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+private fun ExactSearchButton(exactSearch: Boolean, onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        Icon(
+            imageVector = Icons.Rounded.CheckCircle,
+            contentDescription = "精确查找",
+            tint = if (exactSearch) BrandMain else InkSoft,
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 
 @Composable
-private fun ProductItem(product: Product, onClick: () -> Unit = {}) {
-    FscmCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        padding = 14,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(
-                model = product.thumbnailUrl.ifBlank { product.imageUrl },
-                contentDescription = null,
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(SurfaceMuted),
-            )
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(product.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = InkStrong, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(product.code, style = MaterialTheme.typography.labelMedium, color = BrandMain, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (product.brand.isNotBlank()) StatusChip(product.brand, BrandDeep, BrandSoft)
-                    if (product.material.isNotBlank()) StatusChip(product.material, InkSoft, SurfaceMuted)
-                }
-            }
+private fun catalogImageModel(
+    media: CatalogMediaRequest?,
+    fallbackUrl: String,
+    sizePx: Int,
+): Any {
+    val context = LocalContext.current
+    return remember(media, fallbackUrl, sizePx) {
+        if (media == null) {
+            fallbackUrl
+        } else {
+            ImageRequest.Builder(context)
+                .data(media.url)
+                .headers(
+                    Headers.Builder()
+                        .add(media.headerName, media.headerValue)
+                        .build(),
+                )
+                .memoryCacheKey(media.cacheKey)
+                .diskCacheKey(media.cacheKey)
+                .size(sizePx)
+                .build()
         }
     }
 }
+
+@Composable
+private fun CatalogAsyncImage(
+    media: CatalogMediaRequest?,
+    fallbackUrl: String,
+    sizePx: Int,
+    modifier: Modifier,
+) {
+    var useCenter by remember(media) { mutableStateOf(false) }
+    val centerUrl = catalogMediaFallbackUrl(media, fallbackUrl)
+    AsyncImage(
+        model = if (useCenter) centerUrl else catalogImageModel(media, centerUrl, sizePx),
+        contentDescription = null,
+        onError = {
+            if (media != null && centerUrl.isNotBlank()) useCenter = true
+        },
+        modifier = modifier,
+    )
+}
+
+internal fun catalogMediaFallbackUrl(media: CatalogMediaRequest?, fallbackUrl: String): String =
+    media?.centralUrl?.ifBlank { fallbackUrl } ?: fallbackUrl
 
 @Composable
 private fun SkuItem(
@@ -1945,9 +2512,11 @@ private fun SkuItem(
         padding = 14,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(
-                model = sku.thumbnailUrl.ifBlank { sku.imageUrl }.ifBlank { sku.product?.thumbnailUrl ?: "" },
-                contentDescription = null,
+            CatalogAsyncImage(
+                media = sku.catalogMedia,
+                fallbackUrl = sku.thumbnailUrl.ifBlank { sku.imageUrl }
+                    .ifBlank { sku.product?.thumbnailUrl ?: "" },
+                sizePx = 160,
                 modifier = Modifier
                     .size(70.dp)
                     .clip(RoundedCornerShape(6.dp))
@@ -2017,7 +2586,12 @@ private fun ReceivingSessionCard(session: ReceivingSession, onOpenDetail: (Long)
                 Text(session.code, color = InkStrong, fontWeight = FontWeight.Black)
                 Text(session.containerNo.ifBlank { session.warehouseName }, color = InkSoft)
             }
-            StatusChip(localizedStatusText(session.status), if (session.status == "completed") Success else Warning)
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                StatusChip(localizedStatusText(session.status), if (session.status == "completed") Success else Warning)
+                if (session.localCached) {
+                    StatusChip(stringResource(R.string.receiving_local), BrandMain)
+                }
+            }
         }
         Spacer(Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -2036,7 +2610,6 @@ private fun ReceivingDetailScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var scanCode by rememberSaveable(sessionId) { mutableStateOf("") }
-    var exceptionQty by rememberSaveable { mutableStateOf("0") }
     var showCamera by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -2050,8 +2623,8 @@ private fun ReceivingDetailScreen(
     fun submitBarcode(rawCode: String = scanCode) {
         val normalized = rawCode.normalizeBarcode()
         if (normalized.isBlank() || state.submitting) return
-        scanCode = normalized
-        viewModel.preview(sessionId, normalized)
+        scanCode = ""
+        viewModel.scanAndReceive(sessionId, normalized)
     }
 
     if (showCamera) {
@@ -2067,7 +2640,7 @@ private fun ReceivingDetailScreen(
                     },
                     modifier = Modifier.fillMaxSize(),
                     showSelectionDialogForMultiple = true,
-                    preferredBarcodeMatcher = ::isLikelyBoxLabelQr,
+                    preferredBarcodeMatcher = viewModel::isKnownBoxLabelCode,
                     preferredBarcodeWaitMillis = 800L,
                     noPreferredBarcodeTitle = stringResource(R.string.box_label_scan_not_detected),
                     noPreferredBarcodePrompt = stringResource(R.string.box_label_scan_retry_prompt),
@@ -2094,9 +2667,6 @@ private fun ReceivingDetailScreen(
     ) {
         state.error?.let { item { FscmErrorCard(it) { viewModel.load(sessionId) } } }
         if (session != null) {
-            item {
-                ReceivingSessionCard(session) {}
-            }
             item {
                 FscmCard {
                     SectionHeader(stringResource(R.string.receiving_scan_label), stringResource(R.string.receiving_scanner_or_manual))
@@ -2150,74 +2720,27 @@ private fun ReceivingDetailScreen(
                 }
             }
             item {
+                FscmProgressOverview(
+                    title = stringResource(R.string.business_receiving_progress_overview),
+                    totalLabel = stringResource(R.string.business_metric_total_boxes),
+                    pendingLabel = stringResource(R.string.business_metric_pending),
+                    completedLabel = stringResource(R.string.business_metric_received),
+                    exceptionLabel = stringResource(R.string.business_metric_exception),
+                    metrics = warehouseReceivingProgress(session),
+                )
+            }
+            item {
                 FscmCard(containerColor = BrandSoft) {
                     SectionHeader(stringResource(R.string.business_recent_scans), "")
                     session.scanItems.take(10).forEach { item ->
                         ScanItemRow(item, onVoid = { viewModel.voidScan(sessionId, item) })
                     }
                     if (session.scanItems.isEmpty()) Text(stringResource(R.string.receiving_no_scan_records), color = InkSoft, modifier = Modifier.padding(vertical = 12.dp))
-                    Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = { viewModel.complete(sessionId) },
-                        enabled = session.scanItems.any { it.status in listOf("normal", "damaged") } && session.status != "completed",
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(stringResource(R.string.receiving_finish))
-                    }
                 }
             }
         } else if (state.loading) {
             item { LinearLoadingCard(stringResource(R.string.receiving_loading_detail)) }
         }
-    }
-    state.preview?.let { preview ->
-        AlertDialog(
-            onDismissRequest = viewModel::clearPreview,
-            title = { Text(preview.boxNo.ifBlank { preview.labelCode.ifBlank { stringResource(R.string.receiving_label_result) } }) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row {
-                        Text(preview.skuCode.ifBlank { "-" }, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
-                        StatusChip(if (state.duplicate) stringResource(R.string.status_duplicate) else localizedStatusText(preview.status), if (state.duplicate) Danger else Success)
-                    }
-                    Text(
-                        preview.skuName.ifBlank {
-                            preview.productName.ifBlank {
-                                if (preview.localFallback) stringResource(R.string.business_offline_confirm_pending) else preview.exceptionReason
-                            }
-                        },
-                        color = InkSoft,
-                    )
-                    OutlinedTextField(
-                        value = exceptionQty,
-                        onValueChange = { exceptionQty = it.filter(Char::isDigit) },
-                        label = { Text(stringResource(R.string.receiving_exception_quantity)) },
-                        singleLine = true,
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.confirm(sessionId)
-                        scanCode = ""
-                    },
-                    enabled = !state.duplicate,
-                ) { Text(stringResource(R.string.scan_receiving)) }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = viewModel::clearPreview) { Text(stringResource(R.string.common_cancel)) }
-                    TextButton(
-                        onClick = {
-                            viewModel.confirm(sessionId, damaged = true, actualQty = exceptionQty.toIntOrNull() ?: 0)
-                            scanCode = ""
-                        },
-                        enabled = !state.duplicate,
-                    ) { Text(stringResource(R.string.receiving_exception)) }
-                }
-            },
-        )
     }
 }
 
@@ -2231,6 +2754,9 @@ private fun ScanItemRow(item: ReceivingScanItem, onVoid: () -> Unit) {
     ) {
         Column(Modifier.weight(1f)) {
             Text(item.boxNo.ifBlank { item.labelCode.ifBlank { item.boxUid } }, color = InkStrong, fontWeight = FontWeight.Bold)
+            if (item.rawCode.isNotBlank() && !item.rawCode.equals(item.labelCode, ignoreCase = true)) {
+                Text(item.rawCode, color = BrandDeep, style = MaterialTheme.typography.labelSmall)
+            }
             Text(stringResource(R.string.receiving_pieces_per_box, item.skuCode.ifBlank { "-" }, item.boxQty.takeIf { it > 0 } ?: item.qtyPerCarton), color = InkSoft, style = MaterialTheme.typography.labelMedium)
         }
         StatusChip(localizedStatusText(item.status), if (item.status == "normal") Success else Warning)
@@ -2323,6 +2849,7 @@ internal fun localAppTitleResource(key: String): Int? = when (key) {
     "central_receiving" -> R.string.local_app_central_receiving_title
     "profit" -> R.string.local_app_profit_title
     "product_management" -> R.string.local_app_product_management_title
+    "product_counting" -> R.string.local_app_product_counting_title
     "box_labels", "carton_management" -> R.string.local_app_box_labels_title
     "supplier_orders" -> R.string.local_app_supplier_orders_title
     "purchase_approvals" -> R.string.local_app_purchase_approvals_title
@@ -2343,6 +2870,7 @@ private fun localAppDescriptionResource(key: String): Int? = when (key) {
     "central_receiving" -> R.string.local_app_central_receiving_description
     "profit" -> R.string.local_app_profit_description
     "product_management" -> R.string.local_app_product_management_description
+    "product_counting" -> R.string.local_app_product_counting_description
     "box_labels", "carton_management" -> R.string.local_app_box_labels_description
     "supplier_orders" -> R.string.local_app_supplier_orders_description
     "purchase_approvals" -> R.string.local_app_purchase_approvals_description
@@ -2571,8 +3099,16 @@ private fun openAppEntry(
         onOpenFeature(FeatureRoute.Profit)
         true
     }
-    "receiving", "central_receiving" -> {
+    "supplier_orders" -> {
+        onOpenFeature(FeatureRoute.SupplierOrders)
+        true
+    }
+    "receiving" -> {
         onOpenFeature(FeatureRoute.ReceivingList)
+        true
+    }
+    "central_receiving" -> {
+        onOpenFeature(FeatureRoute.CentralReceivingList)
         true
     }
     "inbound_management" -> {
@@ -2581,6 +3117,10 @@ private fun openAppEntry(
     }
     "product_management" -> {
         onOpenFeature(FeatureRoute.ProductManagement)
+        true
+    }
+    "product_counting" -> {
+        onOpenFeature(FeatureRoute.ProductCountingList)
         true
     }
     "box_labels", "carton_management" -> {
@@ -2676,7 +3216,7 @@ private fun SkuSearchDetailScreen(
         LabelPrintDialog(
             state = printState,
             onDismiss = viewModel::closePrintDialog,
-            onSelectNode = viewModel::selectPrintNode,
+            onSelectOption = viewModel::selectPrintOption,
             onChangeCopies = viewModel::changePrintCopies,
             onPrefixChange = viewModel::setPrintPrefix,
             onSubmit = viewModel::submitPrint,
@@ -2688,7 +3228,7 @@ private fun SkuSearchDetailScreen(
 private fun LabelPrintDialog(
     state: LabelPrintUiState,
     onDismiss: () -> Unit,
-    onSelectNode: (Long) -> Unit,
+    onSelectOption: (String) -> Unit,
     onChangeCopies: (Int) -> Unit,
     onPrefixChange: (String) -> Unit,
     onSubmit: () -> Unit,
@@ -2706,25 +3246,25 @@ private fun LabelPrintDialog(
                             Text(stringResource(R.string.device_loading_nodes), color = InkSoft)
                         }
                     }
-                    state.nodes.isNotEmpty() -> {
+                    state.options.isNotEmpty() -> {
                         Text(stringResource(R.string.device_print_node), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                        state.nodes.forEach { option ->
+                        state.options.forEach { option ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable(enabled = !state.submitting) { onSelectNode(option.node.id) }
+                                    .clickable(enabled = !state.submitting) { onSelectOption(option.selectionKey) }
                                     .padding(vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 RadioButton(
-                                    selected = state.selectedNodeId == option.node.id,
-                                    onClick = { onSelectNode(option.node.id) },
+                                    selected = state.selectedOptionKey == option.selectionKey,
+                                    onClick = { onSelectOption(option.selectionKey) },
                                     enabled = !state.submitting,
                                 )
                                 Column(Modifier.weight(1f)) {
                                     Text(option.node.nodeName, fontWeight = FontWeight.Bold, color = InkStrong)
                                     Text(
-                                        "${option.template.name} · ${option.template.printerName}",
+                                        "${option.template.displayName()} · ${option.template.printerName}",
                                         color = InkSoft,
                                         style = MaterialTheme.typography.labelSmall,
                                         maxLines = 1,
@@ -2764,7 +3304,7 @@ private fun LabelPrintDialog(
         confirmButton = {
             Button(
                 onClick = onSubmit,
-                enabled = state.selectedNodeId != null && !state.loadingNodes && !state.submitting,
+                enabled = state.selectedOptionKey != null && !state.loadingNodes && !state.submitting,
             ) {
                 if (state.submitting) {
                     CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
@@ -2862,7 +3402,7 @@ private fun CartonManagementScreen(
                     },
                     modifier = Modifier.fillMaxSize(),
                     showSelectionDialogForMultiple = true,
-                    preferredBarcodeMatcher = ::isLikelyBoxLabelQr,
+                    preferredBarcodeMatcher = viewModel::isKnownBoxLabelCode,
                     preferredBarcodeWaitMillis = 800L,
                     noPreferredBarcodeTitle = stringResource(R.string.box_label_scan_not_detected),
                     noPreferredBarcodePrompt = stringResource(R.string.box_label_scan_retry_prompt),
@@ -2899,6 +3439,16 @@ private fun CartonManagementScreen(
                             color = InkStrong,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    state.boxLabel?.let { label ->
+                        BoxMarkPrintAction(
+                            label = label,
+                            loadingOptions = state.loadingPrintOptions,
+                            submitting = state.printSubmitting,
+                            printMessage = state.printMessage,
+                            printError = state.printError,
+                            onPrint = viewModel::requestBoxMarkPrint,
                         )
                     }
                 } else {
@@ -2949,14 +3499,15 @@ private fun CartonManagementScreen(
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         keyboardActions = KeyboardActions(onSearch = { doResolve() }),
                     )
-                    Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = { doResolve() },
-                        enabled = scanCode.isNotBlank() && !state.loading,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                    ) {
-                        Text(stringResource(if (state.loading) R.string.device_querying else R.string.device_query_now))
+                    state.boxLabel?.let { label ->
+                        BoxMarkPrintAction(
+                            label = label,
+                            loadingOptions = state.loadingPrintOptions,
+                            submitting = state.printSubmitting,
+                            printMessage = state.printMessage,
+                            printError = state.printError,
+                            onPrint = viewModel::requestBoxMarkPrint,
+                        )
                     }
                 }
             }
@@ -3001,10 +3552,6 @@ private fun CartonManagementScreen(
                     onOpenSupplierOrder = { onNavigate(FeatureRoute.SupplierOrderDetail(it)) },
                     onOpenCentralReceipt = { onNavigate(FeatureRoute.CentralReceivingDetail(it)) },
                     onOpenReceivingSession = { onNavigate(FeatureRoute.ReceivingDetail(it)) },
-                    onPrintBoxMark = viewModel::requestBoxMarkPrint,
-                    printSubmitting = state.printSubmitting || state.loadingPrintOptions,
-                    printMessage = state.printMessage,
-                    printError = state.printError,
                 )
             }
         }
@@ -3025,6 +3572,54 @@ private fun CartonManagementScreen(
             onConfirm = viewModel::confirmBoxMarkPrint,
             onDismiss = viewModel::dismissBoxMarkPrintDialog,
         )
+    }
+}
+
+@Composable
+private fun BoxMarkPrintAction(
+    label: BoxLabel,
+    loadingOptions: Boolean,
+    submitting: Boolean,
+    printMessage: UiText?,
+    printError: UiText?,
+    onPrint: () -> Unit,
+) {
+    val printAvailability = label.boxMarkPrintAvailability()
+    val printEnabled = printAvailability == BoxMarkPrintAvailability.Ready
+    Spacer(Modifier.height(12.dp))
+    Button(
+        onClick = onPrint,
+        enabled = printEnabled && !submitting && !loadingOptions,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+    ) {
+        if (submitting || loadingOptions) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.onPrimary,
+            )
+        } else {
+            Icon(Icons.Rounded.Print, contentDescription = null, modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(stringResource(if (loadingOptions) R.string.device_loading_box_mark_nodes else R.string.device_print_box_mark))
+    }
+    if (!printEnabled) {
+        Text(
+            stringResource(
+                printAvailability.messageResource(),
+            ),
+            modifier = Modifier.padding(top = 6.dp),
+            color = Warning,
+            style = MaterialTheme.typography.labelSmall,
+        )
+    }
+    printMessage?.let {
+        Text(it.resolve(), modifier = Modifier.padding(top = 8.dp), color = Success, style = MaterialTheme.typography.bodySmall)
+    }
+    printError?.let {
+        Text(it.resolve(), modifier = Modifier.padding(top = 8.dp), color = Danger, style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -3061,6 +3656,14 @@ private fun BoxLabelDetailCard(
         Spacer(Modifier.height(16.dp))
 
         CopyableDetailItem(stringResource(R.string.receiving_label_code), label.labelCode)
+        if (label.jifengBoxNo.isNotBlank()) {
+            CopyableDetailItem(stringResource(R.string.device_jifeng_box_label), label.jifengBoxNo, clipboardManager)
+            CopyableDetailItem(
+                stringResource(R.string.device_supplier_box_label),
+                label.supplierLabelCode.ifBlank { label.labelCode },
+                clipboardManager,
+            )
+        }
         if (label.boxNo.isNotBlank() && label.boxNo != label.labelCode) {
             DetailItem(stringResource(R.string.device_box_number), label.boxNo)
         }
@@ -3087,6 +3690,54 @@ private fun BoxLabelDetailCard(
                 Text("⚠️ $warning", color = Danger, style = MaterialTheme.typography.labelSmall)
             }
         }
+        if (label.localFallback && label.resolvedVia == "jifeng_mapping") {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                stringResource(R.string.device_box_label_mapping_offline_warning),
+                color = Danger,
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+
+        onPrintBoxMark?.let { print ->
+            val printAvailability = label.boxMarkPrintAvailability()
+            val printEnabled = printAvailability == BoxMarkPrintAvailability.Ready
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = print,
+                enabled = printEnabled && !printSubmitting,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                if (printSubmitting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    Icon(Icons.Rounded.Print, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(if (printSubmitting) R.string.device_loading_box_mark_nodes else R.string.device_print_box_mark))
+            }
+            if (!printEnabled) {
+                Text(
+                    stringResource(
+                        printAvailability.messageResource(),
+                    ),
+                    modifier = Modifier.padding(top = 6.dp),
+                    color = Warning,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+            printMessage?.let {
+                Text(it.resolve(), modifier = Modifier.padding(top = 8.dp), color = Success, style = MaterialTheme.typography.bodySmall)
+            }
+            printError?.let {
+                Text(it.resolve(), modifier = Modifier.padding(top = 8.dp), color = Danger, style = MaterialTheme.typography.bodySmall)
+            }
+        }
 
         Spacer(Modifier.height(16.dp))
         Text(stringResource(R.string.device_related_documents), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = InkStrong)
@@ -3110,50 +3761,15 @@ private fun BoxLabelDetailCard(
             centralRef,
             centralRef?.id?.takeIf { it > 0 }?.let { id -> onOpenCentralReceipt?.let { open -> { open(id) } } },
         )
-
-        onPrintBoxMark?.let { print ->
-            val printEnabled = !label.localFallback && label.printable && label.id > 0 && label.printSnapshot != null
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = print,
-                enabled = printEnabled && !printSubmitting,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(8.dp),
-            ) {
-                if (printSubmitting) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                    )
-                } else {
-                    Icon(Icons.Rounded.Print, contentDescription = null, modifier = Modifier.size(18.dp))
-                }
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(if (printSubmitting) R.string.device_loading_box_mark_nodes else R.string.device_print_box_mark))
-            }
-            if (!printEnabled) {
-                Text(
-                    stringResource(
-                        when {
-                            label.localFallback -> R.string.device_box_mark_offline_disabled
-                            !label.printable -> R.string.device_box_mark_not_printable
-                            else -> R.string.device_box_mark_snapshot_missing
-                        },
-                    ),
-                    modifier = Modifier.padding(top = 6.dp),
-                    color = Warning,
-                    style = MaterialTheme.typography.labelSmall,
-                )
-            }
-            printMessage?.let {
-                Text(it.resolve(), modifier = Modifier.padding(top = 8.dp), color = Success, style = MaterialTheme.typography.bodySmall)
-            }
-            printError?.let {
-                Text(it.resolve(), modifier = Modifier.padding(top = 8.dp), color = Danger, style = MaterialTheme.typography.bodySmall)
-            }
-        }
     }
+}
+
+@StringRes
+private fun BoxMarkPrintAvailability.messageResource(): Int = when (this) {
+    BoxMarkPrintAvailability.OfflineFallback -> R.string.device_box_mark_offline_disabled
+    BoxMarkPrintAvailability.NotPrintable -> R.string.device_box_mark_not_printable
+    BoxMarkPrintAvailability.SnapshotMissing -> R.string.device_box_mark_snapshot_missing
+    BoxMarkPrintAvailability.Ready -> error("Printable box mark does not have a disabled message")
 }
 
 @Composable
@@ -3188,7 +3804,7 @@ private fun BoxMarkPrintDialog(
                         Column(Modifier.weight(1f)) {
                             Text(option.node.nodeName.ifBlank { option.node.nodeId }, fontWeight = FontWeight.Bold, color = InkStrong)
                             Text(
-                                "${option.template.name} · ${option.template.printerName}",
+                                "${option.template.displayName()} · ${option.template.printerName}",
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.labelSmall,
@@ -3462,6 +4078,7 @@ private fun LabelPrintScreen(
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val selectedOption = state.options.firstOrNull { it.selectionKey == state.selectedOptionKey }
     var fieldValue by remember { mutableStateOf(TextFieldValue()) }
     var showCamera by remember { mutableStateOf(false) }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
@@ -3480,11 +4097,9 @@ private fun LabelPrintScreen(
             )
         }
     }
-    LaunchedEffect(intentMode) {
-        if (intentMode) {
-            focusManager.clearFocus(force = true)
-            keyboardController?.hide()
-        }
+    LaunchedEffect(Unit) {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
     }
 
     if (showCamera) {
@@ -3505,6 +4120,19 @@ private fun LabelPrintScreen(
         }
     }
 
+    if (state.confirmationVisible && selectedOption != null) {
+        LabelPrintConfirmationDialog(
+            option = selectedOption,
+            content = state.content,
+            copies = state.copies,
+            submitting = state.submitting,
+            error = state.error,
+            onCopiesChange = viewModel::changeCopies,
+            onConfirm = viewModel::submit,
+            onDismiss = viewModel::dismissConfirmation,
+        )
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(20.dp),
@@ -3520,23 +4148,20 @@ private fun LabelPrintScreen(
                 OutlinedTextField(
                     value = fieldValue,
                     onValueChange = { value ->
-                        if (!intentMode) {
-                            val normalized = value.text.normalizeBarcode().take(512)
-                            fieldValue = if (value.text.hasBarcodeTerminator()) {
-                                TextFieldValue(normalized, selection = TextRange(0, normalized.length))
-                            } else {
-                                value.copy(
-                                    text = normalized,
-                                    selection = TextRange(value.selection.end.coerceIn(0, normalized.length)),
-                                )
-                            }
-                            viewModel.updateContent(normalized)
+                        val normalized = value.text.normalizeBarcode().take(512)
+                        fieldValue = if (value.text.hasBarcodeTerminator()) {
+                            TextFieldValue(normalized, selection = TextRange(0, normalized.length))
+                        } else {
+                            value.copy(
+                                text = normalized,
+                                selection = TextRange(value.selection.end.coerceIn(0, normalized.length)),
+                            )
                         }
+                        viewModel.updateContent(normalized)
                     },
                     modifier = Modifier
                         .fillMaxWidth(),
-                    readOnly = intentMode,
-                    placeholder = { Text(stringResource(if (intentMode) R.string.device_waiting_broadcast else R.string.device_enter_scan_value)) },
+                    placeholder = { Text(stringResource(R.string.device_enter_scan_value)) },
                     leadingIcon = { Icon(Icons.Rounded.QrCode, contentDescription = null, tint = BrandMain) },
                     trailingIcon = {
                         Row {
@@ -3586,108 +4211,181 @@ private fun LabelPrintScreen(
                 }
             }
         }
-        items(state.options, key = { it.selectionKey }) { option ->
-            val selected = state.selectedOptionKey == option.selectionKey
-            FscmCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = !state.submitting) { viewModel.selectOption(option.selectionKey) },
-                padding = 14,
-                containerColor = if (selected) BrandSoft else SurfaceRaised,
+        item {
+            val rowCount = labelPrintTemplateGridRows(state.options.size)
+            val tileHeight = 148.dp
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.height(if (rowCount == 0) 0.dp else tileHeight * rowCount + 8.dp * (rowCount - 1)),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                userScrollEnabled = false,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(
-                        selected = selected,
-                        onClick = { viewModel.selectOption(option.selectionKey) },
+                items(state.options, key = { it.selectionKey }) { option ->
+                    LabelPrintTemplateTile(
+                        option = option,
+                        selected = state.selectedOptionKey == option.selectionKey,
                         enabled = !state.submitting,
+                        modifier = Modifier.height(tileHeight),
+                        onClick = { viewModel.selectOption(option.selectionKey) },
                     )
-                    Column(Modifier.weight(1f)) {
-                        Text(option.template.name.ifBlank { option.template.code }, color = InkStrong, fontWeight = FontWeight.Bold)
-                        Text(
-                            "${option.node.nodeName} · ${option.template.printerName}",
-                            color = InkSoft,
-                            style = MaterialTheme.typography.labelMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            "${option.template.widthMM} × ${option.template.heightMM} mm",
-                            color = InkSoft,
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    }
-                    StatusChip(stringResource(if (option.localReachable) R.string.device_local_print else R.string.device_remote_queue), if (option.localReachable) Success else BrandMain)
                 }
             }
         }
 
-        item {
-            FscmCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.device_print_copies), modifier = Modifier.weight(1f), color = InkStrong, fontWeight = FontWeight.Bold)
-                    IconButton(onClick = { viewModel.changeCopies(-1) }, enabled = state.copies > 1 && !state.submitting) {
-                        Icon(Icons.Rounded.Remove, contentDescription = stringResource(R.string.device_decrease_copies))
-                    }
-                    Text(state.copies.toString(), modifier = Modifier.width(36.dp), color = InkStrong, textAlign = androidx.compose.ui.text.style.TextAlign.Center, fontWeight = FontWeight.Black)
-                    IconButton(onClick = { viewModel.changeCopies(1) }, enabled = state.copies < 100 && !state.submitting) {
-                        Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.device_increase_copies))
-                    }
-                }
-                state.message?.let {
-                    Spacer(Modifier.height(8.dp))
-                    Text(it.resolve(), color = Success, fontWeight = FontWeight.Bold)
-                }
-                state.error?.let {
-                    Spacer(Modifier.height(8.dp))
-                    Text(it.resolve(), color = Danger)
-                }
-                Spacer(Modifier.height(12.dp))
-                Button(
-                    onClick = viewModel::submit,
-                    enabled = state.content.isNotBlank() && state.selectedOptionKey != null && !state.submitting,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp),
-                ) {
-                    if (state.submitting) {
-                        CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
-                    } else {
-                        Icon(Icons.Rounded.Print, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.device_dispatch_print))
-                    }
-                }
+        state.message?.let { message ->
+            item { Text(message.resolve(), color = Success, fontWeight = FontWeight.Bold) }
+        }
+        if (!state.confirmationVisible) {
+            state.error?.let { error ->
+                item { Text(error.resolve(), color = Danger) }
             }
         }
     }
 }
 
 @Composable
+private fun LabelPrintTemplateTile(
+    option: EdgePrintNodeOption,
+    selected: Boolean,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = if (selected) BrandSoft else SurfaceRaised),
+        border = BorderStroke(1.dp, if (selected) BrandMain else StrokeSoft),
+    ) {
+        Column(Modifier.fillMaxSize().padding(12.dp)) {
+            Box(
+                modifier = Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)).background(BrandMain),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Rounded.Print, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.height(7.dp))
+            Text(
+                option.template.displayName(),
+                color = InkStrong,
+                fontWeight = FontWeight.Black,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                "${option.template.widthMM} × ${option.template.heightMM} mm · ${stringResource(labelLayoutResource(option.template.layoutStyle))}",
+                color = InkSoft,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    option.node.nodeName,
+                    modifier = Modifier.weight(1f),
+                    color = InkSoft,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    stringResource(if (option.localReachable) R.string.device_local_print else R.string.device_remote_queue),
+                    color = if (option.localReachable) Success else BrandMain,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LabelPrintConfirmationDialog(
+    option: EdgePrintNodeOption,
+    content: String,
+    copies: Int,
+    submitting: Boolean,
+    error: UiText?,
+    onCopiesChange: (Int) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!submitting) onDismiss() },
+        title = { Text(stringResource(R.string.device_confirm_label_print), fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(option.template.displayName(), color = InkStrong, fontWeight = FontWeight.Bold)
+                Text("${option.node.nodeName} · ${option.template.printerName}", color = InkSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(stringResource(labelLayoutResource(option.template.layoutStyle)), color = InkSoft)
+                Text(content, color = InkStrong, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.device_print_copies), modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                    IconButton(onClick = { onCopiesChange(-1) }, enabled = copies > 1 && !submitting) {
+                        Icon(Icons.Rounded.Remove, contentDescription = stringResource(R.string.device_decrease_copies))
+                    }
+                    Text(copies.toString(), modifier = Modifier.width(36.dp), textAlign = TextAlign.Center, fontWeight = FontWeight.Black)
+                    IconButton(onClick = { onCopiesChange(1) }, enabled = copies < 100 && !submitting) {
+                        Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.device_increase_copies))
+                    }
+                }
+                error?.let { Text(it.resolve(), color = Danger) }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onConfirm, enabled = !submitting) {
+                if (submitting) {
+                    CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Rounded.Print, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.device_dispatch_print))
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_cancel)) }
+        },
+    )
+}
+
+@StringRes
+private fun labelLayoutResource(layoutStyle: String): Int = when (layoutStyle) {
+    "qr_left_text_right" -> R.string.device_label_layout_horizontal
+    "location_code_quad_qr" -> R.string.device_label_layout_location
+    else -> R.string.device_label_layout_stacked
+}
+
+private fun EdgePrintTemplate.displayName(): String {
+    val templateName = name.ifBlank { code }
+    return if (number.isBlank()) templateName else "$number · $templateName"
+}
+
+internal fun labelPrintTemplateGridRows(templateCount: Int): Int = (templateCount.coerceAtLeast(0) + 1) / 2
+
+@Composable
 private fun EdgeNodesScreen(
+    onOpenDetail: (Long) -> Unit,
     viewModel: EdgeNodesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val selectedNode = state.nodes.firstOrNull { it.identityKey == state.selectedNodeKey }
-
+    val nodes = state.nodes.sortedByDescending { it.node.id == state.defaultEdgePrintNodeId }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(stringResource(R.string.device_edge_service_nodes), color = InkStrong, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        stringResource(R.string.device_edge_summary, state.nodes.size, state.nodes.count { it.localReachable }),
-                        color = InkSoft,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                    Text(stringResource(R.string.device_edge_summary, nodes.size, nodes.count { it.localReachable }), color = InkSoft, style = MaterialTheme.typography.bodySmall)
                 }
                 IconButton(onClick = viewModel::load, enabled = !state.loading) {
-                    if (state.loading && state.nodes.isNotEmpty()) {
+                    if (state.loading && nodes.isNotEmpty()) {
                         CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else {
                         Icon(Icons.Rounded.Refresh, contentDescription = stringResource(R.string.device_refresh_nodes))
@@ -3695,259 +4393,102 @@ private fun EdgeNodesScreen(
                 }
             }
         }
-        item {
-            SkuQuickPrintSettings(
-                options = state.quickPrintOptions,
-                defaultNodeId = state.defaultSkuPrintNodeId,
-                labelPrefix = state.skuLabelPrefix,
-                onSelectNode = viewModel::selectQuickPrintNode,
-                onPrefixChange = viewModel::updateSkuLabelPrefix,
+        if (state.loading && nodes.isEmpty()) item { LinearLoadingCard(stringResource(R.string.device_loading_edge_nodes)) }
+        state.error?.let { error -> item { FscmErrorCard(error, onRetry = viewModel::load) } }
+        items(nodes, key = { it.identityKey }) { status ->
+            EdgeNodeListCard(
+                status = status,
+                isDefault = status.node.id == state.defaultEdgePrintNodeId,
+                onSetDefault = { viewModel.setDefaultNode(status.node.id) },
+                onOpenDetail = { onOpenDetail(status.node.id) },
             )
         }
-        item {
-            BoxMarkQuickPrintSettings(
-                options = state.boxMarkOptions,
-                defaultNodeId = state.defaultBoxMarkPrintNodeId,
-                onSelectNode = viewModel::selectBoxMarkPrintNode,
-            )
-        }
-        if (state.loading && state.nodes.isEmpty()) {
-            item { LinearLoadingCard(stringResource(R.string.device_loading_edge_nodes)) }
-        }
-        state.error?.let { error ->
-            item { FscmErrorCard(error, onRetry = viewModel::load) }
-        }
-        items(state.nodes, key = { it.identityKey }) { status ->
-            PrintNodeStatusCard(status, onClick = { viewModel.selectNode(status.identityKey) })
-        }
-        if (!state.loading && state.error == null && state.nodes.isEmpty()) {
-            item { EmptyCard(stringResource(R.string.device_no_edge_nodes)) }
-        }
-    }
-
-    selectedNode?.let { status ->
-        PrintNodeDetailsDialog(status, onDismiss = viewModel::closeNodeDetails)
+        if (!state.loading && state.error == null && nodes.isEmpty()) item { EmptyCard(stringResource(R.string.device_no_edge_nodes)) }
     }
 }
 
 @Composable
-private fun SkuQuickPrintSettings(
-    options: List<com.google.samples.apps.nowinandroid.fscm.data.EdgePrintNodeOption>,
-    defaultNodeId: Long?,
-    labelPrefix: String,
-    onSelectNode: (Long) -> Unit,
-    onPrefixChange: (String) -> Unit,
-) {
-    val defaultNodeAvailable = options.any { it.node.id == defaultNodeId }
-    FscmCard(modifier = Modifier.fillMaxWidth()) {
-        Text(stringResource(R.string.device_sku_quick_print), color = InkStrong, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(4.dp))
-        Text(stringResource(R.string.device_quick_print_description), color = InkSoft, style = MaterialTheme.typography.bodySmall)
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
-            value = labelPrefix,
-            onValueChange = onPrefixChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text(stringResource(R.string.device_label_prefix)) },
-            supportingText = { Text(stringResource(R.string.device_label_preview, labelPrefix)) },
-            singleLine = true,
-        )
-        Spacer(Modifier.height(12.dp))
-        Text(stringResource(R.string.device_default_print_node), color = InkStrong, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
-        when {
-            options.isEmpty() -> Text(stringResource(R.string.device_no_print_nodes), color = Warning, style = MaterialTheme.typography.bodySmall)
-            defaultNodeId != null && !defaultNodeAvailable -> {
-                Text(stringResource(R.string.device_saved_node_unavailable), color = Danger, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        options.forEach { option ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onSelectNode(option.node.id) }
-                    .padding(vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RadioButton(
-                    selected = option.node.id == defaultNodeId,
-                    onClick = { onSelectNode(option.node.id) },
-                )
-                Column(Modifier.weight(1f)) {
-                    Text(option.node.nodeName.ifBlank { option.node.nodeId }, color = InkStrong, fontWeight = FontWeight.Bold)
-                    Text(
-                        "${option.template.name} · ${option.template.printerName}",
-                        color = InkSoft,
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                StatusChip(stringResource(if (option.localReachable) R.string.device_local_print else R.string.device_remote_queue), if (option.localReachable) Success else BrandMain)
-            }
-        }
-    }
-}
-
-@Composable
-private fun BoxMarkQuickPrintSettings(
-    options: List<com.google.samples.apps.nowinandroid.fscm.data.EdgePrintNodeOption>,
-    defaultNodeId: Long?,
-    onSelectNode: (Long) -> Unit,
-) {
-    val defaultNodeAvailable = options.any { it.node.id == defaultNodeId }
-    FscmCard(modifier = Modifier.fillMaxWidth()) {
-        Text(stringResource(R.string.device_box_mark_quick_print), color = InkStrong, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(4.dp))
-        Text(stringResource(R.string.device_box_mark_quick_print_description), color = InkSoft, style = MaterialTheme.typography.bodySmall)
-        Spacer(Modifier.height(12.dp))
-        Text(stringResource(R.string.device_box_mark_default_node), color = InkStrong, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
-        when {
-            options.isEmpty() -> Text(stringResource(R.string.device_no_box_mark_nodes), color = Warning, style = MaterialTheme.typography.bodySmall)
-            defaultNodeId != null && !defaultNodeAvailable -> {
-                Text(stringResource(R.string.device_saved_node_unavailable), color = Danger, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        options.forEach { option ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onSelectNode(option.node.id) }
-                    .padding(vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RadioButton(
-                    selected = option.node.id == defaultNodeId,
-                    onClick = { onSelectNode(option.node.id) },
-                )
-                Column(Modifier.weight(1f)) {
-                    Text(option.node.nodeName.ifBlank { option.node.nodeId }, color = InkStrong, fontWeight = FontWeight.Bold)
-                    Text(
-                        "${option.template.name} · ${option.template.printerName}",
-                        color = InkSoft,
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                StatusChip(stringResource(if (option.localReachable) R.string.device_local_print else R.string.device_remote_queue), if (option.localReachable) Success else BrandMain)
-            }
-        }
-    }
-}
-
-@Composable
-private fun PrintNodeStatusCard(
+private fun EdgeNodeListCard(
     status: EdgePrintNodeStatus,
-    onClick: () -> Unit,
+    isDefault: Boolean,
+    onSetDefault: () -> Unit,
+    onOpenDetail: () -> Unit,
 ) {
     val node = status.node
-    val readyPrinters = node.printInventory.printers.count { it.status == "ready" }
-    val availableTemplates = node.printInventory.templates.count { it.available }
-    val stateLabel = when {
-        status.localReachable -> stringResource(R.string.device_local_reachable)
-        node.status == "online" -> stringResource(R.string.device_remote_available)
-        else -> stringResource(R.string.device_offline)
-    }
-    val stateColor = when {
-        status.localReachable -> Success
-        node.status == "online" -> BrandMain
-        else -> InkSoft
-    }
-
-    FscmCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-    ) {
+    FscmCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenDetail)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(node.nodeName.ifBlank { node.nodeId }, color = InkStrong, fontWeight = FontWeight.Black)
                 Text(node.nodeId, color = InkSoft, style = MaterialTheme.typography.labelMedium)
             }
-            StatusChip(stateLabel, stateColor)
+            StatusChip(
+                stringResource(if (status.localReachable) R.string.device_local_reachable else R.string.device_remote_available),
+                if (status.localReachable) Success else BrandMain,
+            )
+            if (isDefault) StatusChip(stringResource(R.string.device_default_node), BrandMain)
             Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = InkSoft)
         }
-        Spacer(Modifier.height(12.dp))
-        Text(
-            stringResource(R.string.device_printer_template_summary, readyPrinters, node.printInventory.printers.size, availableTemplates, node.printInventory.templates.size),
-            color = InkStrong,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            node.lanBaseUrl.ifBlank { stringResource(R.string.device_lan_unconfigured) },
-            color = InkSoft,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Spacer(Modifier.height(8.dp))
+        Text(stringResource(R.string.device_printer_template_summary, node.printInventory.printers.count { it.status == "ready" }, node.printInventory.printers.size, node.printInventory.templates.count { it.available }, node.printInventory.templates.size), color = InkSoft, style = MaterialTheme.typography.bodySmall)
+        TextButton(onClick = onSetDefault, enabled = !isDefault) { Text(stringResource(R.string.device_set_default_node)) }
     }
 }
 
 @Composable
-private fun PrintNodeDetailsDialog(
-    status: EdgePrintNodeStatus,
-    onDismiss: () -> Unit,
+private fun EdgeNodeDetailScreen(
+    nodeId: Long,
+    viewModel: EdgeNodesViewModel = hiltViewModel(),
 ) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val status = state.nodes.firstOrNull { it.node.id == nodeId }
+    if (status == null) {
+        EmptyCard(stringResource(R.string.device_no_edge_nodes))
+        return
+    }
     val node = status.node
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(node.nodeName.ifBlank { node.nodeId }, fontWeight = FontWeight.Bold) },
-        text = {
-            LazyColumn(
-                modifier = Modifier.heightIn(max = 520.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                item {
-                    DiagnosticText(stringResource(R.string.device_node_id), node.nodeId)
-                    DiagnosticText(stringResource(R.string.device_lan_address), node.lanBaseUrl.ifBlank { stringResource(R.string.common_unavailable) })
-                    DiagnosticText(stringResource(R.string.device_connection_type), stringResource(if (status.localReachable) R.string.device_local_connection else R.string.device_backend_queue))
-                    DiagnosticText(stringResource(R.string.device_last_online), shortTime(node.lastSeenAt).ifBlank { "-" })
-                }
-                item {
-                    Text(stringResource(R.string.device_printer), color = InkStrong, fontWeight = FontWeight.Black)
-                }
-                if (node.printInventory.printers.isEmpty()) {
-                    item { Text(stringResource(R.string.device_no_printer), color = InkSoft) }
-                } else {
-                    items(node.printInventory.printers, key = { it.name }) { printer ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.Print, contentDescription = null, tint = BrandMain, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(printer.name, color = InkStrong, fontWeight = FontWeight.Bold)
-                                Text(stringResource(if (printer.isDefault) R.string.device_default_printer else R.string.device_available_printer), color = InkSoft, style = MaterialTheme.typography.labelSmall)
-                            }
-                            StatusChip(stringResource(if (printer.status == "ready") R.string.device_ready else R.string.common_unavailable), if (printer.status == "ready") Success else Danger)
+    val isDefault = node.id == state.defaultEdgePrintNodeId
+    val skuTemplates = state.quickPrintOptions.filter { it.node.id == node.id }
+    val boxTemplates = state.boxMarkOptions.filter { it.node.id == node.id }
+    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            FscmCard(modifier = Modifier.fillMaxWidth()) {
+                Text(node.nodeName.ifBlank { node.nodeId }, color = InkStrong, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleLarge)
+                DiagnosticText(stringResource(R.string.device_node_id), node.nodeId)
+                DiagnosticText(stringResource(R.string.device_lan_address), node.lanBaseUrl.ifBlank { stringResource(R.string.common_unavailable) })
+                DiagnosticText(stringResource(R.string.device_connection_type), stringResource(if (status.localReachable) R.string.device_local_connection else R.string.device_backend_queue))
+                TextButton(onClick = { viewModel.setDefaultNode(node.id) }, enabled = !isDefault) { Text(stringResource(R.string.device_set_default_node)) }
+            }
+        }
+        if (isDefault) {
+            item {
+                FscmCard(modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.device_sku_quick_print), color = InkStrong, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium)
+                    OutlinedTextField(value = state.skuLabelPrefix, onValueChange = viewModel::updateSkuLabelPrefix, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.device_label_prefix)) }, singleLine = true)
+                    skuTemplates.forEach { option ->
+                        Row(Modifier.fillMaxWidth().clickable { viewModel.selectSkuTemplate(node.id, option.template.code) }, verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = option.template.code == state.defaultSkuPrintTemplateCode, onClick = { viewModel.selectSkuTemplate(node.id, option.template.code) })
+                            Text(option.template.displayName(), color = InkStrong, modifier = Modifier.weight(1f))
                         }
                     }
-                }
-                item {
-                    Text(stringResource(R.string.device_label_template), color = InkStrong, fontWeight = FontWeight.Black)
-                }
-                if (node.printInventory.templates.isEmpty()) {
-                    item { Text(stringResource(R.string.device_no_template), color = InkSoft) }
-                } else {
-                    items(node.printInventory.templates, key = { it.code }) { template ->
-                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(template.name.ifBlank { template.code }, modifier = Modifier.weight(1f), color = InkStrong, fontWeight = FontWeight.Bold)
-                                StatusChip(stringResource(if (template.available) R.string.device_printable else R.string.common_unavailable), if (template.available) Success else Danger)
-                            }
-                            Text(template.code, color = InkSoft, style = MaterialTheme.typography.labelSmall)
-                            Text(
-                                "${template.widthMM} × ${template.heightMM} mm  ·  ${template.orientation.ifBlank { stringResource(R.string.device_default_orientation) }}",
-                                color = InkSoft,
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                            Text(stringResource(R.string.device_printer_name, template.printerName.ifBlank { stringResource(R.string.common_unavailable) }), color = InkSoft, style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
+                    if (skuTemplates.isEmpty()) Text(stringResource(R.string.device_no_print_nodes), color = Warning)
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
-    )
+            item {
+                FscmCard(modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.device_box_mark_quick_print), color = InkStrong, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium)
+                    boxTemplates.forEach { option ->
+                        Row(Modifier.fillMaxWidth().clickable { viewModel.selectBoxMarkTemplate(node.id, option.template.code) }, verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = option.template.code == state.defaultBoxMarkPrintTemplateCode, onClick = { viewModel.selectBoxMarkTemplate(node.id, option.template.code) })
+                            Text(option.template.displayName(), color = InkStrong, modifier = Modifier.weight(1f))
+                        }
+                    }
+                    if (boxTemplates.isEmpty()) Text(stringResource(R.string.device_no_box_mark_nodes), color = Warning)
+                }
+            }
+        } else {
+            item { Text(stringResource(R.string.device_node_detail_default_hint), color = InkSoft) }
+        }
+    }
 }
 
 @Composable
@@ -3955,10 +4496,21 @@ private fun PdaSettingsScreen(
     viewModel: PdaSettingsViewModel = hiltViewModel(),
 ) {
     val scannerState by viewModel.scannerState.collectAsStateWithLifecycle()
+    val audioDiagnostics by viewModel.audioDiagnostics.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val diagnosticsTitle = stringResource(R.string.device_pda_diagnostics)
     val diagnosticsCopiedMessage = stringResource(R.string.device_diagnostics_copied)
+
+    LaunchedEffect(Unit) { viewModel.refreshAudioDiagnostics() }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshAudioDiagnostics()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -3985,9 +4537,14 @@ private fun PdaSettingsScreen(
         item {
             ScannerDiagnosticsCard(
                 scannerState = scannerState,
+                audioDiagnostics = audioDiagnostics,
                 onClear = viewModel::clearScannerDiagnostics,
+                onTestSuccess = viewModel::testSuccessFeedback,
+                onTestFailure = viewModel::testFailureFeedback,
                 onCopy = {
-                    clipboardManager.setText(AnnotatedString(scannerState.toDiagnosticText(diagnosticsTitle)))
+                    clipboardManager.setText(
+                        AnnotatedString(scannerState.toDiagnosticText(diagnosticsTitle, audioDiagnostics)),
+                    )
                     Toast.makeText(context, diagnosticsCopiedMessage, Toast.LENGTH_SHORT).show()
                 },
             )
@@ -4071,7 +4628,10 @@ private fun ScannerModeButton(
 @Composable
 private fun ScannerDiagnosticsCard(
     scannerState: ScannerRuntimeState,
+    audioDiagnostics: ScanAudioDiagnostics,
     onClear: () -> Unit,
+    onTestSuccess: () -> Unit,
+    onTestFailure: () -> Unit,
     onCopy: () -> Unit,
 ) {
     val event = scannerState.lastEvent
@@ -4122,6 +4682,48 @@ private fun ScannerDiagnosticsCard(
                 if (scannerState.profile.extraKeys.size > 6) "\n..." else "",
         )
         Spacer(Modifier.height(12.dp))
+        SectionHeader(stringResource(R.string.device_audio_feedback), "")
+        DiagnosticText(
+            stringResource(R.string.device_audio_media_volume),
+            stringResource(R.string.device_audio_volume_value, audioDiagnostics.mediaVolume, audioDiagnostics.mediaVolumeMax),
+        )
+        DiagnosticText(
+            stringResource(R.string.device_audio_notification_volume),
+            stringResource(R.string.device_audio_volume_value, audioDiagnostics.notificationVolume, audioDiagnostics.notificationVolumeMax),
+        )
+        DiagnosticText(
+            stringResource(R.string.device_audio_ringer_mode),
+            stringResource(
+                when (audioDiagnostics.ringerMode) {
+                    AudioManager.RINGER_MODE_SILENT -> R.string.device_audio_ringer_silent
+                    AudioManager.RINGER_MODE_VIBRATE -> R.string.device_audio_ringer_vibrate
+                    else -> R.string.device_audio_ringer_normal
+                },
+            ),
+        )
+        StatusChip(
+            stringResource(if (audioDiagnostics.soundsReady) R.string.device_audio_ready else R.string.device_audio_loading),
+            if (audioDiagnostics.soundsReady) Success else Warning,
+        )
+        DiagnosticText(
+            stringResource(R.string.device_audio_last_playback),
+            stringResource(
+                when (audioDiagnostics.lastPlayback) {
+                    ScanFeedbackPlaybackResult.Loading -> R.string.device_audio_loading
+                    ScanFeedbackPlaybackResult.Playing -> R.string.device_audio_playing
+                    ScanFeedbackPlaybackResult.Failed -> R.string.device_audio_playback_failed
+                },
+            ),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(onClick = onTestSuccess, modifier = Modifier.weight(1f), shape = RoundedCornerShape(8.dp)) {
+                Text(stringResource(R.string.device_audio_test_success))
+            }
+            OutlinedButton(onClick = onTestFailure, modifier = Modifier.weight(1f), shape = RoundedCornerShape(8.dp)) {
+                Text(stringResource(R.string.device_audio_test_failure), color = Danger)
+            }
+        }
+        Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedButton(
                 onClick = onCopy,
@@ -4159,7 +4761,10 @@ private fun DiagnosticText(label: String, value: String) {
     }
 }
 
-private fun ScannerRuntimeState.toDiagnosticText(title: String): String {
+private fun ScannerRuntimeState.toDiagnosticText(
+    title: String,
+    audioDiagnostics: ScanAudioDiagnostics,
+): String {
     val event = lastEvent
     return buildString {
         appendLine(title)
@@ -4176,6 +4781,11 @@ private fun ScannerRuntimeState.toDiagnosticText(title: String): String {
         appendLine("lastError=${lastError.orEmpty()}")
         appendLine("actions=${profile.actions.joinToString(";")}")
         appendLine("extras=${profile.extraKeys.joinToString(";")}")
+        appendLine("mediaVolume=${audioDiagnostics.mediaVolume}/${audioDiagnostics.mediaVolumeMax}")
+        appendLine("notificationVolume=${audioDiagnostics.notificationVolume}/${audioDiagnostics.notificationVolumeMax}")
+        appendLine("ringerMode=${audioDiagnostics.ringerMode}")
+        appendLine("soundsReady=${audioDiagnostics.soundsReady}")
+        appendLine("lastPlayback=${audioDiagnostics.lastPlayback.name}")
     }
 }
 
@@ -4186,9 +4796,11 @@ private fun formatScannerTime(millis: Long): String =
 private fun SkuDetailCard(sku: Sku, onPrint: (() -> Unit)? = null) {
     FscmCard(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(
-                model = sku.thumbnailUrl.ifBlank { sku.imageUrl }.ifBlank { sku.product?.thumbnailUrl ?: "" },
-                contentDescription = null,
+            CatalogAsyncImage(
+                media = sku.catalogMedia,
+                fallbackUrl = sku.thumbnailUrl.ifBlank { sku.imageUrl }
+                    .ifBlank { sku.product?.thumbnailUrl ?: "" },
+                sizePx = 240,
                 modifier = Modifier
                     .size(100.dp)
                     .clip(RoundedCornerShape(8.dp))

@@ -33,6 +33,12 @@
     <string name="no_data">ไม่มีข้อมูล</string>
 
     <string name="login_failed">เข้าสู่ระบบล้มเหลว</string>
+    <string name="login_captcha">รหัสยืนยัน</string>
+    <string name="login_captcha_refresh">รีเฟรชรหัสยืนยัน</string>
+    <string name="login_captcha_refresh_failed">ไม่สามารถรีเฟรชรหัสยืนยันได้</string>
+    <string name="login_captcha_required">กรุณากรอกรหัสยืนยัน</string>
+    <string name="login_security_failed_hint">ป้อนรหัสผ่านผิดติดต่อกัน %1$d ครั้ง เหลือโอกาสอีก %2$d ครั้ง</string>
+    <string name="login_security_locked">ป้อนรหัสผ่านผิดติดต่อกัน %1$d ครั้ง การเข้าสู่ระบบถูกระงับ โปรดลองอีกครั้งใน %2$d วินาที</string>
     <string name="switch_namespace_failed">สลับพื้นที่ทำงานล้มเหลว</string>
     <string name="load_home_failed">ไม่สามารถโหลดหน้าแรกได้</string>
     <string name="no_permission_profit">ไม่มีสิทธิ์สำหรับแผงควบคุมกำไร</string>
@@ -56,4 +62,30 @@
     <string name="language_en">English</string>
     <string name="language_th">ไทย</string>
     <string name="language_my">မြန်မာ</string>
+
+    <string name="app_update">อัปเดตแอป</string>
+    <string name="app_update_current_version">เวอร์ชัน %1$s (%2$d)</string>
+    <string name="app_update_checking">กำลังตรวจสอบอัปเดต&#8230;</string>
+    <string name="app_update_available_title">มีเวอร์ชันใหม่</string>
+    <string name="app_update_required_title">ต้องอัปเดตก่อนใช้งานต่อ</string>
+    <string name="app_update_available_message">เวอร์ชัน %1$s (%2$d) พร้อมดาวน์โหลดแล้ว</string>
+    <string name="app_update_release_notes">รายการอัปเดต</string>
+    <string name="app_update_now">อัปเดตตอนนี้</string>
+    <string name="app_update_later">เตือนภายหลัง</string>
+    <string name="app_update_cancel_download">ยกเลิกการดาวน์โหลด</string>
+    <string name="app_update_downloading">กำลังดาวน์โหลดอัปเดต&#8230;</string>
+    <string name="app_update_download_progress">ดาวน์โหลดแล้ว %1$d%%</string>
+    <string name="app_update_ready">อัปเดตพร้อมติดตั้งแล้ว</string>
+    <string name="app_update_install">ติดตั้ง</string>
+    <string name="app_update_retry">ลองอีกครั้ง</string>
+    <string name="app_update_exit">ออกจากแอป</string>
+    <string name="app_update_latest">คุณใช้เวอร์ชันล่าสุดแล้ว</string>
+    <string name="app_update_check_failed">ไม่สามารถตรวจสอบอัปเดตได้</string>
+    <string name="app_update_download_failed">ดาวน์โหลดอัปเดตไม่สำเร็จ</string>
+    <string name="app_update_verification_failed">ไฟล์ APK ไม่ผ่านการตรวจสอบความปลอดภัย</string>
+    <string name="app_update_install_permission_required">โปรดอนุญาตให้ FSCM ติดตั้งแอปที่ไม่รู้จัก แล้วลองอีกครั้ง</string>
+    <string name="box_label_mapping_cache_miss">ไม่พบรหัสกล่อง Jifeng นี้ในแคช โปรดเชื่อมต่อเครือข่าย อัปเดตการจับคู่ แล้วสแกนอีกครั้ง</string>
+    <string name="device_jifeng_box_label">ฉลากกล่อง Jifeng</string>
+    <string name="device_box_label_mapping_offline_warning">การจับคู่ฉลากกล่อง Jifeng ในเครื่อง ระบบจะตรวจสอบสถานะและเจ้าของอีกครั้งเมื่อออนไลน์</string>
+    <string name="device_supplier_box_label">ฉลากกล่องผู้ผลิต</string>
 </resources>

@@ -61,4 +61,43 @@ class BarcodeCandidateResolverTest {
             resolvePreferredBarcodes(listOf("SKU-1"), isBoxLabel, timedOut = true),
         )
     }
+
+    @Test
+    fun singleNonPreferredCandidate_isAcceptedAfterTimeoutWhenFallbackEnabled() {
+        assertEquals(
+            PreferredBarcodeDecision.Accept(listOf("LOCATION-A-01")),
+            resolvePreferredBarcodes(
+                candidates = listOf("LOCATION-A-01"),
+                preferredMatcher = isBoxLabel,
+                timedOut = true,
+                allowNonPreferredFallback = true,
+            ),
+        )
+    }
+
+    @Test
+    fun multipleNonPreferredCandidates_areSelectableAfterTimeoutWhenFallbackEnabled() {
+        assertEquals(
+            PreferredBarcodeDecision.Accept(listOf("LOCATION-A-01", "LOCATION-A-02")),
+            resolvePreferredBarcodes(
+                candidates = listOf("LOCATION-A-01", "LOCATION-A-02"),
+                preferredMatcher = isBoxLabel,
+                timedOut = true,
+                allowNonPreferredFallback = true,
+            ),
+        )
+    }
+
+    @Test
+    fun preferredCandidate_stillWinsWhenFallbackEnabled() {
+        assertEquals(
+            PreferredBarcodeDecision.Accept(listOf("BOX:1")),
+            resolvePreferredBarcodes(
+                candidates = listOf("LOCATION-A-01", "BOX:1"),
+                preferredMatcher = isBoxLabel,
+                timedOut = true,
+                allowNonPreferredFallback = true,
+            ),
+        )
+    }
 }

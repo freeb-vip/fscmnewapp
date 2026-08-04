@@ -28,6 +28,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -36,14 +37,17 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class LocalInboundSyncScheduler @Inject constructor(
+class LocalInboundSyncScheduler
+@Inject
+constructor(
     @param:ApplicationContext private val context: Context,
 ) {
     fun schedulePeriodic() {
-        val request = PeriodicWorkRequestBuilder<LocalInboundSyncWorker>(15, TimeUnit.MINUTES)
-            .setConstraints(networkConstraints())
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-            .build()
+        val request =
+            PeriodicWorkRequestBuilder<LocalInboundSyncWorker>(15, TimeUnit.MINUTES)
+                .setConstraints(networkConstraints())
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .build()
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             PERIODIC_WORK_NAME,
             ExistingPeriodicWorkPolicy.KEEP,
@@ -52,13 +56,28 @@ class LocalInboundSyncScheduler @Inject constructor(
     }
 
     fun enqueueSoon() {
-        val request = OneTimeWorkRequestBuilder<LocalInboundSyncWorker>()
-            .setConstraints(networkConstraints())
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-            .build()
+        val request =
+            OneTimeWorkRequestBuilder<LocalInboundSyncWorker>()
+                .setConstraints(networkConstraints())
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .build()
         WorkManager.getInstance(context).enqueueUniqueWork(
             IMMEDIATE_WORK_NAME,
-            ExistingWorkPolicy.KEEP,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            request,
+        )
+    }
+
+    fun enqueueCacheRefresh(preferredSessionId: Long? = null) {
+        val request =
+            OneTimeWorkRequestBuilder<LocalInboundCacheRefreshWorker>()
+                .setConstraints(networkConstraints())
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .setInputData(workDataOf(CACHE_SESSION_ID_KEY to (preferredSessionId ?: 0L)))
+                .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            CACHE_WORK_NAME,
+            ExistingWorkPolicy.REPLACE,
             request,
         )
     }
@@ -69,15 +88,33 @@ class LocalInboundSyncScheduler @Inject constructor(
     private companion object {
         const val PERIODIC_WORK_NAME = "fscm-local-inbound-periodic-sync"
         const val IMMEDIATE_WORK_NAME = "fscm-local-inbound-immediate-sync"
+        const val CACHE_WORK_NAME = "fscm-local-inbound-cache-refresh"
+        const val CACHE_SESSION_ID_KEY = "preferred_session_id"
     }
 }
 
 @HiltWorker
-class LocalInboundSyncWorker @AssistedInject constructor(
+class LocalInboundSyncWorker
+@AssistedInject
+constructor(
     @Assisted context: Context,
     @Assisted params: WorkerParameters,
     private val repository: LocalInboundRepository,
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result =
         if (runCatching { repository.syncAllPending() }.getOrDefault(false)) Result.success() else Result.retry()
+}
+
+@HiltWorker
+class LocalInboundCacheRefreshWorker
+@AssistedInject
+constructor(
+    @Assisted context: Context,
+    @Assisted params: WorkerParameters,
+    private val repository: LocalInboundRepository,
+) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val preferredSessionId = inputData.getLong("preferred_session_id", 0L).takeIf { it > 0 }
+        return if (repository.refreshCachesInBackground(preferredSessionId)) Result.success() else Result.retry()
+    }
 }

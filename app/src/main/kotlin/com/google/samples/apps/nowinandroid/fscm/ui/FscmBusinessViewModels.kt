@@ -23,6 +23,8 @@ import androidx.lifecycle.viewModelScope
 import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.fscm.data.ApprovalAdjustment
 import com.google.samples.apps.nowinandroid.fscm.data.ApprovalValidationError
+import com.google.samples.apps.nowinandroid.fscm.data.BoxLabelMappingCacheMissException
+import com.google.samples.apps.nowinandroid.fscm.data.BoxLabelMappingRepository
 import com.google.samples.apps.nowinandroid.fscm.data.BoxLabelQrFormatException
 import com.google.samples.apps.nowinandroid.fscm.data.BusinessFilter
 import com.google.samples.apps.nowinandroid.fscm.data.CentralReceipt
@@ -30,6 +32,7 @@ import com.google.samples.apps.nowinandroid.fscm.data.CentralReceiptBoxLabel
 import com.google.samples.apps.nowinandroid.fscm.data.CentralReceiptScanResult
 import com.google.samples.apps.nowinandroid.fscm.data.CentralReceiptStatistics
 import com.google.samples.apps.nowinandroid.fscm.data.CentralReceivingRepository
+import com.google.samples.apps.nowinandroid.fscm.data.CentralReceivingSyncSummary
 import com.google.samples.apps.nowinandroid.fscm.data.FscmApiException
 import com.google.samples.apps.nowinandroid.fscm.data.PurchaseApproval
 import com.google.samples.apps.nowinandroid.fscm.data.PurchaseApprovalDetail
@@ -39,16 +42,23 @@ import com.google.samples.apps.nowinandroid.fscm.data.ReceivingRepository
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingScanItem
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingSession
 import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrder
+import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrderCategory
+import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrderFilters
+import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrderQuery
 import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrderRepository
+import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrderWarehouse
 import com.google.samples.apps.nowinandroid.fscm.data.allowedSupplierOrderStatuses
 import com.google.samples.apps.nowinandroid.fscm.data.validateApprovalInput
+import com.google.samples.apps.nowinandroid.fscm.device.ReceivingScanFeedback
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerManager
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerRuntimeState
+import com.google.samples.apps.nowinandroid.fscm.device.isSuccessfulScanResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -65,12 +75,14 @@ data class WarehouseReceivingUiState(
 @HiltViewModel
 class WarehouseReceivingViewModel @Inject constructor(
     private val repository: ReceivingRepository,
+    private val boxLabelMappingRepository: BoxLabelMappingRepository,
 ) : ViewModel() {
     private val _state = MutableStateFlow(WarehouseReceivingUiState())
     val state = _state.asStateFlow()
 
     fun load() = viewModelScope.launch {
         _state.update { it.copy(loading = true, error = null) }
+        runCatching { boxLabelMappingRepository.refreshIfStale() }
         runCatching { repository.sessions() }
             .onSuccess { rows -> _state.update { it.copy(loading = false, sessions = rows) } }
             .onFailure { error -> _state.update { it.copy(loading = false, error = error.businessMessage(R.string.load_receiving_failed)) } }
@@ -88,18 +100,26 @@ data class CentralReceivingUiState(
     val receipts: List<CentralReceipt> = emptyList(),
     val statistics: CentralReceiptStatistics = CentralReceiptStatistics(),
     val recentScans: List<CentralReceiptScanResult> = emptyList(),
-    val preview: CentralReceiptScanResult? = null,
-    val previewRawCode: String = "",
-    val quantity: String = "",
-    val unrecognized: Boolean = false,
+    val lastScannedCode: String = "",
+    val snapshotAt: Long = 0,
+    val pendingSyncCount: Int = 0,
+    val problemCount: Int = 0,
     val error: UiText? = null,
     val message: UiText? = null,
+)
+
+private data class CentralReceivingLoadResult(
+    val receipts: List<CentralReceipt>,
+    val statistics: CentralReceiptStatistics,
+    val scans: List<CentralReceiptScanResult>,
+    val sync: CentralReceivingSyncSummary,
 )
 
 @HiltViewModel
 class CentralReceivingViewModel @Inject constructor(
     private val repository: CentralReceivingRepository,
     private val scannerManager: ScannerManager,
+    private val scanFeedback: ReceivingScanFeedback,
 ) : ViewModel() {
     private val _state = MutableStateFlow(CentralReceivingUiState())
     val state = _state.asStateFlow()
@@ -109,12 +129,36 @@ class CentralReceivingViewModel @Inject constructor(
         initialValue = scannerManager.scannerState.value,
     )
 
-    fun load() = viewModelScope.launch {
+    init {
+        viewModelScope.launch {
+            repository.observeUpdates().collect { load(requestRemoteSync = false) }
+        }
+    }
+
+    fun load(requestRemoteSync: Boolean = true) = viewModelScope.launch {
+        if (requestRemoteSync) repository.requestSync()
         val filter = _state.value.filter
         _state.update { it.copy(loading = true, error = null) }
-        runCatching { Triple(repository.receipts(filter), repository.statistics(), repository.pendingScans()) }
-            .onSuccess { (rows, statistics, pending) ->
-                _state.update { it.copy(loading = false, receipts = rows, statistics = statistics, recentScans = pending + it.recentScans.filterNot { scan -> scan.status == "pending_sync" }) }
+        runCatching {
+            CentralReceivingLoadResult(
+                receipts = repository.receipts(filter),
+                statistics = repository.statistics(),
+                scans = repository.pendingScans(),
+                sync = repository.syncSummary(),
+            )
+        }
+            .onSuccess { result ->
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        receipts = result.receipts,
+                        statistics = result.statistics,
+                        recentScans = result.scans,
+                        snapshotAt = result.sync.snapshotAt,
+                        pendingSyncCount = result.sync.pendingCount,
+                        problemCount = result.sync.problemCount,
+                    )
+                }
             }
             .onFailure { error -> _state.update { it.copy(loading = false, error = error.businessMessage(R.string.business_central_load_failed)) } }
     }
@@ -125,72 +169,39 @@ class CentralReceivingViewModel @Inject constructor(
     }
 
     fun preview(rawCode: String) {
-        if (rawCode.isBlank() || _state.value.submitting || _state.value.preview != null) return
+        if (rawCode.isBlank()) return
         viewModelScope.launch {
-            _state.update { it.copy(submitting = true, error = null, message = null, unrecognized = false) }
-            runCatching { repository.preview(null, rawCode.trim()) }
+            _state.update { it.copy(submitting = true, error = null, message = null, lastScannedCode = rawCode.trim()) }
+            runCatching { repository.scan(null, rawCode.trim()) }
                 .onSuccess { result ->
-                    _state.update {
-                        if (result.isUnrecognized()) {
-                            it.copy(submitting = false, previewRawCode = rawCode.trim(), unrecognized = true)
-                        } else {
-                            it.copy(
-                                submitting = false,
-                                preview = result,
-                                previewRawCode = rawCode.trim(),
-                                quantity = result.item.defaultReceivedQuantity().toString(),
-                            )
-                        }
-                    }
-                }
-                .onFailure { error ->
-                    _state.update {
-                        if (error.isUnrecognizedBoxLabel()) {
-                            it.copy(submitting = false, previewRawCode = rawCode.trim(), unrecognized = true)
-                        } else {
-                            it.copy(submitting = false, error = error.businessMessage(R.string.scan_failed))
-                        }
-                    }
-                }
-        }
-    }
-
-    fun changeQuantity(value: String) = _state.update { it.copy(quantity = value.filter(Char::isDigit).take(8)) }
-
-    fun confirm() {
-        val current = _state.value
-        val preview = current.preview ?: return
-        val quantity = current.quantity.toIntOrNull()?.takeIf { it > 0 } ?: return
-        if (current.submitting) return
-        viewModelScope.launch {
-            _state.update { it.copy(submitting = true, error = null) }
-            runCatching { repository.scan(preview.centralReceiptId.takeIf { it > 0 }, current.previewRawCode, quantity) }
-                .onSuccess { result ->
+                    val successful = result.isSuccessfulScanResult()
+                    if (successful) scanFeedback.success() else scanFeedback.failure()
                     _state.update {
                         it.copy(
                             submitting = false,
-                            preview = null,
-                            previewRawCode = "",
-                            quantity = "",
-                            recentScans = (listOf(result) + it.recentScans).take(8),
-                            message = UiText.Resource(
-                                if (result.localFallback) {
-                                    if (result.duplicate) R.string.business_offline_duplicate else R.string.business_offline_saved
-                                } else if (result.duplicate) {
-                                    R.string.business_box_already_received
-                                } else {
-                                    R.string.business_receiving_success_continue
-                                },
-                            ),
+                            recentScans = (listOf(result) + it.recentScans).take(30),
+                            error = if (successful) {
+                                null
+                            } else {
+                                result.message.takeIf(String::isNotBlank)?.let(UiText::Dynamic)
+                                    ?: UiText.Resource(R.string.business_unrecognized_box_label)
+                            },
+                            message = if (successful) UiText.Dynamic(result.message) else null,
                         )
                     }
-                    load()
+                    load(requestRemoteSync = false)
                 }
-                .onFailure { error -> _state.update { it.copy(submitting = false, error = error.businessMessage(R.string.business_confirm_receiving_failed)) } }
+                .onFailure { error ->
+                    scanFeedback.failure()
+                    _state.update { it.copy(submitting = false, error = error.businessMessage(R.string.scan_failed)) }
+                }
         }
     }
 
-    fun clearPreview() = _state.update { it.copy(preview = null, previewRawCode = "", quantity = "", unrecognized = false) }
+    fun sync() {
+        repository.requestSync()
+        _state.update { it.copy(message = UiText.Dynamic("已安排后台同步")) }
+    }
 
     fun consumeNotice() = _state.update { it.copy(error = null, message = null) }
     fun retryPending(id: Long) = updatePending(id, retry = true)
@@ -211,66 +222,93 @@ data class CentralReceiptDetailUiState(
     val loading: Boolean = false,
     val submitting: Boolean = false,
     val receipt: CentralReceipt? = null,
+    val statistics: CentralReceiptStatistics = CentralReceiptStatistics(),
     val boxLabels: List<CentralReceiptBoxLabel> = emptyList(),
-    val preview: CentralReceiptScanResult? = null,
-    val previewRawCode: String = "",
+    val lastScannedCode: String = "",
     val recentScans: List<CentralReceiptScanResult> = emptyList(),
     val error: UiText? = null,
     val message: UiText? = null,
+)
+
+private data class CentralReceiptDetailLoadResult(
+    val receipt: CentralReceipt,
+    val statistics: CentralReceiptStatistics,
+    val labels: List<CentralReceiptBoxLabel>,
+    val scans: List<CentralReceiptScanResult>,
 )
 
 @HiltViewModel
 class CentralReceiptDetailViewModel @Inject constructor(
     private val repository: CentralReceivingRepository,
     private val scannerManager: ScannerManager,
+    private val scanFeedback: ReceivingScanFeedback,
 ) : ViewModel() {
     private val _state = MutableStateFlow(CentralReceiptDetailUiState())
     val state = _state.asStateFlow()
 
-    fun load(id: Long) = viewModelScope.launch {
+    init {
+        viewModelScope.launch {
+            repository.observeUpdates().collect {
+                _state.value.receipt?.id?.takeIf { it > 0 }?.let { load(it, requestRemoteSync = false) }
+            }
+        }
+    }
+
+    fun load(id: Long, requestRemoteSync: Boolean = true) = viewModelScope.launch {
+        if (requestRemoteSync) repository.requestSync()
         _state.update { it.copy(loading = true, error = null) }
-        runCatching { repository.receipt(id) to repository.boxLabels(id) }
-            .onSuccess { (receipt, labels) -> _state.update { it.copy(loading = false, receipt = receipt, boxLabels = labels) } }
+        runCatching {
+            CentralReceiptDetailLoadResult(
+                receipt = repository.receipt(id),
+                statistics = repository.statistics(id),
+                labels = repository.boxLabels(id),
+                scans = repository.pendingScans().filter { it.centralReceiptId == id },
+            )
+        }
+            .onSuccess { result ->
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        receipt = result.receipt,
+                        statistics = result.statistics,
+                        boxLabels = result.labels,
+                        recentScans = result.scans,
+                    )
+                }
+            }
             .onFailure { error -> _state.update { it.copy(loading = false, error = error.businessMessage(R.string.business_central_detail_load_failed)) } }
     }
 
     fun preview(id: Long, rawCode: String) {
-        if (rawCode.isBlank() || _state.value.submitting) return
+        if (rawCode.isBlank()) return
         viewModelScope.launch {
-            _state.update { it.copy(submitting = true, error = null) }
-            runCatching { repository.preview(id, rawCode.trim()) }
-                .onSuccess { result -> _state.update { it.copy(submitting = false, preview = result, previewRawCode = rawCode.trim()) } }
-                .onFailure { error -> _state.update { it.copy(submitting = false, error = error.businessMessage(R.string.scan_failed)) } }
-        }
-    }
-
-    fun confirm(id: Long) {
-        val code = _state.value.previewRawCode
-        if (code.isBlank() || _state.value.submitting) return
-        viewModelScope.launch {
-            _state.update { it.copy(submitting = true, error = null) }
-            runCatching { repository.scan(id, code) }
+            _state.update { it.copy(submitting = true, error = null, lastScannedCode = rawCode.trim()) }
+            runCatching { repository.scan(id, rawCode.trim()) }
                 .onSuccess { result ->
+                    val successful = result.isSuccessfulScanResult()
+                    if (successful) scanFeedback.success() else scanFeedback.failure()
                     _state.update {
                         it.copy(
                             submitting = false,
-                            preview = null,
-                            previewRawCode = "",
                             recentScans = (listOf(result) + it.recentScans).take(12),
-                            message = if (result.localFallback) {
-                                UiText.Resource(if (result.duplicate) R.string.business_offline_duplicate else R.string.business_offline_saved)
+                            error = if (successful) {
+                                null
                             } else {
-                                result.message.toUiText(R.string.business_receiving_success)
+                                result.message.takeIf(String::isNotBlank)?.let(UiText::Dynamic)
+                                    ?: UiText.Resource(R.string.business_unrecognized_box_label)
                             },
+                            message = if (successful) UiText.Dynamic(result.message) else null,
                         )
                     }
-                    load(id)
+                    load(id, requestRemoteSync = false)
                 }
-                .onFailure { error -> _state.update { it.copy(submitting = false, error = error.businessMessage(R.string.submit_failed)) } }
+                .onFailure { error ->
+                    scanFeedback.failure()
+                    _state.update { it.copy(submitting = false, error = error.businessMessage(R.string.submit_failed)) }
+                }
         }
     }
 
-    fun clearPreview() = _state.update { it.copy(preview = null, previewRawCode = "") }
     fun consumeNotice() = _state.update { it.copy(error = null, message = null) }
     fun registerScanner(owner: LifecycleOwner, onScan: (String) -> Unit) {
         scannerManager.pushOnScanListener(onScan)
@@ -281,12 +319,29 @@ class CentralReceiptDetailViewModel @Inject constructor(
 
 data class SupplierOrdersUiState(
     val loading: Boolean = false,
-    val filter: BusinessFilter = BusinessFilter.Pending,
+    val loadingMore: Boolean = false,
+    val category: SupplierOrderCategory = SupplierOrderCategory.InProgress,
     val query: String = "",
+    val appliedFilters: SupplierOrderFilters = SupplierOrderFilters(),
+    val draftFilters: SupplierOrderFilters = SupplierOrderFilters(),
+    val filterSheetVisible: Boolean = false,
+    val warehouses: List<SupplierOrderWarehouse> = emptyList(),
+    val warehousesLoading: Boolean = false,
+    val warehouseError: UiText? = null,
     val orders: List<SupplierOrder> = emptyList(),
+    val page: Int = 1,
     val total: Int = 0,
+    val hasMore: Boolean = false,
+    val statusConfirmation: SupplierOrderStatusConfirmation? = null,
+    val statusRemark: String = "",
+    val submittingOrderId: Long? = null,
     val error: UiText? = null,
     val message: UiText? = null,
+)
+
+data class SupplierOrderStatusConfirmation(
+    val order: SupplierOrder,
+    val targetStatus: String,
 )
 
 @HiltViewModel
@@ -295,28 +350,180 @@ class SupplierOrdersViewModel @Inject constructor(private val repository: Suppli
     val state = _state.asStateFlow()
 
     fun setQuery(value: String) = _state.update { it.copy(query = value) }
-    fun setFilter(filter: BusinessFilter) {
-        _state.update { it.copy(filter = filter) }
-        load()
-    }
-    fun load() = viewModelScope.launch {
-        val current = _state.value
-        _state.update { it.copy(loading = true, error = null) }
-        runCatching { repository.orders(current.filter, current.query) }
-            .onSuccess { page -> _state.update { it.copy(loading = false, orders = page.rows, total = page.total) } }
-            .onFailure { error -> _state.update { it.copy(loading = false, error = error.businessMessage(R.string.business_supplier_load_failed)) } }
+
+    fun setCategory(category: SupplierOrderCategory) {
+        if (_state.value.category == category) return
+        _state.update { it.copy(category = category) }
+        load(reset = true)
     }
 
-    fun updateStatus(order: SupplierOrder, target: String) {
-        if (target !in allowedSupplierOrderStatuses(order.status) || _state.value.loading) return
+    fun load(reset: Boolean = true) {
+        val current = _state.value
+        if (current.loading || current.loadingMore || (!reset && !current.hasMore)) return
+        val requestedPage = if (reset) 1 else current.page + 1
         viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
-            runCatching { repository.updateStatus(order.id, target) }
-                .onSuccess {
-                    _state.update { it.copy(message = UiText.Resource(R.string.business_status_updated)) }
-                    load()
+            _state.update {
+                it.copy(
+                    loading = reset,
+                    loadingMore = !reset,
+                    error = null,
+                )
+            }
+            val query = SupplierOrderQuery(
+                category = current.category,
+                keyword = current.query,
+                filters = current.appliedFilters,
+                page = requestedPage,
+            )
+            runCatching { repository.orders(query) }
+                .onSuccess { result ->
+                    _state.update { state ->
+                        val rows = if (reset) {
+                            result.rows
+                        } else {
+                            (state.orders + result.rows).distinctBy(SupplierOrder::id)
+                        }
+                        state.copy(
+                            loading = false,
+                            loadingMore = false,
+                            orders = rows,
+                            page = requestedPage,
+                            total = result.total,
+                            hasMore = rows.size < result.total,
+                        )
+                    }
                 }
-                .onFailure { error -> _state.update { it.copy(loading = false, error = error.businessMessage(R.string.business_status_update_failed)) } }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            loading = false,
+                            loadingMore = false,
+                            error = error.businessMessage(R.string.business_supplier_load_failed),
+                        )
+                    }
+                }
+        }
+    }
+
+    fun loadMore() = load(reset = false)
+
+    fun openFilters() {
+        _state.update {
+            it.copy(
+                draftFilters = it.appliedFilters,
+                filterSheetVisible = true,
+            )
+        }
+        if (_state.value.warehouses.isEmpty()) loadWarehouses()
+    }
+
+    fun dismissFilters() = _state.update { it.copy(filterSheetVisible = false) }
+
+    fun updateDraftFilters(transform: (SupplierOrderFilters) -> SupplierOrderFilters) =
+        _state.update { it.copy(draftFilters = transform(it.draftFilters)) }
+
+    fun applyFilters() {
+        _state.update {
+            it.copy(
+                appliedFilters = it.draftFilters.normalized(),
+                filterSheetVisible = false,
+            )
+        }
+        load(reset = true)
+    }
+
+    fun resetFilters() {
+        _state.update {
+            it.copy(
+                appliedFilters = SupplierOrderFilters(),
+                draftFilters = SupplierOrderFilters(),
+                filterSheetVisible = false,
+            )
+        }
+        load(reset = true)
+    }
+
+    fun loadWarehouses() {
+        if (_state.value.warehousesLoading) return
+        viewModelScope.launch {
+            _state.update { it.copy(warehousesLoading = true, warehouseError = null) }
+            runCatching { repository.warehouses() }
+                .onSuccess { warehouses ->
+                    _state.update {
+                        it.copy(
+                            warehousesLoading = false,
+                            warehouses = warehouses.filter(SupplierOrderWarehouse::isActive)
+                                .sortedWith(
+                                    compareBy(SupplierOrderWarehouse::name)
+                                        .thenBy(SupplierOrderWarehouse::code),
+                                ),
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            warehousesLoading = false,
+                            warehouseError = error.businessMessage(R.string.business_warehouse_options_failed),
+                        )
+                    }
+                }
+        }
+    }
+
+    fun requestStatusUpdate(order: SupplierOrder, target: String) {
+        if (target !in allowedSupplierOrderStatuses(order.status) || _state.value.submittingOrderId != null) return
+        _state.update {
+            it.copy(
+                statusConfirmation = SupplierOrderStatusConfirmation(order, target),
+                statusRemark = "",
+            )
+        }
+    }
+
+    fun setStatusRemark(value: String) = _state.update { it.copy(statusRemark = value) }
+
+    fun dismissStatusConfirmation() = _state.update {
+        it.copy(statusConfirmation = null, statusRemark = "")
+    }
+
+    fun confirmStatusUpdate() {
+        val current = _state.value
+        val confirmation = current.statusConfirmation ?: return
+        if (current.submittingOrderId != null) return
+        viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    submittingOrderId = confirmation.order.id,
+                    error = null,
+                )
+            }
+            runCatching {
+                repository.updateStatus(
+                    confirmation.order.id,
+                    confirmation.targetStatus,
+                    current.statusRemark,
+                )
+            }
+                .onSuccess {
+                    _state.update {
+                        it.copy(
+                            submittingOrderId = null,
+                            statusConfirmation = null,
+                            statusRemark = "",
+                            message = UiText.Resource(R.string.business_status_updated),
+                        )
+                    }
+                    load(reset = true)
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            submittingOrderId = null,
+                            error = error.businessMessage(R.string.business_status_update_failed),
+                        )
+                    }
+                }
         }
     }
 
@@ -476,9 +683,13 @@ private fun Throwable.isUnrecognizedBoxLabel(): Boolean {
 }
 
 private fun Throwable.businessMessage(@StringRes fallback: Int): UiText =
-    (this as? BoxLabelQrFormatException)?.message?.takeIf(String::isNotBlank)?.let(UiText::Dynamic)
-        ?: (this as? FscmApiException)?.serverMessage?.takeIf(String::isNotBlank)?.let(UiText::Dynamic)
-        ?: UiText.Resource(fallback)
+    if (this is BoxLabelMappingCacheMissException) {
+        UiText.Resource(R.string.box_label_mapping_cache_miss)
+    } else {
+        (this as? BoxLabelQrFormatException)?.message?.takeIf(String::isNotBlank)?.let(UiText::Dynamic)
+            ?: (this as? FscmApiException)?.serverMessage?.takeIf(String::isNotBlank)?.let(UiText::Dynamic)
+            ?: UiText.Resource(fallback)
+    }
 
 private fun String.toUiText(@StringRes fallback: Int): UiText =
     takeIf(String::isNotBlank)?.let(UiText::Dynamic) ?: UiText.Resource(fallback)

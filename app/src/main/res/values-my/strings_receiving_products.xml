@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="receiving_product_details_title">ကုန်ပစ္စည်းအလိုက် လုပ်ငန်းအသေးစိတ်</string>
+    <string name="receiving_product_details_action">အသေးစိတ်</string>
+    <string name="receiving_product_search">ကုန်ပစ္စည်းကုဒ် သို့မဟုတ် အမည်ရှာရန်</string>
+    <string name="receiving_product_filter_all">အားလုံး</string>
+    <string name="receiving_product_filter_pending">စောင့်ဆိုင်း</string>
+    <string name="receiving_product_filter_exception">ပြဿနာရှိ</string>
+    <string name="receiving_product_filter_completed">ပြီးစီး</string>
+    <string name="receiving_product_cache_preparing">ကုန်ပစ္စည်းတိုးတက်မှုကို နောက်ခံတွင် အပ်ဒိတ်လုပ်နေသည်</string>
+    <string name="receiving_product_cache_partial">ကက်ရှ်ဒေတာကိုပြပြီး နောက်ခံတွင် အပ်ဒိတ်လုပ်နေသည်</string>
+    <string name="receiving_product_cache_time">ကက်ရှ်အပ်ဒိတ် %1$s</string>
+    <string name="receiving_product_empty">လက်ရှိစစ်ထုတ်မှုနှင့် ကိုက်ညီသောကုန်ပစ္စည်းမရှိပါ</string>
+    <string name="receiving_product_received">လက်ခံပြီး</string>
+    <string name="receiving_product_inbounded">သိုလှောင်ပြီး</string>
+    <string name="receiving_product_document_receiving_progress">လက်ခံပြီး %1$d / %2$d ပုံး</string>
+    <string name="receiving_product_document_inbound_progress">သိုလှောင်ပြီး %1$d / %2$d ပုံး</string>
+    <string name="receiving_product_pending_count">ကျန် %1$d</string>
+    <string name="receiving_product_exception_count">ပြဿနာ %1$d</string>
+    <string name="receiving_product_local_pending_count">စက်တွင်းစင့်ခ် %1$d ခု (ဗဟိုတိုးတက်မှုတွင်မပါ)</string>
+    <string name="receiving_product_unknown_code">ကုန်ပစ္စည်းကုဒ်မသတ်မှတ်ရသေး</string>
+    <string name="receiving_product_sku_count">SKU %1$d ခု</string>
+    <string name="receiving_product_progress_value">%1$s %2$d / %3$d</string>
+    <string name="receiving_product_box_progress">ဗဟိုတိုးတက်မှု %1$d / %2$d ပုံး</string>
+    <string name="receiving_product_no_boxes">ဤကုန်ပစ္စည်းအတွက် ကက်ရှ်ပုံးအသေးစိတ်မရှိပါ</string>
+    <string name="receiving_product_location">နေရာ</string>
+    <string name="receiving_product_operator">လုပ်ဆောင်သူ</string>
+    <string name="receiving_product_time">အချိန်</string>
+    <string name="receiving_product_status_completed">ပြီးစီး</string>
+    <string name="receiving_product_status_closed_exception">ပြဿနာဖြင့်ပိတ်</string>
+    <string name="receiving_product_status_local_pending">စင့်ခ်စောင့်</string>
+    <string name="receiving_product_status_exception">ပြဿနာ</string>
+    <string name="receiving_product_status_pending">စောင့်ဆိုင်း</string>
+</resources>

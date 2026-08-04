@@ -33,6 +33,12 @@
     <string name="no_data">ဒေတာမရှိပါ</string>
 
     <string name="login_failed">အကောင့်ဝင်ခြင်း မအောင်မြင်ပါ</string>
+    <string name="login_captcha">အတည်ပြုကုဒ်</string>
+    <string name="login_captcha_refresh">အတည်ပြုကုဒ် အသစ်ရယူရန်</string>
+    <string name="login_captcha_refresh_failed">အတည်ပြုကုဒ် အသစ်ရယူ၍ မရပါ</string>
+    <string name="login_captcha_required">အတည်ပြုကုဒ်ကို ထည့်ပါ</string>
+    <string name="login_security_failed_hint">စကားဝှက်ကို %1$d ကြိမ်ဆက်တိုက် မှားယွင်းထည့်ထားသည်။ နောက်ထပ် %2$d ကြိမ် စမ်းနိုင်သည်။</string>
+    <string name="login_security_locked">စကားဝှက်ကို %1$d ကြိမ်ဆက်တိုက် မှားယွင်းထည့်ထားသဖြင့် အကောင့်ဝင်ခြင်းကို ယာယီပိတ်ထားသည်။ %2$d စက္ကန့်အကြာတွင် ထပ်စမ်းပါ။</string>
     <string name="switch_namespace_failed">အလုပ်ခွင်ပြောင်းခြင်း မအောင်မြင်ပါ</string>
     <string name="load_home_failed">ပင်မစာမျက်နှာကို မဖွင့်နိုင်ပါ</string>
     <string name="no_permission_profit">အမြတ်အစွန်း ဒက်ရှ်ဘုတ်အတွက် ခွင့်ပြုချက်မရှိပါ</string>
@@ -56,4 +62,30 @@
     <string name="language_en">English</string>
     <string name="language_th">ไทย</string>
     <string name="language_my">မြန်မာ</string>
+
+    <string name="app_update">အက်ပ် အပ်ဒိတ်</string>
+    <string name="app_update_current_version">ဗားရှင်း %1$s (%2$d)</string>
+    <string name="app_update_checking">အပ်ဒိတ် စစ်ဆေးနေသည်&#8230;</string>
+    <string name="app_update_available_title">ဗားရှင်းအသစ် ရရှိနိုင်သည်</string>
+    <string name="app_update_required_title">ဆက်သုံးရန် အပ်ဒိတ်လုပ်ရန် လိုအပ်သည်</string>
+    <string name="app_update_available_message">ဗားရှင်း %1$s (%2$d) ကို ဒေါင်းလုဒ်လုပ်နိုင်ပါပြီ။</string>
+    <string name="app_update_release_notes">အသစ်ပါဝင်သည့်အရာများ</string>
+    <string name="app_update_now">ယခု အပ်ဒိတ်လုပ်မည်</string>
+    <string name="app_update_later">နောက်မှ သတိပေးမည်</string>
+    <string name="app_update_cancel_download">ဒေါင်းလုဒ် ပယ်ဖျက်မည်</string>
+    <string name="app_update_downloading">အပ်ဒိတ် ဒေါင်းလုဒ်လုပ်နေသည်&#8230;</string>
+    <string name="app_update_download_progress">ဒေါင်းလုဒ် %1$d%% ပြီးပါပြီ</string>
+    <string name="app_update_ready">အပ်ဒိတ်ကို ထည့်သွင်းရန် အသင့်ဖြစ်ပါပြီ။</string>
+    <string name="app_update_install">ထည့်သွင်းမည်</string>
+    <string name="app_update_retry">ပြန်ကြိုးစားမည်</string>
+    <string name="app_update_exit">အက်ပ်မှ ထွက်မည်</string>
+    <string name="app_update_latest">နောက်ဆုံးဗားရှင်းကို အသုံးပြုနေပါသည်။</string>
+    <string name="app_update_check_failed">အပ်ဒိတ် စစ်ဆေး၍ မရပါ။</string>
+    <string name="app_update_download_failed">အပ်ဒိတ် ဒေါင်းလုဒ် မအောင်မြင်ပါ။</string>
+    <string name="app_update_verification_failed">APK လုံခြုံရေး စစ်ဆေးမှု မအောင်မြင်ပါ။</string>
+    <string name="app_update_install_permission_required">FSCM ကို အမည်မသိအက်ပ်များ ထည့်သွင်းခွင့်ပြုပြီး ပြန်ကြိုးစားပါ။</string>
+    <string name="box_label_mapping_cache_miss">ဤ Jifeng သေတ္တာကုဒ်ကို စက်တွင်းတွင် မတွေ့ပါ။ ကွန်ရက်ချိတ်ဆက်၍ ချိတ်ဆက်မှုစာရင်းကို အပ်ဒိတ်လုပ်ပြီး ပြန်စကင်ဖတ်ပါ။</string>
+    <string name="device_jifeng_box_label">Jifeng သေတ္တာတံဆိပ်</string>
+    <string name="device_box_label_mapping_offline_warning">စက်တွင်း Jifeng သေတ္တာတံဆိပ် ချိတ်ဆက်မှုဖြစ်သည်။ အွန်လိုင်းရောက်သည့်အခါ အခြေအနေနှင့် ပိုင်ဆိုင်မှုကို ပြန်လည်စစ်ဆေးပါမည်။</string>
+    <string name="device_supplier_box_label">ထုတ်လုပ်သူ သေတ္တာတံဆိပ်</string>
 </resources>

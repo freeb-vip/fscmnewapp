@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="business_quick_receiving">အမြန်စကန်ဖြင့် လက်ခံခြင်း</string><string name="business_quick_receiving_description">ပုံးတံဆိပ်ကို စကန်ဖတ်၊ အရေအတွက်အတည်ပြုပြီး လက်ခံမှုတင်ပါ</string><string name="business_quick_central_receiving_description">ပုံးတံဆိပ်ကို စကန်ဖတ်၊ အရေအတွက်အတည်ပြုပြီး စုစည်းကုန်လက်ခံမှုတင်ပါ</string>
-    <string name="business_recent_scans">နောက်ဆုံးစကန်များ</string><string name="business_metric_pending">လက်ခံရန်</string><string name="business_metric_completed">ပြီးစီး</string><string name="business_metric_exception_boxes">မူမမှန်ပုံး</string><string name="business_metric_total_boxes">ပုံးစုစုပေါင်း</string><string name="business_metric_received">လက်ခံပြီး</string><string name="business_metric_exception">မူမမှန်</string>
+    <string name="business_quick_receiving">အမြန်စကန်ဖြင့် လက်ခံခြင်း</string><string name="business_quick_receiving_description">ပုံးတံဆိပ်ကို စကန်ဖတ်၊ အရေအတွက်အတည်ပြုပြီး လက်ခံမှုတင်ပါ</string><string name="business_quick_central_receiving_description">ပုံးတံဆိပ်စကန်ဖတ်ပြီး အော့ဖ်လိုင်းတွင်ပင် တစ်ပုံးလက်ခံကြောင်း ချက်ချင်းအတည်ပြုပါ</string>
+    <string name="business_recent_scans">နောက်ဆုံးစကန်များ</string><string name="business_metric_pending">လက်ခံရန်</string><string name="business_metric_completed">ပြီးစီး</string><string name="business_metric_exception_boxes">မူမမှန်ပုံး</string><string name="business_metric_total_boxes">ပုံးစုစုပေါင်း</string><string name="business_metric_received">လက်ခံပြီး</string><string name="business_metric_exception">မူမမှန်</string><string name="business_receiving_progress_overview">လက်ခံမှု တိုးတက်မှု</string>
     <string name="business_no_warehouse_receipts">ဂိုဒေါင်လက်ခံစာရင်း မရှိပါ</string><string name="business_no_central_receipts">စုစည်းကုန်လက်ခံစာရင်း မရှိပါ</string><string name="business_unbound_source">မူလအော်ဒါ မချိတ်ထားပါ</string><string name="business_central_warehouse">စုစည်းဂိုဒေါင်</string>
-    <string name="business_scan_in_document">စာရွက်အတွင်း စကန်ဖတ်ရန်</string><string name="business_scan_then_confirm">ပုံးတံဆိပ်ကို အရင်သိရှိပြီး လက်ခံမှုအတည်ပြုပါ</string><string name="business_save_pending_sync">စင့်ခ်ရန် သိမ်းထားရန်</string><string name="business_sku_receiving_progress">SKU လက်ခံမှု တိုးတက်မှု</string><string name="business_received_expected_boxes">လက်ခံပြီး %1$d / မျှော်မှန်း %2$d ပုံး</string><string name="business_box_label_details">ပုံးတံဆိပ် အသေးစိတ်</string><string name="business_no_sku_info">SKU အချက်အလက်မရှိပါ</string>
+    <string name="business_scan_in_document">ပုံးတံဆိပ်ကုဒ်ကို စကင်ဖတ်ပါ</string><string name="business_scan_then_confirm">ပုံးတံဆိပ်ကို အရင်သိရှိပြီး လက်ခံမှုအတည်ပြုပါ</string><string name="business_save_pending_sync">စင့်ခ်ရန် သိမ်းထားရန်</string><string name="business_sku_receiving_progress">SKU လက်ခံမှု တိုးတက်မှု</string><string name="business_received_expected_boxes">လက်ခံပြီး %1$d / မျှော်မှန်း %2$d ပုံး</string><string name="business_box_label_details">ပုံးတံဆိပ် အသေးစိတ်</string><string name="business_no_sku_info">SKU အချက်အလက်မရှိပါ</string>
     <string name="business_search_supplier_orders">ထုတ်လုပ်သူ၊ အော်ဒါ သို့မဟုတ် ဝယ်ယူစာ ရှာရန်</string><string name="business_search_approvals">အော်ဒါ၊ ထုတ်လုပ်သူ သို့မဟုတ် SKU ရှာရန်</string><string name="business_metric_orders">အော်ဒါများ</string><string name="business_metric_boxes">ပုံးများ</string><string name="business_metric_volume">ထုထည်</string><string name="business_metric_total">စုစုပေါင်း</string><string name="business_metric_pending_review">စစ်ဆေးရန်</string><string name="business_metric_amount">ငွေပမာဏ</string>
     <string name="business_no_supplier_orders">ထုတ်လုပ်သူအော်ဒါ မရှိပါ</string><string name="business_no_approvals">ဝယ်ယူအတည်ပြုစာ မရှိပါ</string><string name="business_unbound_manufacturer">ထုတ်လုပ်သူ မချိတ်ထားပါ</string><string name="business_unbound_purchase_order">ဝယ်ယူအော်ဒါ မချိတ်ထားပါ</string><string name="business_amount_boxes_quantity">ငွေ %1$.2f · ပုံး %2$d · အရေအတွက် %3$d</string><string name="business_related_products">ဆက်စပ်ကုန်ပစ္စည်းများ</string><string name="business_product_number">ကုန်ပစ္စည်း %1$d</string>
     <string name="business_approval_summary">SKU %1$d · ပုံး %2$d · အရေအတွက် %3$d</string><string name="business_missing_prices_block">ဈေးမရှိသော %1$d ခုကြောင့် အတည်မပြုနိုင်ပါ</string><string name="business_review_details">စစ်ဆေးမှု အသေးစိတ်</string><string name="business_unnamed_product">အမည်မရှိသော ကုန်ပစ္စည်း</string><string name="business_item_summary">ပုံး %1$d · အရေအတွက် %2$d · တစ်ခုဈေး %3$.2f</string><string name="business_missing_price">ဈေးမရှိ</string><string name="business_remark_value">မှတ်ချက်: %1$s</string>
@@ -35,4 +35,21 @@
     <string name="business_local_receiving_not_saved">စက်တွင်းကုန်လက်ခံစာရင်းကို မသိမ်းနိုင်ပါ</string>
     <string name="business_local_sync_offline">အော့ဖ်လိုင်းဖြစ်နေ၍ ကုန်လက်ခံမှုကို စင့်ခ်မလုပ်နိုင်ပါ</string>
     <string name="business_local_receiving_not_found">စက်တွင်းကုန်လက်ခံစာရင်း မတွေ့ပါ</string>
-</resources>
+    <string name="business_scan_auto_confirm">ပုံးတံဆိပ်စကန်ဖတ်ပြီး တစ်ပုံးလက်ခံကြောင်း ချက်ချင်းအတည်ပြုပါ</string>
+    <string name="business_central_local_snapshot">စက်တွင်းဒေတာကို %1$s တွင် အပ်ဒိတ်လုပ်ထားသည်</string>
+    <string name="business_central_no_snapshot">စက်တွင်းပုံးတံဆိပ်စာရင်း အပြည့်အစုံ မရှိသေးပါ</string>
+    <string name="business_central_sync_summary">စင့်ခ်လုပ်ရန် %1$d · ပြဿနာ %2$d</string>
+    <string name="business_supplier_in_progress">In progress</string>
+    <string name="business_supplier_filters">Filters</string>
+    <string name="business_all_warehouses">All warehouses</string>
+    <string name="business_loading_warehouses">Loading warehouses</string>
+    <string name="business_product_code_filter">Product code</string>
+    <string name="business_manufacturer_filter">Manufacturer name</string>
+    <string name="business_purchase_order_filter">Purchase order number</string>
+    <string name="business_reset_filters">Reset</string>
+    <string name="business_apply_filters">Apply</string>
+    <string name="business_confirm_status_transition">Update status to %1$s?</string>
+    <string name="business_status_transition_summary">Order %1$s: %2$s to %3$s</string>
+    <string name="business_status_remark">Remark (optional)</string>
+    <string name="business_supplier_review_required">This order is awaiting price review. Continue in Purchase Approvals.</string>
+    <string name="business_warehouse_options_failed">Unable to load warehouse options</string></resources>

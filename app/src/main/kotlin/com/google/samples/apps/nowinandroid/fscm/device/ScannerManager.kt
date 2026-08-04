@@ -39,6 +39,7 @@ import javax.inject.Singleton
 class ScannerManager @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val userDataRepository: UserDataRepository,
+    private val scanFeedback: ReceivingScanFeedback,
 ) {
     private val onScanListeners = mutableListOf<(String) -> Unit>()
     private val _scannerState = MutableStateFlow(
@@ -62,6 +63,7 @@ class ScannerManager @Inject constructor(
                 )
             }
             if (event.extracted && effectiveMode == ScannerInputMode.IntentBroadcast) {
+                scanFeedback.scanReceived()
                 onScanListeners.lastOrNull()?.invoke(event.normalizedValue)
             }
         }

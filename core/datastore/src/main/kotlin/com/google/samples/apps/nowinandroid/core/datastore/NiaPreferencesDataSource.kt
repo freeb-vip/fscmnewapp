@@ -60,8 +60,15 @@ class NiaPreferencesDataSource @Inject constructor(
                 scannerAction = it.scannerAction,
                 bluetoothPrinterMac = it.bluetoothPrinterMac,
                 language = it.language,
-                defaultSkuPrintNodeId = it.defaultSkuPrintNodeId.takeIf { id -> id > 0L },
-                defaultBoxMarkPrintNodeId = it.defaultBoxMarkPrintNodeId.takeIf { id -> id > 0L },
+                defaultEdgePrintNodeId = it.defaultEdgePrintNodeId.takeIf { id -> id > 0L }
+                    ?: it.defaultSkuPrintNodeId.takeIf { id -> id > 0L }
+                    ?: it.defaultBoxMarkPrintNodeId.takeIf { id -> id > 0L },
+                defaultSkuPrintTemplateCode = it.defaultSkuPrintTemplateCode,
+                defaultBoxMarkPrintTemplateCode = if (
+                    it.defaultEdgePrintNodeId == 0L &&
+                    it.defaultSkuPrintNodeId > 0L &&
+                    it.defaultSkuPrintNodeId != it.defaultBoxMarkPrintNodeId
+                ) "" else it.defaultBoxMarkPrintTemplateCode,
                 skuLabelPrefix = if (it.hasSkuLabelPrefix) it.skuLabelPrefix else "T",
                 displayMode = if (it.useCompactDisplayMode) DisplayMode.COMPACT else DisplayMode.FULL,
             )
@@ -224,19 +231,20 @@ class NiaPreferencesDataSource @Inject constructor(
         }
     }
 
-    suspend fun setSkuQuickPrintPreferences(defaultNodeId: Long?, labelPrefix: String) {
+    suspend fun setEdgePrintPreferences(
+        defaultNodeId: Long?,
+        skuTemplateCode: String,
+        boxMarkTemplateCode: String,
+        labelPrefix: String,
+    ) {
         userPreferences.updateData {
             it.copy {
-                defaultSkuPrintNodeId = defaultNodeId ?: 0L
+                defaultEdgePrintNodeId = defaultNodeId ?: 0L
+                defaultSkuPrintTemplateCode = skuTemplateCode
+                defaultBoxMarkPrintTemplateCode = boxMarkTemplateCode
                 skuLabelPrefix = labelPrefix
                 hasSkuLabelPrefix = true
             }
-        }
-    }
-
-    suspend fun setDefaultBoxMarkPrintNode(defaultNodeId: Long?) {
-        userPreferences.updateData {
-            it.copy { defaultBoxMarkPrintNodeId = defaultNodeId ?: 0L }
         }
     }
 }

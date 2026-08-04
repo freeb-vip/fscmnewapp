@@ -24,8 +24,8 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Test
-import kotlin.test.assertFalse
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class NiaPreferencesDataSourceTest {
@@ -102,11 +102,30 @@ class NiaPreferencesDataSourceTest {
     }
 
     @Test
-    fun defaultBoxMarkPrintNodePersistsIndependently() = testScope.runTest {
-        subject.setDefaultBoxMarkPrintNode(42)
+    fun printDefaultsPersistNodeAndTemplateIndependently() = testScope.runTest {
+        subject.setEdgePrintPreferences(7, "sku_60x40", "box_100x150", "T")
 
         val userData = subject.userData.first()
-        assertEquals(42, userData.defaultBoxMarkPrintNodeId)
-        assertEquals(null, userData.defaultSkuPrintNodeId)
+        assertEquals(7, userData.defaultEdgePrintNodeId)
+        assertEquals("sku_60x40", userData.defaultSkuPrintTemplateCode)
+        assertEquals(7, userData.defaultEdgePrintNodeId)
+        assertEquals("box_100x150", userData.defaultBoxMarkPrintTemplateCode)
+    }
+
+    @Test
+    fun legacyNodeOnlyDefaultsKeepNodeAndUseBlankTemplateCode() = testScope.runTest {
+        val legacySubject = NiaPreferencesDataSource(
+            InMemoryDataStore(
+                userPreferences {
+                    defaultSkuPrintNodeId = 7
+                    defaultBoxMarkPrintNodeId = 42
+                },
+            ),
+        )
+
+        val userData = legacySubject.userData.first()
+        assertEquals(7, userData.defaultEdgePrintNodeId)
+        assertEquals("", userData.defaultSkuPrintTemplateCode)
+        assertEquals("", userData.defaultBoxMarkPrintTemplateCode)
     }
 }

@@ -139,20 +139,21 @@ class TestUserDataRepository : UserDataRepository {
         }
     }
 
-    override suspend fun setSkuQuickPrintPreferences(defaultNodeId: Long?, labelPrefix: String) {
+    override suspend fun setEdgePrintPreferences(
+        defaultNodeId: Long?,
+        skuTemplateCode: String,
+        boxMarkTemplateCode: String,
+        labelPrefix: String,
+    ) {
         currentUserData.let { current ->
             _userData.tryEmit(
                 current.copy(
-                    defaultSkuPrintNodeId = defaultNodeId,
+                    defaultEdgePrintNodeId = defaultNodeId,
+                    defaultSkuPrintTemplateCode = skuTemplateCode,
+                    defaultBoxMarkPrintTemplateCode = boxMarkTemplateCode,
                     skuLabelPrefix = labelPrefix,
                 ),
             )
-        }
-    }
-
-    override suspend fun setDefaultBoxMarkPrintNode(defaultNodeId: Long?) {
-        currentUserData.let { current ->
-            _userData.tryEmit(current.copy(defaultBoxMarkPrintNodeId = defaultNodeId))
         }
     }
 

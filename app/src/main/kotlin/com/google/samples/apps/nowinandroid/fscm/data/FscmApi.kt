@@ -94,6 +94,18 @@ class FscmApiException(
     val serverMessage: String? = null,
 ) : RuntimeException(message)
 
+class SessionExpiredException : RuntimeException("Session expired")
+
+class SessionRefreshUnavailableException : RuntimeException("Session refresh is temporarily unavailable")
+
+@PublishedApi
+internal enum class SessionRefreshResult {
+    Refreshed,
+    AlreadyCurrent,
+    Rejected,
+    Unavailable,
+}
+
 @Singleton
 class FscmApiClient @Inject constructor(
     @PublishedApi internal val api: FscmRetrofitApi,
@@ -101,7 +113,7 @@ class FscmApiClient @Inject constructor(
     @param:FscmJson
     @PublishedApi internal val json: Json,
     private val deviceIdentityManager: DeviceIdentityManager,
-    private val trustedClock: TrustedClock,
+    @PublishedApi internal val trustedClock: TrustedClock,
 ) {
     @PublishedApi internal val refreshMutex = Mutex()
 
@@ -139,14 +151,35 @@ class FscmApiClient @Inject constructor(
         auth: Boolean,
         noinline call: suspend () -> Response<JsonElement>,
     ): T {
-        val response = retryAuthenticatedRequest(auth, call, ::refreshSession)
+        if (auth) {
+            val session = sessionStore.current()
+            if (session.shouldProactivelyRefresh(trustedClock.trustedNowMillis() ?: System.currentTimeMillis())) {
+                when (refreshSession(session.token)) {
+                    SessionRefreshResult.Rejected -> throw SessionExpiredException()
+                    else -> Unit
+                }
+            }
+        }
+        val response = try {
+            retryAuthenticatedRequest(auth, call, ::refreshSession)
+        } catch (error: SessionExpiredException) {
+            sessionStore.clear()
+            throw error
+        }
         return decode(response)
     }
 
     @PublishedApi
-    internal suspend fun refreshSession(): Boolean = refreshMutex.withLock {
-        val refreshToken = sessionStore.current().refreshToken
-        if (refreshToken.isBlank()) return false
+    internal suspend fun refreshSession(expectedAccessToken: String?): SessionRefreshResult = refreshMutex.withLock {
+        val session = sessionStore.current()
+        if (shouldReuseCurrentAccessToken(expectedAccessToken, session.token)) {
+            return SessionRefreshResult.AlreadyCurrent
+        }
+        val refreshToken = session.refreshToken
+        if (refreshToken.isBlank()) {
+            sessionStore.clear()
+            return SessionRefreshResult.Rejected
+        }
         val body = buildJsonObject { put("refresh_token", refreshToken) }
         val headers = deviceIdentityManager.proofHeaders(
             method = "POST",
@@ -154,15 +187,23 @@ class FscmApiClient @Inject constructor(
             body = body.toString(),
             timestampMillis = trustedClock.trustedNowMillis() ?: System.currentTimeMillis(),
         )
-        val response = api.postWithHeaders(
-            "auth/refresh",
-            headers,
-            body,
-        )
-        val payload = runCatching { decode<AuthPayload>(response) }.getOrNull() ?: return false
-        if (payload.token.isBlank()) return false
+        val response = runCatching {
+            api.postWithHeaders(
+                "auth/refresh",
+                headers,
+                body,
+            )
+        }.getOrElse { return SessionRefreshResult.Unavailable }
+        if (response.isDefinitiveRefreshRejection()) {
+            sessionStore.clear()
+            return SessionRefreshResult.Rejected
+        }
+        if (!response.isSuccessful) return SessionRefreshResult.Unavailable
+        val payload = runCatching { decode<AuthPayload>(response) }.getOrNull()
+            ?: return SessionRefreshResult.Unavailable
+        if (payload.token.isBlank()) return SessionRefreshResult.Unavailable
         sessionStore.applyRefresh(payload)
-        true
+        SessionRefreshResult.Refreshed
     }
 
     @PublishedApi
@@ -187,14 +228,43 @@ class FscmApiClient @Inject constructor(
 internal suspend fun retryAuthenticatedRequest(
     auth: Boolean,
     request: suspend () -> Response<JsonElement>,
-    refreshSession: suspend () -> Boolean,
+    refreshSession: suspend (String?) -> SessionRefreshResult,
 ): Response<JsonElement> {
     val initialResponse = request()
-    if (!auth || !initialResponse.isAuthenticationFailure() || !refreshSession()) {
+    if (!auth || !initialResponse.isAuthenticationFailure()) {
         return initialResponse
     }
-    return request()
+    return when (refreshSession(initialResponse.requestAccessToken())) {
+        SessionRefreshResult.Refreshed,
+        SessionRefreshResult.AlreadyCurrent,
+        -> request().also { response ->
+            if (response.isAuthenticationFailure()) throw SessionExpiredException()
+        }
+        SessionRefreshResult.Rejected -> throw SessionExpiredException()
+        SessionRefreshResult.Unavailable -> throw SessionRefreshUnavailableException()
+    }
 }
+
+@PublishedApi
+internal fun SessionState.shouldProactivelyRefresh(
+    nowMillis: Long,
+    refreshMarginMillis: Long = ACCESS_REFRESH_MARGIN_MS,
+): Boolean = token.isNotBlank() && refreshToken.isNotBlank() && accessExpiresAt > 0 &&
+    accessExpiresAt <= nowMillis + refreshMarginMillis
+
+@PublishedApi
+internal fun shouldReuseCurrentAccessToken(expectedAccessToken: String?, currentAccessToken: String): Boolean =
+    !expectedAccessToken.isNullOrBlank() && currentAccessToken.isNotBlank() && expectedAccessToken != currentAccessToken
+
+@PublishedApi
+internal fun Response<JsonElement>.requestAccessToken(): String? =
+    raw().request.header("Authorization")
+        ?.removePrefix("Bearer ")
+        ?.takeIf(String::isNotBlank)
+
+@PublishedApi
+internal fun Response<JsonElement>.isDefinitiveRefreshRejection(): Boolean =
+    code() in DEFINITIVE_REFRESH_STATUS_CODES || body().standardResponseCode() in DEFINITIVE_REFRESH_STATUS_CODES
 
 @PublishedApi
 internal fun Response<JsonElement>.isAuthenticationFailure(): Boolean =
@@ -267,6 +337,9 @@ internal fun effectiveLanguageTag(applicationTag: String?, systemTag: String): S
         else -> "en"
     }
 }
+
+private const val ACCESS_REFRESH_MARGIN_MS = 5L * 60L * 1_000L
+private val DEFINITIVE_REFRESH_STATUS_CODES = setOf(400, 401, 403)
 
 @dagger.Module
 @dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)

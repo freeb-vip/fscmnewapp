@@ -45,6 +45,7 @@ enum class BoxLabelQrFormat {
     LegacyV1,
     LegacyV2,
     LegacyV3,
+    JifengMapping,
 }
 
 class BoxLabelQrFormatException(message: String) : IllegalArgumentException(message)

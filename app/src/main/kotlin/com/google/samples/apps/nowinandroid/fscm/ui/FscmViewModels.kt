@@ -16,6 +16,8 @@
 
 package com.google.samples.apps.nowinandroid.fscm.ui
 
+import android.content.Context
+import android.os.SystemClock
 import androidx.annotation.StringRes
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
@@ -26,26 +28,33 @@ import com.google.samples.apps.nowinandroid.core.model.data.DisplayMode
 import com.google.samples.apps.nowinandroid.core.model.data.UserData
 import com.google.samples.apps.nowinandroid.fscm.data.AuthRepository
 import com.google.samples.apps.nowinandroid.fscm.data.BoxLabel
+import com.google.samples.apps.nowinandroid.fscm.data.BoxLabelMappingCacheMissException
+import com.google.samples.apps.nowinandroid.fscm.data.BoxLabelMappingRepository
 import com.google.samples.apps.nowinandroid.fscm.data.BoxLabelQrFormatException
+import com.google.samples.apps.nowinandroid.fscm.data.BoxMarkPrintAvailability
 import com.google.samples.apps.nowinandroid.fscm.data.BusinessTypeCode
 import com.google.samples.apps.nowinandroid.fscm.data.CartonRepository
+import com.google.samples.apps.nowinandroid.fscm.data.CatalogSource
 import com.google.samples.apps.nowinandroid.fscm.data.DatabaseRecoveryNoticeStore
+import com.google.samples.apps.nowinandroid.fscm.data.EdgeCatalogClient
 import com.google.samples.apps.nowinandroid.fscm.data.EdgePrintNodeOption
 import com.google.samples.apps.nowinandroid.fscm.data.EdgePrintNodeStatus
 import com.google.samples.apps.nowinandroid.fscm.data.EdgePrintRepository
 import com.google.samples.apps.nowinandroid.fscm.data.EdgePrintTemplateUnavailableException
 import com.google.samples.apps.nowinandroid.fscm.data.EdgeTerminalRepository
+import com.google.samples.apps.nowinandroid.fscm.data.EdgeTicketProvider
 import com.google.samples.apps.nowinandroid.fscm.data.FscmApiException
 import com.google.samples.apps.nowinandroid.fscm.data.GlobalSearchRepository
 import com.google.samples.apps.nowinandroid.fscm.data.GlobalSearchResponse
 import com.google.samples.apps.nowinandroid.fscm.data.LegacyOfflineDataAdopter
+import com.google.samples.apps.nowinandroid.fscm.data.LoginSecurityException
+import com.google.samples.apps.nowinandroid.fscm.data.LoginSecurityState
 import com.google.samples.apps.nowinandroid.fscm.data.MobileAppUsage
 import com.google.samples.apps.nowinandroid.fscm.data.MobileAppUsageStore
 import com.google.samples.apps.nowinandroid.fscm.data.MobileRepository
 import com.google.samples.apps.nowinandroid.fscm.data.MobileWorkbenchOverview
 import com.google.samples.apps.nowinandroid.fscm.data.OfflineSyncRepository
 import com.google.samples.apps.nowinandroid.fscm.data.OfflineSyncScheduler
-import com.google.samples.apps.nowinandroid.fscm.data.Product
 import com.google.samples.apps.nowinandroid.fscm.data.ProductRepository
 import com.google.samples.apps.nowinandroid.fscm.data.ProfitOverview
 import com.google.samples.apps.nowinandroid.fscm.data.ProfitRepository
@@ -55,16 +64,31 @@ import com.google.samples.apps.nowinandroid.fscm.data.ReceivingSession
 import com.google.samples.apps.nowinandroid.fscm.data.SearchDestination
 import com.google.samples.apps.nowinandroid.fscm.data.SessionState
 import com.google.samples.apps.nowinandroid.fscm.data.Sku
-import com.google.samples.apps.nowinandroid.fscm.data.parseBoxLabelQr
+import com.google.samples.apps.nowinandroid.fscm.data.boxMarkPrintAvailability
+import com.google.samples.apps.nowinandroid.fscm.data.defaultPrintOption
+import com.google.samples.apps.nowinandroid.fscm.data.isDuplicateReceipt
+import com.google.samples.apps.nowinandroid.fscm.data.isDuplicateReceivingFailure
+import com.google.samples.apps.nowinandroid.fscm.data.isKnownMappedBoxLabel
+import com.google.samples.apps.nowinandroid.fscm.data.isReceivingComplete
 import com.google.samples.apps.nowinandroid.fscm.data.toBusinessTypeCode
-import com.google.samples.apps.nowinandroid.fscm.data.toLocalBoxLabel
 import com.google.samples.apps.nowinandroid.fscm.data.todayRange
+import com.google.samples.apps.nowinandroid.fscm.data.withReceivedScan
+import com.google.samples.apps.nowinandroid.fscm.data.withoutPendingScan
+import com.google.samples.apps.nowinandroid.fscm.device.ReceivingScanFeedback
+import com.google.samples.apps.nowinandroid.fscm.device.ScanAudioDiagnostics
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerInputMode
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerManager
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerManager.Companion.toScannerConfig
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerManager.Companion.withScannerInputMode
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerRuntimeState
+import com.google.samples.apps.nowinandroid.fscm.device.TerminalFindService
+import com.google.samples.apps.nowinandroid.fscm.device.TerminalFindState
+import com.google.samples.apps.nowinandroid.fscm.device.TerminalFindStatusStore
+import com.google.samples.apps.nowinandroid.fscm.device.isNormalBoxLabel
+import com.google.samples.apps.nowinandroid.fscm.device.isSuccessfulProductScanResult
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -72,6 +96,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -80,6 +105,52 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 
+data class LoginUiState(
+    val currentUsername: String = "",
+    val challengeUsername: String = "",
+    val submitting: Boolean = false,
+    val refreshingCaptcha: Boolean = false,
+    val security: LoginSecurityState? = null,
+) {
+    val requiresCaptcha: Boolean
+        get() = security?.let { it.requireCaptcha || it.captcha != null } == true
+
+    val isLocked: Boolean
+        get() = (security?.lockRemainingSeconds ?: 0) > 0
+}
+
+internal fun normalizeLoginUsername(username: String): String = username.trim().lowercase()
+
+internal fun LoginUiState.withUsername(username: String): LoginUiState {
+    val normalized = normalizeLoginUsername(username)
+    if (normalized == currentUsername) return this
+    return if (challengeUsername.isNotBlank() && challengeUsername != normalized) {
+        LoginUiState(currentUsername = normalized)
+    } else {
+        copy(currentUsername = normalized)
+    }
+}
+
+internal fun isLoginSubmissionEnabled(
+    username: String,
+    password: String,
+    captchaAnswer: String,
+    state: LoginUiState,
+): Boolean = username.isNotBlank() &&
+    password.isNotBlank() &&
+    !state.submitting &&
+    !state.isLocked &&
+    (!state.requiresCaptcha || captchaAnswer.isNotBlank())
+
+internal fun remainingLoginLockSeconds(deadlineElapsedRealtime: Long, nowElapsedRealtime: Long): Int =
+    ((deadlineElapsedRealtime - nowElapsedRealtime + 999L) / 1_000L).coerceAtLeast(0L).toInt()
+
+sealed interface FscmStartupUiState {
+    data object Restoring : FscmStartupUiState
+
+    data class Ready(val session: SessionState) : FscmStartupUiState
+}
+
 @HiltViewModel
 class FscmRootViewModel @Inject constructor(
     private val authRepository: AuthRepository,
@@ -87,20 +158,23 @@ class FscmRootViewModel @Inject constructor(
     private val userDataRepository: UserDataRepository,
     private val edgeTerminalRepository: EdgeTerminalRepository,
     private val edgePrintRepository: EdgePrintRepository,
+    private val edgeCatalogClient: EdgeCatalogClient,
     private val legacyOfflineDataAdopter: LegacyOfflineDataAdopter,
     private val offlineSyncScheduler: OfflineSyncScheduler,
     private val scannerManager: ScannerManager,
+    private val edgeTicketProvider: EdgeTicketProvider,
+    terminalFindStatusStore: TerminalFindStatusStore,
+    @param:ApplicationContext private val applicationContext: Context,
     offlineSyncRepository: OfflineSyncRepository,
 ) : ViewModel() {
-    val session: StateFlow<SessionState> = authRepository.session.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = SessionState(),
-    )
-    private val _bootstrapping = MutableStateFlow(true)
-    val bootstrapping = _bootstrapping.asStateFlow()
+    val terminalFindState: StateFlow<TerminalFindState> = terminalFindStatusStore.state
+    private val _startupState = MutableStateFlow<FscmStartupUiState>(FscmStartupUiState.Restoring)
+    val startupState = _startupState.asStateFlow()
     private val _message = MutableStateFlow<UiText?>(null)
     val message = _message.asStateFlow()
+    private val _loginState = MutableStateFlow(LoginUiState())
+    val loginState = _loginState.asStateFlow()
+    private var loginLockJob: Job? = null
     val pendingSyncCount: StateFlow<Int> = offlineSyncRepository.pendingCount.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -121,15 +195,28 @@ class FscmRootViewModel @Inject constructor(
             if (databaseRecoveryNoticeStore.consumeLocalDataReset()) {
                 _message.value = UiText.Resource(R.string.local_offline_data_reset)
             }
-            authRepository.bootstrap()
-            val restoredSession = authRepository.session.first()
-            runCatching { legacyOfflineDataAdopter.adoptFor(restoredSession) }
-            if (restoredSession.token.isNotBlank()) offlineSyncScheduler.enqueue()
-            if (restoredSession.isOffline) {
-                runCatching { edgePrintRepository.discoverLocalNodes(includeSubnetScan = false) }
+        }
+        viewModelScope.launch {
+            val restoredSession = authRepository.restoreLocalSession()
+            _startupState.value = FscmStartupUiState.Ready(restoredSession)
+            launch {
+                authRepository.session.collect { session ->
+                    _startupState.value = FscmStartupUiState.Ready(session)
+                }
             }
-            runCatching { edgeTerminalRepository.registerCurrentTerminal() }
-            _bootstrapping.value = false
+            if (!restoredSession.isLoggedIn) return@launch
+
+            launch { authRepository.refreshStoredSession() }
+            launch { TerminalFindService.start(applicationContext) }
+            launch { runCatching { legacyOfflineDataAdopter.adoptFor(restoredSession) } }
+            if (restoredSession.token.isNotBlank()) {
+                launch { offlineSyncScheduler.enqueue() }
+            }
+            if (restoredSession.isOffline) {
+                launch { runCatching { edgePrintRepository.discoverLocalNodes(includeSubnetScan = false) } }
+            }
+            launch { runCatching { edgeTerminalRepository.registerCurrentTerminal() } }
+            launch { runCatching { edgeCatalogClient.prewarm() } }
         }
     }
 
@@ -158,16 +245,127 @@ class FscmRootViewModel @Inject constructor(
 
     fun consumeBackEventAfterScan(): Boolean = scannerManager.consumeBackEventAfterScan()
 
-    fun login(username: String, password: String) {
+    fun onLoginUsernameChanged(username: String) {
+        val current = _loginState.value
+        val updated = current.withUsername(username)
+        if (current.challengeUsername != updated.challengeUsername) loginLockJob?.cancel()
+        _loginState.value = updated
+    }
+
+    fun refreshLoginCaptcha(username: String) {
+        val normalizedUsername = normalizeLoginUsername(username)
+        if (normalizedUsername.isBlank()) return
+        onLoginUsernameChanged(normalizedUsername)
+        val current = _loginState.value
+        if (current.isLocked || current.refreshingCaptcha) return
+        _loginState.value = current.copy(
+            challengeUsername = normalizedUsername,
+            refreshingCaptcha = true,
+        )
+        viewModelScope.launch {
+            try {
+                val captcha = authRepository.refreshLoginCaptcha(normalizedUsername)
+                if (_loginState.value.currentUsername == normalizedUsername) {
+                    val security = _loginState.value.security ?: LoginSecurityState()
+                    applyLoginSecurity(
+                        username = normalizedUsername,
+                        security = security.copy(requireCaptcha = true, captcha = captcha),
+                    )
+                }
+            } catch (error: Throwable) {
+                _message.value = error.toUiText(R.string.login_captcha_refresh_failed)
+            } finally {
+                _loginState.update { state ->
+                    if (state.currentUsername == normalizedUsername) {
+                        state.copy(refreshingCaptcha = false)
+                    } else {
+                        state
+                    }
+                }
+            }
+        }
+    }
+
+    fun login(username: String, password: String, captchaAnswer: String = "") {
+        val normalizedUsername = normalizeLoginUsername(username)
+        onLoginUsernameChanged(normalizedUsername)
+        val current = _loginState.value
+        if (current.submitting || current.isLocked) return
+        val security = current.security.takeIf { current.challengeUsername == normalizedUsername }
+        if (current.requiresCaptcha && captchaAnswer.isBlank()) {
+            _message.value = UiText.Resource(R.string.login_captcha_required)
+            return
+        }
+        _loginState.value = current.copy(
+            challengeUsername = normalizedUsername,
+            submitting = true,
+        )
         viewModelScope.launch {
             _message.value = null
-            runCatching { authRepository.loginOrOffline(username, password) }
-                .onSuccess {
-                    runCatching { legacyOfflineDataAdopter.adoptFor(authRepository.session.first()) }
-                    offlineSyncScheduler.enqueue()
-                    launch { runCatching { edgeTerminalRepository.registerCurrentTerminal() } }
+            try {
+                authRepository.loginOrOffline(
+                    username = normalizedUsername,
+                    password = password,
+                    captchaId = security?.captcha?.captchaId.orEmpty(),
+                    captchaAnswer = captchaAnswer,
+                )
+                loginLockJob?.cancel()
+                _loginState.value = LoginUiState(currentUsername = normalizedUsername)
+                TerminalFindService.start(applicationContext)
+                runCatching { legacyOfflineDataAdopter.adoptFor(authRepository.session.first()) }
+                offlineSyncScheduler.enqueue()
+                launch { runCatching { edgeTerminalRepository.registerCurrentTerminal() } }
+                launch {
+                    edgeCatalogClient.invalidate()
+                    runCatching { edgeCatalogClient.prewarm() }
                 }
-                .onFailure { _message.value = it.toUiText(R.string.login_failed) }
+            } catch (error: LoginSecurityException) {
+                if (_loginState.value.currentUsername == normalizedUsername) {
+                    applyLoginSecurity(normalizedUsername, error.security)
+                }
+                _message.value = error.serverMessage?.takeIf(String::isNotBlank)?.let(UiText::Dynamic)
+                    ?: UiText.Resource(R.string.login_failed)
+            } catch (error: Throwable) {
+                _message.value = error.toUiText(R.string.login_failed)
+            } finally {
+                _loginState.update { state ->
+                    if (state.currentUsername == normalizedUsername) state.copy(submitting = false) else state
+                }
+            }
+        }
+    }
+
+    private fun applyLoginSecurity(username: String, security: LoginSecurityState) {
+        loginLockJob?.cancel()
+        _loginState.update { state ->
+            if (state.currentUsername == username) {
+                state.copy(challengeUsername = username, security = security)
+            } else {
+                state
+            }
+        }
+        if (security.lockRemainingSeconds <= 0) return
+        val deadline = SystemClock.elapsedRealtime() + security.lockRemainingSeconds * 1_000L
+        loginLockJob = viewModelScope.launch {
+            while (true) {
+                delay(250)
+                val remaining = remainingLoginLockSeconds(deadline, SystemClock.elapsedRealtime())
+                val state = _loginState.value
+                if (state.challengeUsername != username) break
+                if (remaining <= 0) {
+                    _loginState.value = LoginUiState(currentUsername = state.currentUsername)
+                    break
+                }
+                _loginState.update { currentState ->
+                    if (currentState.challengeUsername == username) {
+                        currentState.copy(
+                            security = currentState.security?.copy(lockRemainingSeconds = remaining),
+                        )
+                    } else {
+                        currentState
+                    }
+                }
+            }
         }
     }
 
@@ -175,16 +373,28 @@ class FscmRootViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching { authRepository.switchNamespace(namespaceId) }
                 .onSuccess {
+                    TerminalFindService.start(applicationContext)
                     runCatching { legacyOfflineDataAdopter.adoptFor(authRepository.session.first()) }
                     offlineSyncScheduler.enqueue()
                     launch { runCatching { edgeTerminalRepository.registerCurrentTerminal() } }
+                    launch {
+                        edgeCatalogClient.invalidate()
+                        runCatching { edgeCatalogClient.prewarm() }
+                    }
                 }
                 .onFailure { _message.value = it.toUiText(R.string.switch_namespace_failed) }
         }
     }
 
     fun logout() {
-        viewModelScope.launch { authRepository.logout() }
+        loginLockJob?.cancel()
+        _loginState.value = LoginUiState()
+        edgeCatalogClient.invalidate()
+        TerminalFindService.stop(applicationContext)
+        viewModelScope.launch {
+            edgeTicketProvider.clear()
+            authRepository.logout()
+        }
     }
 
     fun updateDisplayMode(displayMode: DisplayMode) {
@@ -203,6 +413,19 @@ data class LoadState<T>(
     val data: T? = null,
     val error: UiText? = null,
 )
+
+internal fun workbenchLoadingState(
+    cached: MobileWorkbenchOverview?,
+    isOffline: Boolean,
+): LoadState<MobileWorkbenchOverview> = LoadState(
+    loading = !isOffline,
+    data = cached ?: if (isOffline) MobileWorkbenchOverview() else null,
+)
+
+internal fun workbenchRefreshFailureState(
+    current: LoadState<MobileWorkbenchOverview>,
+    error: UiText,
+): LoadState<MobileWorkbenchOverview> = current.copy(loading = false, error = error)
 
 @HiltViewModel
 class WorkbenchViewModel @Inject constructor(
@@ -223,6 +446,7 @@ class WorkbenchViewModel @Inject constructor(
     private val searchNavigationChannel = Channel<SearchDestination>(Channel.BUFFERED)
     val searchNavigation = searchNavigationChannel.receiveAsFlow()
     private var workbenchSearchJob: Job? = null
+    private var workbenchLoadJob: Job? = null
     private var mobileAppUsageJob: Job? = null
     private var loadedSessionKey: String? = null
     private val _mobileAppUsage = MutableStateFlow(MobileAppUsage())
@@ -241,8 +465,11 @@ class WorkbenchViewModel @Inject constructor(
             append(':')
             append(session.sessionMode.name)
         }
-        if (!force && loadedSessionKey == sessionKey) return
+        val sessionChanged = loadedSessionKey != sessionKey
+        if (!force && !sessionChanged) return
+        workbenchLoadJob?.cancel()
         loadedSessionKey = sessionKey
+        if (sessionChanged) _state.value = LoadState()
         viewModelScope.launch {
             mobileAppUsageStore.initializeDefaultCommonApps(session)
         }
@@ -250,14 +477,33 @@ class WorkbenchViewModel @Inject constructor(
         mobileAppUsageJob = viewModelScope.launch {
             mobileAppUsageStore.usage(session).collect { usage -> _mobileAppUsage.value = usage }
         }
-        viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
-            runCatching { mobileRepository.workbenchOverview() }
-                .onSuccess { overview ->
-                    _state.value = LoadState(data = overview)
-                    viewModelScope.launch { runCatching { edgeTerminalRepository.registerCurrentTerminal() } }
-                }
-                .onFailure { error -> _state.value = LoadState(error = error.toUiText(R.string.load_home_failed)) }
+        workbenchLoadJob = viewModelScope.launch {
+            val existing = _state.value.data.takeUnless { sessionChanged }
+            val cached = existing ?: try {
+                mobileRepository.cachedWorkbenchOverview(session)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Throwable) {
+                null
+            }
+            if (loadedSessionKey != sessionKey) return@launch
+            _state.value = workbenchLoadingState(cached, session.isOffline)
+            if (session.isOffline) return@launch
+
+            try {
+                val overview = mobileRepository.refreshWorkbenchOverview(session)
+                if (loadedSessionKey != sessionKey) return@launch
+                _state.value = LoadState(data = overview)
+                launch { runCatching { edgeTerminalRepository.registerCurrentTerminal() } }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                if (loadedSessionKey != sessionKey) return@launch
+                _state.value = workbenchRefreshFailureState(
+                    current = _state.value,
+                    error = error.toUiText(R.string.load_home_failed),
+                )
+            }
         }
     }
 
@@ -293,7 +539,9 @@ class WorkbenchViewModel @Inject constructor(
                     val exactHit = response.hits.singleOrNull()?.takeIf { it.matchKind == "exact" }
                     if (exactHit != null) {
                         _searchState.value = LoadState()
-                        searchNavigationChannel.send(globalSearchRepository.destinationFor(exactHit, _state.value.data))
+                        globalSearchRepository.destinationFor(exactHit, _state.value.data)?.let {
+                            searchNavigationChannel.send(it)
+                        }
                     } else {
                         _searchState.value = LoadState(data = response)
                     }
@@ -311,7 +559,9 @@ class WorkbenchViewModel @Inject constructor(
     fun selectSearchHit(hit: com.google.samples.apps.nowinandroid.fscm.data.GlobalSearchHit) {
         viewModelScope.launch {
             _searchState.value = LoadState()
-            searchNavigationChannel.send(globalSearchRepository.destinationFor(hit, _state.value.data))
+            globalSearchRepository.destinationFor(hit, _state.value.data)?.let {
+                searchNavigationChannel.send(it)
+            }
         }
     }
 }
@@ -373,6 +623,7 @@ class ProfitViewModel @Inject constructor(
 @HiltViewModel
 class ReceivingListViewModel @Inject constructor(
     private val receivingRepository: ReceivingRepository,
+    private val boxLabelMappingRepository: BoxLabelMappingRepository,
 ) : ViewModel() {
     private val _state = MutableStateFlow(LoadState<List<ReceivingSession>>())
     val state = _state.asStateFlow()
@@ -380,6 +631,7 @@ class ReceivingListViewModel @Inject constructor(
     fun load() {
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
+            runCatching { boxLabelMappingRepository.refreshIfStale() }
             runCatching { receivingRepository.sessions() }
                 .onSuccess { rows -> _state.value = LoadState(data = rows) }
                 .onFailure { error -> _state.value = LoadState(error = error.toUiText(R.string.load_receiving_failed)) }
@@ -390,17 +642,18 @@ class ReceivingListViewModel @Inject constructor(
 data class ReceivingDetailUiState(
     val loading: Boolean = false,
     val session: ReceivingSession? = null,
-    val preview: ReceivingScanItem? = null,
-    val previewRawCode: String = "",
-    val duplicate: Boolean = false,
     val error: UiText? = null,
     val submitting: Boolean = false,
+    val syncing: Boolean = false,
+    val knownJifengCodes: Set<String> = emptySet(),
 )
 
 @HiltViewModel
 class ReceivingDetailViewModel @Inject constructor(
     private val receivingRepository: ReceivingRepository,
+    private val boxLabelMappingRepository: BoxLabelMappingRepository,
     private val scannerManager: ScannerManager,
+    private val scanFeedback: ReceivingScanFeedback,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ReceivingDetailUiState())
     val state = _state.asStateFlow()
@@ -408,45 +661,78 @@ class ReceivingDetailViewModel @Inject constructor(
     fun load(id: Long) {
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
+            runCatching { boxLabelMappingRepository.refreshIfStale() }
+            _state.update { it.copy(knownJifengCodes = boxLabelMappingRepository.knownJifengAliases()) }
             runCatching { receivingRepository.session(id) }
                 .onSuccess { session -> _state.update { it.copy(loading = false, session = session) } }
                 .onFailure { error -> _state.update { it.copy(loading = false, error = error.toUiText(R.string.load_receiving_detail_failed)) } }
         }
     }
 
-    fun preview(id: Long, rawCode: String) {
-        if (rawCode.isBlank()) return
+    fun scanAndReceive(id: Long, rawCode: String) {
+        val normalized = rawCode.trim()
+        if (normalized.isBlank() || _state.value.submitting) return
+        if (_state.value.session?.isReceivingComplete() == true) {
+            scanFeedback.failure()
+            _state.update { it.copy(error = UiText.Resource(R.string.receiving_already_complete_scan_error)) }
+            return
+        }
+        if (!isKnownBoxLabelCode(normalized)) {
+            scanFeedback.failure()
+            _state.update { it.copy(error = UiText.Resource(R.string.box_label_scan_retry_prompt)) }
+            return
+        }
         viewModelScope.launch {
-            _state.update { it.copy(submitting = true, error = null, preview = null) }
-            runCatching { receivingRepository.preview(id, rawCode.trim()) }
+            _state.update { it.copy(submitting = true, error = null) }
+            runCatching { receivingRepository.scan(id, normalized, damaged = false) }
                 .onSuccess { response ->
-                    _state.update {
-                        it.copy(
-                            submitting = false,
-                            preview = response.data,
-                            previewRawCode = rawCode.trim(),
-                            duplicate = response.duplicate,
-                        )
+                    if (response.isDuplicateReceipt()) {
+                        scanFeedback.failure()
+                        _state.update {
+                            it.copy(
+                                submitting = false,
+                                error = UiText.Resource(R.string.receiving_duplicate_scan_error),
+                            )
+                        }
+                    } else {
+                        val updatedSession = _state.value.session?.withReceivedScan(response.data, damaged = false)
+                        _state.update { it.copy(session = updatedSession) }
+                        scanFeedback.success()
+                        if (updatedSession?.isReceivingComplete() == true) {
+                            runCatching { receivingRepository.complete(id) }
+                                .onSuccess { completedSession ->
+                                    _state.update {
+                                        it.copy(
+                                            submitting = false,
+                                            session = completedSession,
+                                        )
+                                    }
+                                }
+                                .onFailure { error ->
+                                    _state.update {
+                                        it.copy(
+                                            submitting = false,
+                                            error = error.toUiText(R.string.submit_failed),
+                                        )
+                                    }
+                                }
+                        } else {
+                            _state.update { it.copy(submitting = false) }
+                        }
                     }
                 }
                 .onFailure { error ->
-                    _state.update { it.copy(submitting = false, error = error.toUiText(R.string.scan_failed)) }
-                }
-        }
-    }
-
-    fun confirm(id: Long, damaged: Boolean = false, actualQty: Int? = null) {
-        val rawCode = _state.value.previewRawCode
-        if (rawCode.isBlank()) return
-        viewModelScope.launch {
-            _state.update { it.copy(submitting = true, error = null) }
-            runCatching { receivingRepository.scan(id, rawCode, damaged, actualQty) }
-                .onSuccess {
-                    _state.update { it.copy(submitting = false, preview = null, previewRawCode = "", duplicate = false) }
-                    load(id)
-                }
-                .onFailure { error ->
-                    _state.update { it.copy(submitting = false, error = error.toUiText(R.string.submit_failed)) }
+                    scanFeedback.failure()
+                    _state.update {
+                        it.copy(
+                            submitting = false,
+                            error = if (error.isDuplicateReceivingFailure()) {
+                                UiText.Resource(R.string.receiving_duplicate_scan_error)
+                            } else {
+                                error.toUiText(R.string.submit_failed)
+                            },
+                        )
+                    }
                 }
         }
     }
@@ -454,22 +740,30 @@ class ReceivingDetailViewModel @Inject constructor(
     fun voidScan(id: Long, item: ReceivingScanItem) {
         viewModelScope.launch {
             runCatching { receivingRepository.voidScan(id, item) }
-                .onSuccess { load(id) }
+                .onSuccess {
+                    _state.update { state -> state.copy(session = state.session?.withoutPendingScan(item)) }
+                }
                 .onFailure { error -> _state.update { it.copy(error = error.toUiText(R.string.cancel_scan_failed)) } }
         }
     }
 
-    fun complete(id: Long) {
+    fun sync(id: Long) {
+        if (_state.value.syncing) return
         viewModelScope.launch {
-            _state.update { it.copy(submitting = true) }
-            runCatching { receivingRepository.complete(id) }
-                .onSuccess { load(id) }
-                .onFailure { error -> _state.update { it.copy(submitting = false, error = error.toUiText(R.string.finish_receiving_failed)) } }
+            _state.update { it.copy(syncing = true, error = null) }
+            runCatching { receivingRepository.sync(id) }
+                .onSuccess { session ->
+                    _state.update { it.copy(syncing = false, session = session) }
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            syncing = false,
+                            error = error.toUiText(R.string.load_receiving_detail_failed),
+                        )
+                    }
+                }
         }
-    }
-
-    fun clearPreview() {
-        _state.update { it.copy(preview = null, previewRawCode = "", duplicate = false) }
     }
 
     fun registerScanner(lifecycleOwner: LifecycleOwner, onScan: (String) -> Unit) {
@@ -480,22 +774,28 @@ class ReceivingDetailViewModel @Inject constructor(
     fun unregisterScanner() {
         scannerManager.popOnScanListener()
     }
+
+    fun isKnownBoxLabelCode(code: String): Boolean =
+        isKnownMappedBoxLabel(code, _state.value.knownJifengCodes)
 }
 
 data class ProductManagementUiState(
     val query: String = "",
-    val isSkuView: Boolean = false,
-    val products: List<Product> = emptyList(),
     val skus: List<Sku> = emptyList(),
     val loading: Boolean = false,
     val error: UiText? = null,
     val hasMore: Boolean = true,
     val page: Int = 1,
+    val exactSearch: Boolean = false,
     val isBroadcastMode: Boolean = false,
-    val defaultSkuPrintNodeId: Long? = null,
+    val defaultEdgePrintNodeId: Long? = null,
+    val defaultSkuPrintTemplateCode: String = "",
     val skuLabelPrefix: String = "T",
     val printingSkuId: Long? = null,
     val printMessage: UiText? = null,
+    val catalogSource: CatalogSource? = null,
+    val catalogNodeName: String = "",
+    val catalogStale: Boolean = false,
 )
 
 @HiltViewModel
@@ -504,11 +804,14 @@ class ProductManagementViewModel @Inject constructor(
     private val edgePrintRepository: EdgePrintRepository,
     private val userDataRepository: UserDataRepository,
     private val scannerManager: ScannerManager,
+    private val scanFeedback: ReceivingScanFeedback,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ProductManagementUiState())
     val state = _state.asStateFlow()
 
     private var searchJob: Job? = null
+    private var loadJob: Job? = null
+    private var pendingScanQuery: String? = null
 
     private var preferencesLoaded = false
 
@@ -521,8 +824,8 @@ class ProductManagementViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         isBroadcastMode = isBroadcastMode,
-                        isSkuView = if (isBroadcastMode) true else it.isSkuView,
-                        defaultSkuPrintNodeId = userData.defaultSkuPrintNodeId,
+                        defaultEdgePrintNodeId = userData.defaultEdgePrintNodeId,
+                        defaultSkuPrintTemplateCode = userData.defaultSkuPrintTemplateCode,
                         skuLabelPrefix = userData.skuLabelPrefix,
                     )
                 }
@@ -535,18 +838,20 @@ class ProductManagementViewModel @Inject constructor(
     }
 
     fun setQuery(query: String) {
+        pendingScanQuery = null
         _state.update { it.copy(query = query, printMessage = null) }
         searchJob?.cancel()
+        loadJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(500)
             load(reset = true)
         }
     }
 
-    fun switchView(isSkuView: Boolean) {
-        if (_state.value.isBroadcastMode) return
-        if (_state.value.isSkuView == isSkuView) return
-        _state.update { it.copy(isSkuView = isSkuView) }
+    fun toggleExactSearch() {
+        searchJob?.cancel()
+        loadJob?.cancel()
+        _state.update { it.copy(exactSearch = !it.exactSearch) }
         load(reset = true)
     }
 
@@ -559,10 +864,11 @@ class ProductManagementViewModel @Inject constructor(
         val normalized = code.trimEnd('\r', '\n', '\t').trim()
         if (normalized.isBlank()) return
         searchJob?.cancel()
+        loadJob?.cancel()
+        pendingScanQuery = normalized
         _state.update {
             it.copy(
                 query = normalized,
-                isSkuView = true,
                 printMessage = null,
             )
         }
@@ -580,7 +886,7 @@ class ProductManagementViewModel @Inject constructor(
 
     fun printSku(sku: Sku) {
         val current = _state.value
-        val defaultNodeId = current.defaultSkuPrintNodeId
+        val defaultNodeId = current.defaultEdgePrintNodeId
         if (current.printingSkuId != null) return
         if (defaultNodeId == null) {
             _state.update { it.copy(error = UiText.Resource(R.string.device_default_sku_node_required)) }
@@ -589,8 +895,8 @@ class ProductManagementViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(printingSkuId = sku.id, error = null, printMessage = null) }
             runCatching {
-                val option = edgePrintRepository.availableNodes()
-                    .firstOrNull { it.node.id == defaultNodeId }
+                val option = edgePrintRepository.availableTemplateOptions()
+                    .defaultPrintOption(defaultNodeId, current.defaultSkuPrintTemplateCode)
                     ?: throw ClientUiException(UiText.Resource(R.string.device_default_sku_node_unavailable))
                 edgePrintRepository.printSku(
                     option = option,
@@ -622,12 +928,11 @@ class ProductManagementViewModel @Inject constructor(
     fun initForProduct(productId: Long) {
         _state.update {
             it.copy(
-                isSkuView = true,
                 query = "productId:$productId", // A simple way to signal repository, or we can add a specific field
-                products = emptyList(),
                 skus = emptyList(),
                 page = 1,
                 hasMore = true,
+                exactSearch = false,
             )
         }
         load(reset = true)
@@ -636,34 +941,52 @@ class ProductManagementViewModel @Inject constructor(
     fun load(reset: Boolean = false) {
         val current = _state.value
         val nextPage = if (reset) 1 else current.page + 1
+        val scannedQuery = pendingScanQuery?.takeIf { reset && it == current.query }
 
-        viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
+        if (reset) loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    loading = true,
+                    error = null,
+                    catalogSource = CatalogSource.Center,
+                    catalogNodeName = "",
+                    catalogStale = false,
+                )
+            }
             runCatching {
-                if (current.isSkuView || current.isBroadcastMode) {
-                    val result = repository.skus(current.query, nextPage)
-                    val rows = result.rows()
-                    _state.update {
-                        it.copy(
-                            skus = if (reset) rows else it.skus + rows,
-                            page = nextPage,
-                            hasMore = rows.size >= 20,
-                            loading = false,
-                        )
-                    }
-                } else {
-                    val result = repository.products(current.query, nextPage)
-                    val rows = result.rows()
-                    _state.update {
-                        it.copy(
-                            products = if (reset) rows else it.products + rows,
-                            page = nextPage,
-                            hasMore = rows.size >= 20,
-                            loading = false,
-                        )
-                    }
+                val result = repository.skusResult(
+                    keyword = current.query,
+                    page = nextPage,
+                    exactMatch = current.exactSearch,
+                )
+                val rows = result.data.rows()
+                if (scannedQuery != null) pendingScanQuery = null
+                _state.update {
+                    it.copy(
+                        skus = if (reset) rows else it.skus + rows,
+                        page = nextPage,
+                        hasMore = rows.size >= 20,
+                        loading = false,
+                        catalogSource = result.source,
+                        catalogNodeName = result.nodeName.ifBlank { result.nodeId },
+                        catalogStale = result.isStale,
+                        error = if (scannedQuery != null && !isSuccessfulProductScanResult(rows.size)) {
+                            UiText.Resource(R.string.product_no_match)
+                        } else {
+                            null
+                        },
+                    )
+                }
+                if (scannedQuery != null) {
+                    if (isSuccessfulProductScanResult(rows.size)) scanFeedback.success() else scanFeedback.failure()
                 }
             }.onFailure { e ->
+                if (e is CancellationException) return@onFailure
+                if (scannedQuery != null) {
+                    pendingScanQuery = null
+                    scanFeedback.failure()
+                }
                 _state.update { it.copy(loading = false, error = e.toUiText(R.string.product_load_failed)) }
             }
         }
@@ -681,11 +1004,13 @@ data class CartonManagementUiState(
     val boxMarkOptions: List<EdgePrintNodeOption> = emptyList(),
     val selectedBoxMarkOptionKey: String? = null,
     val boxMarkCopies: Int = 1,
-    val defaultBoxMarkPrintNodeId: Long? = null,
+    val defaultEdgePrintNodeId: Long? = null,
+    val defaultBoxMarkPrintTemplateCode: String = "",
     val printSubmitting: Boolean = false,
     val printMessage: UiText? = null,
     val printError: UiText? = null,
     val pendingPrintIdempotencyKey: String? = null,
+    val knownJifengCodes: Set<String> = emptySet(),
 )
 
 data class PdaModeUiState(
@@ -704,25 +1029,13 @@ data class SearchDetailUiState<T>(
 data class LabelPrintUiState(
     val visible: Boolean = false,
     val loadingNodes: Boolean = false,
-    val nodes: List<EdgePrintNodeOption> = emptyList(),
-    val selectedNodeId: Long? = null,
+    val options: List<EdgePrintNodeOption> = emptyList(),
+    val selectedOptionKey: String? = null,
     val copies: Int = 1,
     val labelPrefix: String = "",
     val skuCode: String = "",
     val submitting: Boolean = false,
     val message: UiText? = null,
-    val error: UiText? = null,
-)
-
-data class EdgeNodesUiState(
-    val loading: Boolean = false,
-    val nodes: List<EdgePrintNodeStatus> = emptyList(),
-    val quickPrintOptions: List<EdgePrintNodeOption> = emptyList(),
-    val selectedNodeKey: String? = null,
-    val defaultSkuPrintNodeId: Long? = null,
-    val boxMarkOptions: List<EdgePrintNodeOption> = emptyList(),
-    val defaultBoxMarkPrintNodeId: Long? = null,
-    val skuLabelPrefix: String = "T",
     val error: UiText? = null,
 )
 
@@ -732,6 +1045,7 @@ data class LabelPrintAppUiState(
     val options: List<EdgePrintNodeOption> = emptyList(),
     val selectedOptionKey: String? = null,
     val copies: Int = 1,
+    val confirmationVisible: Boolean = false,
     val submitting: Boolean = false,
     val message: UiText? = null,
     val error: UiText? = null,
@@ -790,7 +1104,13 @@ class LabelPrintAppViewModel @Inject constructor(
     }
 
     fun selectOption(key: String) {
-        _state.update { it.copy(selectedOptionKey = key, message = null, error = null) }
+        _state.update { state ->
+            if (state.options.any { it.selectionKey == key }) state.copy(selectedOptionKey = key, copies = 1, confirmationVisible = true, message = null, error = null) else state
+        }
+    }
+
+    fun dismissConfirmation() {
+        _state.update { if (it.submitting) it else it.copy(confirmationVisible = false, error = null) }
     }
 
     fun changeCopies(delta: Int) {
@@ -808,6 +1128,8 @@ class LabelPrintAppViewModel @Inject constructor(
                     _state.update {
                         it.copy(
                             submitting = false,
+                            confirmationVisible = false,
+                            content = "",
                             message = UiText.Resource(
                                 if (submission.local) R.string.device_local_print_submitted else R.string.device_remote_print_submitted,
                                 listOf(submission.nodeName),
@@ -838,6 +1160,18 @@ class LabelPrintAppViewModel @Inject constructor(
     }
 }
 
+data class EdgeNodesUiState(
+    val loading: Boolean = false,
+    val nodes: List<EdgePrintNodeStatus> = emptyList(),
+    val quickPrintOptions: List<EdgePrintNodeOption> = emptyList(),
+    val boxMarkOptions: List<EdgePrintNodeOption> = emptyList(),
+    val defaultEdgePrintNodeId: Long? = null,
+    val defaultSkuPrintTemplateCode: String = "",
+    val defaultBoxMarkPrintTemplateCode: String = "",
+    val skuLabelPrefix: String = "T",
+    val error: UiText? = null,
+)
+
 @HiltViewModel
 class EdgeNodesViewModel @Inject constructor(
     private val edgePrintRepository: EdgePrintRepository,
@@ -845,82 +1179,40 @@ class EdgeNodesViewModel @Inject constructor(
 ) : ViewModel() {
     private val _state = MutableStateFlow(EdgeNodesUiState())
     val state = _state.asStateFlow()
-
     init {
-        viewModelScope.launch {
-            userDataRepository.userData.collect { userData ->
-                _state.update {
-                    it.copy(
-                        defaultSkuPrintNodeId = userData.defaultSkuPrintNodeId,
-                        defaultBoxMarkPrintNodeId = userData.defaultBoxMarkPrintNodeId,
-                        skuLabelPrefix = userData.skuLabelPrefix,
-                    )
-                }
-            }
-        }
+        viewModelScope.launch { userDataRepository.userData.collect { userData -> _state.update { it.copy(defaultEdgePrintNodeId = userData.defaultEdgePrintNodeId, defaultSkuPrintTemplateCode = userData.defaultSkuPrintTemplateCode, defaultBoxMarkPrintTemplateCode = userData.defaultBoxMarkPrintTemplateCode, skuLabelPrefix = userData.skuLabelPrefix) } } }
         load()
     }
-
     fun load() {
         if (_state.value.loading) return
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
-            runCatching {
-                Triple(
-                    edgePrintRepository.registeredNodes(),
-                    edgePrintRepository.availableNodes(),
-                    edgePrintRepository.availableBoxMarkOptions(),
-                )
-            }.onSuccess { (nodes, options, boxMarkOptions) ->
-                _state.update {
-                    it.copy(
-                        loading = false,
-                        nodes = nodes,
-                        quickPrintOptions = options,
-                        boxMarkOptions = boxMarkOptions,
-                        selectedNodeKey = null,
-                    )
-                }
-            }
-                .onFailure { error ->
-                    _state.update {
-                        it.copy(
-                            loading = false,
-                            error = error.toUiText(R.string.device_query_edge_nodes_failed),
-                        )
-                    }
-                }
+            runCatching { Triple(edgePrintRepository.registeredNodes(), edgePrintRepository.availableTemplateOptions(), edgePrintRepository.availableBoxMarkOptions()) }
+                .onSuccess { (nodes, skuOptions, boxOptions) -> _state.update { it.copy(loading = false, nodes = nodes.filter { status -> status.localReachable || status.node.status == "online" }, quickPrintOptions = skuOptions, boxMarkOptions = boxOptions) } }
+                .onFailure { error -> _state.update { it.copy(loading = false, error = error.toUiText(R.string.device_query_edge_nodes_failed)) } }
         }
     }
-
-    fun selectNode(key: String) {
-        _state.update { it.copy(selectedNodeKey = key) }
+    fun setDefaultNode(nodeId: Long) {
+        val current = _state.value
+        if (current.nodes.none { it.node.id == nodeId }) return
+        val sku = current.defaultSkuPrintTemplateCode.takeIf { code -> current.quickPrintOptions.any { it.node.id == nodeId && it.template.code == code } }.orEmpty()
+        val box = current.defaultBoxMarkPrintTemplateCode.takeIf { code -> current.boxMarkOptions.any { it.node.id == nodeId && it.template.code == code } }.orEmpty()
+        savePreferences(nodeId, sku, box, current.skuLabelPrefix)
     }
-
-    fun closeNodeDetails() {
-        _state.update { it.copy(selectedNodeKey = null) }
+    fun selectSkuTemplate(nodeId: Long, code: String) {
+        val current = _state.value
+        if (nodeId == current.defaultEdgePrintNodeId && current.quickPrintOptions.any { it.node.id == nodeId && it.template.code == code }) savePreferences(nodeId, code, current.defaultBoxMarkPrintTemplateCode, current.skuLabelPrefix)
     }
-
-    fun selectQuickPrintNode(nodeId: Long) {
-        _state.update { it.copy(defaultSkuPrintNodeId = nodeId) }
-        saveQuickPrintPreferences(nodeId, _state.value.skuLabelPrefix)
+    fun selectBoxMarkTemplate(nodeId: Long, code: String) {
+        val current = _state.value
+        if (nodeId == current.defaultEdgePrintNodeId && current.boxMarkOptions.any { it.node.id == nodeId && it.template.code == code }) savePreferences(nodeId, current.defaultSkuPrintTemplateCode, code, current.skuLabelPrefix)
     }
-
     fun updateSkuLabelPrefix(prefix: String) {
-        val normalized = prefix.filterNot { it.isISOControl() || it.isWhitespace() }.take(16)
-        _state.update { it.copy(skuLabelPrefix = normalized) }
-        saveQuickPrintPreferences(_state.value.defaultSkuPrintNodeId, normalized)
+        val current = _state.value
+        savePreferences(current.defaultEdgePrintNodeId, current.defaultSkuPrintTemplateCode, current.defaultBoxMarkPrintTemplateCode, prefix.filterNot { it.isISOControl() || it.isWhitespace() }.take(16))
     }
-
-    fun selectBoxMarkPrintNode(nodeId: Long) {
-        _state.update { it.copy(defaultBoxMarkPrintNodeId = nodeId) }
-        viewModelScope.launch { userDataRepository.setDefaultBoxMarkPrintNode(nodeId) }
-    }
-
-    private fun saveQuickPrintPreferences(nodeId: Long?, prefix: String) {
-        viewModelScope.launch {
-            userDataRepository.setSkuQuickPrintPreferences(nodeId, prefix)
-        }
+    private fun savePreferences(nodeId: Long?, sku: String, box: String, prefix: String) {
+        viewModelScope.launch { userDataRepository.setEdgePrintPreferences(nodeId, sku, box, prefix) }
     }
 }
 
@@ -957,19 +1249,32 @@ class SkuDetailViewModel @Inject constructor(
         _printState.update { it.copy(loadingNodes = true) }
         viewModelScope.launch {
             runCatching {
-                userDataRepository.userData.first() to edgePrintRepository.availableNodes()
+                userDataRepository.userData.first() to edgePrintRepository.availableTemplateOptions()
             }
-                .onSuccess { (userData, nodes) ->
+                .onSuccess { (userData, options) ->
                     _printState.update {
+                        val defaultOption = options.defaultPrintOption(
+                            userData.defaultEdgePrintNodeId,
+                            userData.defaultSkuPrintTemplateCode,
+                        )
+                        val savedDefaultUnavailable =
+                            userData.defaultEdgePrintNodeId != null && defaultOption == null
+                        val selectedKey = it.selectedOptionKey
+                            ?.takeIf { key -> options.any { option -> option.selectionKey == key } }
+                            ?: defaultOption?.selectionKey
+                            ?: options.firstOrNull()
+                                ?.takeUnless { savedDefaultUnavailable }
+                                ?.selectionKey
                         it.copy(
                             loadingNodes = false,
-                            nodes = nodes,
-                            selectedNodeId = it.selectedNodeId
-                                ?.takeIf { selectedId -> nodes.any { option -> option.node.id == selectedId } }
-                                ?: nodes.firstOrNull { option -> option.node.id == userData.defaultSkuPrintNodeId }?.node?.id
-                                ?: nodes.firstOrNull()?.node?.id,
+                            options = options,
+                            selectedOptionKey = selectedKey,
                             labelPrefix = userData.skuLabelPrefix,
-                            error = errorAfterLoad ?: if (nodes.isEmpty()) UiText.Resource(R.string.device_no_print_nodes_available) else null,
+                            error = errorAfterLoad ?: when {
+                                options.isEmpty() -> UiText.Resource(R.string.device_no_print_nodes_available)
+                                savedDefaultUnavailable -> UiText.Resource(R.string.device_saved_node_unavailable)
+                                else -> null
+                            },
                         )
                     }
                 }
@@ -983,8 +1288,14 @@ class SkuDetailViewModel @Inject constructor(
         if (!_printState.value.submitting) _printState.value = LabelPrintUiState()
     }
 
-    fun selectPrintNode(nodeId: Long) {
-        _printState.update { it.copy(selectedNodeId = nodeId, message = null, error = null) }
+    fun selectPrintOption(key: String) {
+        _printState.update {
+            if (it.options.any { option -> option.selectionKey == key }) {
+                it.copy(selectedOptionKey = key, message = null, error = null)
+            } else {
+                it
+            }
+        }
     }
 
     fun changePrintCopies(delta: Int) {
@@ -1004,7 +1315,7 @@ class SkuDetailViewModel @Inject constructor(
     fun submitPrint() {
         val sku = _state.value.data ?: return
         val printState = _printState.value
-        val option = printState.nodes.firstOrNull { it.node.id == printState.selectedNodeId }
+        val option = printState.options.firstOrNull { it.selectionKey == printState.selectedOptionKey }
         if (option == null || printState.submitting) return
         viewModelScope.launch {
             _printState.update { it.copy(submitting = true, message = null, error = null) }
@@ -1028,7 +1339,11 @@ class SkuDetailViewModel @Inject constructor(
                     }
                 }
                 .onFailure { error ->
-                    val message = error.toUiText(R.string.device_label_print_failed)
+                    val message = if (error is EdgePrintTemplateUnavailableException) {
+                        UiText.Resource(R.string.device_label_template_changed)
+                    } else {
+                        error.toUiText(R.string.device_label_print_failed)
+                    }
                     _printState.update { it.copy(submitting = false, error = message) }
                     if (error is EdgePrintTemplateUnavailableException) loadPrintNodes(errorAfterLoad = message)
                 }
@@ -1102,12 +1417,20 @@ class PdaModeViewModel @Inject constructor(
 class PdaSettingsViewModel @Inject constructor(
     private val scannerManager: ScannerManager,
     private val userDataRepository: UserDataRepository,
+    private val scanFeedback: ReceivingScanFeedback,
 ) : ViewModel() {
     val scannerState: StateFlow<ScannerRuntimeState> = scannerManager.scannerState.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = scannerManager.scannerState.value,
     )
+    val audioDiagnostics: StateFlow<ScanAudioDiagnostics> = scanFeedback.audioDiagnostics
+
+    fun refreshAudioDiagnostics() = scanFeedback.refreshAudioDiagnostics()
+
+    fun testSuccessFeedback() = scanFeedback.success()
+
+    fun testFailureFeedback() = scanFeedback.failure()
 
     fun clearScannerDiagnostics() {
         scannerManager.clearDiagnostics()
@@ -1125,9 +1448,11 @@ class PdaSettingsViewModel @Inject constructor(
 @HiltViewModel
 class CartonManagementViewModel @Inject constructor(
     private val repository: CartonRepository,
+    private val boxLabelMappingRepository: BoxLabelMappingRepository,
     private val edgePrintRepository: EdgePrintRepository,
     private val userDataRepository: UserDataRepository,
     private val scannerManager: ScannerManager,
+    private val scanFeedback: ReceivingScanFeedback,
 ) : ViewModel() {
     private val _state = MutableStateFlow(CartonManagementUiState())
     val state = _state.asStateFlow()
@@ -1139,33 +1464,29 @@ class CartonManagementViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            runCatching { boxLabelMappingRepository.refreshIfStale() }
+            _state.update { it.copy(knownJifengCodes = boxLabelMappingRepository.knownJifengAliases()) }
+        }
+        viewModelScope.launch {
             userDataRepository.userData.collect { userData ->
-                _state.update { it.copy(defaultBoxMarkPrintNodeId = userData.defaultBoxMarkPrintNodeId) }
+                _state.update {
+                    it.copy(
+                        defaultEdgePrintNodeId = userData.defaultEdgePrintNodeId,
+                        defaultBoxMarkPrintTemplateCode = userData.defaultBoxMarkPrintTemplateCode,
+                    )
+                }
             }
         }
     }
 
     fun resolve(rawCode: String) {
         if (rawCode.isBlank()) return
-        val localResult = runCatching { parseBoxLabelQr(rawCode).toLocalBoxLabel() }
-            .getOrElse { error ->
-                _state.update {
-                    it.copy(
-                        loading = false,
-                        boxLabel = null,
-                        error = error.toUiText(R.string.device_identify_box_failed),
-                        lastScannedCode = rawCode,
-                        unrecognized = true,
-                    )
-                }
-                return
-            }
         viewModelScope.launch {
             _state.update {
                 it.copy(
                     loading = true,
                     error = null,
-                    boxLabel = localResult,
+                    boxLabel = null,
                     lastScannedCode = rawCode,
                     unrecognized = false,
                     printDialogVisible = false,
@@ -1176,6 +1497,7 @@ class CartonManagementViewModel @Inject constructor(
             }
             runCatching { repository.resolveBoxLabel(rawCode) }
                 .onSuccess { result ->
+                    if (result.isNormalBoxLabel()) scanFeedback.success() else scanFeedback.failure()
                     _state.update {
                         if (result.recognized) {
                             it.copy(loading = false, boxLabel = result)
@@ -1185,6 +1507,7 @@ class CartonManagementViewModel @Inject constructor(
                     }
                 }
                 .onFailure { error ->
+                    scanFeedback.failure()
                     _state.update {
                         if (error.isBoxLabelNotFound()) {
                             it.copy(loading = false, unrecognized = true)
@@ -1196,23 +1519,27 @@ class CartonManagementViewModel @Inject constructor(
         }
     }
 
+    fun isKnownBoxLabelCode(code: String): Boolean =
+        isKnownMappedBoxLabel(code, _state.value.knownJifengCodes)
+
     fun retry() = resolve(_state.value.lastScannedCode)
 
     fun requestBoxMarkPrint() {
         val label = _state.value.boxLabel ?: return
-        when {
-            label.localFallback -> {
+        when (label.boxMarkPrintAvailability()) {
+            BoxMarkPrintAvailability.OfflineFallback -> {
                 _state.update { it.copy(printError = UiText.Resource(R.string.device_box_mark_offline_disabled)) }
                 return
             }
-            !label.printable -> {
+            BoxMarkPrintAvailability.NotPrintable -> {
                 _state.update { it.copy(printError = UiText.Resource(R.string.device_box_mark_not_printable)) }
                 return
             }
-            label.id <= 0 || label.printSnapshot == null -> {
+            BoxMarkPrintAvailability.SnapshotMissing -> {
                 _state.update { it.copy(printError = UiText.Resource(R.string.device_box_mark_snapshot_missing)) }
                 return
             }
+            BoxMarkPrintAvailability.Ready -> Unit
         }
         if (_state.value.loadingPrintOptions || _state.value.printSubmitting) return
         viewModelScope.launch {
@@ -1223,11 +1550,12 @@ class CartonManagementViewModel @Inject constructor(
                     printError = null,
                 )
             }
-            runCatching { edgePrintRepository.availableBoxMarkOptions() }
+            runCatching { edgePrintRepository.availableBoxMarkOptions().filter { it.node.id == _state.value.defaultEdgePrintNodeId } }
                 .onSuccess { options ->
-                    val defaultOption = options.firstOrNull { option ->
-                        option.node.id == _state.value.defaultBoxMarkPrintNodeId
-                    }
+                    val defaultOption = options.defaultPrintOption(
+                        _state.value.defaultEdgePrintNodeId,
+                        _state.value.defaultBoxMarkPrintTemplateCode,
+                    )
                     _state.update {
                         it.copy(
                             loadingPrintOptions = false,
@@ -1271,7 +1599,9 @@ class CartonManagementViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            userDataRepository.setDefaultBoxMarkPrintNode(option.node.id)
+            userDataRepository.userData.first().let { preferences ->
+                userDataRepository.setEdgePrintPreferences(option.node.id, preferences.defaultSkuPrintTemplateCode, option.template.code, preferences.skuLabelPrefix)
+            }
             submitBoxMark(option, current.boxMarkCopies, saveDefault = true)
         }
     }
@@ -1362,6 +1692,7 @@ private fun Throwable.isBoxLabelNotFound(): Boolean {
 private fun Throwable.toUiText(@StringRes fallback: Int): UiText =
     when (this) {
         is ClientUiException -> uiText
+        is BoxLabelMappingCacheMissException -> UiText.Resource(R.string.box_label_mapping_cache_miss)
         is BoxLabelQrFormatException -> UiText.Dynamic(message.orEmpty())
         is FscmApiException -> serverMessage?.takeIf(String::isNotBlank)?.let(UiText::Dynamic)
             ?: UiText.Resource(fallback)

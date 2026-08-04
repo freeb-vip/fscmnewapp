@@ -58,6 +58,7 @@ internal enum class AppGlyph {
     CentralReceiving,
     Profit,
     Products,
+    ProductCounting,
     BoxLabels,
     SupplierOrders,
     PurchaseApprovals,
@@ -80,6 +81,7 @@ private fun appGlyphForKey(rawKey: String): AppGlyph? = when (rawKey.normalizedI
     "central_receiving" -> AppGlyph.CentralReceiving
     "profit" -> AppGlyph.Profit
     "product_management" -> AppGlyph.Products
+    "product_counting" -> AppGlyph.ProductCounting
     "box_labels", "carton_management" -> AppGlyph.BoxLabels
     "supplier_orders" -> AppGlyph.SupplierOrders
     "purchase_approvals" -> AppGlyph.PurchaseApprovals
@@ -99,6 +101,7 @@ private fun appGlyphForToken(rawToken: String): AppGlyph? = when (rawToken.norma
     "central_receiving", "consolidation", "hub" -> AppGlyph.CentralReceiving
     "profit", "chart", "trending" -> AppGlyph.Profit
     "product", "products", "inventory" -> AppGlyph.Products
+    "product_counting", "counting", "stocktake" -> AppGlyph.ProductCounting
     "box", "carton", "box_labels", "qr" -> AppGlyph.BoxLabels
     "supplier", "factory" -> AppGlyph.SupplierOrders
     "approval", "audit", "fact_check" -> AppGlyph.PurchaseApprovals
@@ -121,6 +124,7 @@ private fun AppGlyph.imageVector(): ImageVector = when (this) {
     AppGlyph.CentralReceiving -> Icons.Rounded.Hub
     AppGlyph.Profit -> Icons.AutoMirrored.Rounded.TrendingUp
     AppGlyph.Products -> Icons.Rounded.Inventory2
+    AppGlyph.ProductCounting -> Icons.AutoMirrored.Rounded.FactCheck
     AppGlyph.BoxLabels -> Icons.Rounded.QrCode2
     AppGlyph.SupplierOrders -> Icons.Rounded.Factory
     AppGlyph.PurchaseApprovals -> Icons.AutoMirrored.Rounded.FactCheck

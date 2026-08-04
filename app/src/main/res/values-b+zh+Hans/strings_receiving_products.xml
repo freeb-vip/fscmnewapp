@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="receiving_product_details_title">产品作业明细</string>
+    <string name="receiving_product_details_action">详情</string>
+    <string name="receiving_product_search">搜索产品编码或名称</string>
+    <string name="receiving_product_filter_all">全部</string>
+    <string name="receiving_product_filter_pending">待处理</string>
+    <string name="receiving_product_filter_exception">有异常</string>
+    <string name="receiving_product_filter_completed">已完成</string>
+    <string name="receiving_product_cache_preparing">产品进度正在后台更新</string>
+    <string name="receiving_product_cache_partial">正在显示本地产品缓存，后台继续更新</string>
+    <string name="receiving_product_cache_time">缓存更新于 %1$s</string>
+    <string name="receiving_product_empty">当前条件下暂无产品</string>
+    <string name="receiving_product_received">已收货</string>
+    <string name="receiving_product_inbounded">已入库</string>
+    <string name="receiving_product_document_receiving_progress">已收货 %1$d / %2$d 箱</string>
+    <string name="receiving_product_document_inbound_progress">已入库 %1$d / %2$d 箱</string>
+    <string name="receiving_product_pending_count">待处理 %1$d</string>
+    <string name="receiving_product_exception_count">异常 %1$d</string>
+    <string name="receiving_product_local_pending_count">本地同步数据 %1$d 条（未计入中心进度）</string>
+    <string name="receiving_product_unknown_code">未分配产品编码</string>
+    <string name="receiving_product_sku_count">%1$d 个 SKU</string>
+    <string name="receiving_product_progress_value">%1$s %2$d / %3$d</string>
+    <string name="receiving_product_box_progress">中心进度 %1$d / %2$d 箱</string>
+    <string name="receiving_product_no_boxes">暂无该产品的箱唛缓存明细</string>
+    <string name="receiving_product_location">库位</string>
+    <string name="receiving_product_operator">操作人</string>
+    <string name="receiving_product_time">时间</string>
+    <string name="receiving_product_status_completed">已完成</string>
+    <string name="receiving_product_status_closed_exception">异常结案</string>
+    <string name="receiving_product_status_local_pending">待同步</string>
+    <string name="receiving_product_status_exception">异常</string>
+    <string name="receiving_product_status_pending">待处理</string>
+</resources>

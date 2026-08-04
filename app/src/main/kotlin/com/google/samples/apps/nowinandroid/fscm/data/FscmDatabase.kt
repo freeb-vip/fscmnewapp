@@ -67,6 +67,7 @@ data class ReceivingSessionEntity(
     val code: String,
     val payload: String,
     val updatedAt: Long,
+    val remoteSyncedAt: Long = updatedAt,
 )
 
 @Entity(
@@ -335,8 +336,21 @@ interface LocalReceivingDao {
         LocalInboundSnapshotEntity::class,
         LocalInboundBatchEntity::class,
         LocalInboundItemEntity::class,
+        LocalInboundProductSummaryEntity::class,
+        LocalWarehouseLocationEntity::class,
+        WarehouseLocationCacheMetaEntity::class,
+        LocalBoxLabelMappingEntity::class,
+        CentralReceivingSnapshotMetaEntity::class,
+        CentralReceivingReceiptEntity::class,
+        CentralReceivingLabelEntity::class,
+        CentralReceivingScanEntity::class,
+        ReceivingProductProgressEntity::class,
+        ReceivingProductProgressMetaEntity::class,
+        ProductCountTaskEntity::class,
+        ProductCountEntryEntity::class,
+        SkuProductIndexEntity::class,
     ],
-    version = 4,
+    version = 13,
     exportSchema = false,
 )
 abstract class FscmDatabase : RoomDatabase() {
@@ -345,6 +359,11 @@ abstract class FscmDatabase : RoomDatabase() {
     abstract fun pendingSyncDao(): PendingSyncDao
     abstract fun localReceivingDao(): LocalReceivingDao
     abstract fun localInboundDao(): LocalInboundDao
+    abstract fun warehouseLocationDao(): WarehouseLocationDao
+    abstract fun boxLabelMappingDao(): BoxLabelMappingDao
+    abstract fun centralReceivingDao(): CentralReceivingDao
+    abstract fun receivingProductProgressDao(): ReceivingProductProgressDao
+    abstract fun productCountingDao(): ProductCountingDao
 }
 
 @Module
@@ -372,7 +391,20 @@ object FscmDatabaseModule {
             val factory = SupportOpenHelperFactory(passphraseBytes.copyOf())
             return Room.databaseBuilder(context, FscmDatabase::class.java, DATABASE_NAME)
                 .openHelperFactory(factory)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(
+                    MIGRATION_1_2,
+                    MIGRATION_2_3,
+                    MIGRATION_3_4,
+                    MIGRATION_4_5,
+                    MIGRATION_5_6,
+                    MIGRATION_6_7,
+                    MIGRATION_7_8,
+                    MIGRATION_8_9,
+                    MIGRATION_9_10,
+                    MIGRATION_10_11,
+                    MIGRATION_11_12,
+                    MIGRATION_12_13,
+                )
                 .build()
         } finally {
             passphrase.fill('\u0000')
@@ -394,6 +426,22 @@ object FscmDatabaseModule {
 
     @Provides
     fun localInboundDao(database: FscmDatabase): LocalInboundDao = database.localInboundDao()
+
+    @Provides
+    fun warehouseLocationDao(database: FscmDatabase): WarehouseLocationDao = database.warehouseLocationDao()
+
+    @Provides
+    fun boxLabelMappingDao(database: FscmDatabase): BoxLabelMappingDao = database.boxLabelMappingDao()
+
+    @Provides
+    fun centralReceivingDao(database: FscmDatabase): CentralReceivingDao = database.centralReceivingDao()
+
+    @Provides
+    fun receivingProductProgressDao(database: FscmDatabase): ReceivingProductProgressDao =
+        database.receivingProductProgressDao()
+
+    @Provides
+    fun productCountingDao(database: FscmDatabase): ProductCountingDao = database.productCountingDao()
 
     private val MIGRATION_1_2 = object : Migration(1, 2) {
         override fun migrate(database: SupportSQLiteDatabase) {
@@ -466,6 +514,116 @@ object FscmDatabaseModule {
         }
     }
 
+    private val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `local_box_label_mappings` (`userId` INTEGER NOT NULL, `namespaceId` INTEGER NOT NULL, `mappingId` INTEGER NOT NULL, `supplierOrderBoxPlanId` INTEGER NOT NULL, `supplierLabelCode` TEXT NOT NULL, `supplierBoxNo` TEXT NOT NULL, `supplierBoxUid` TEXT NOT NULL, `jifengBoxNo` TEXT NOT NULL, `jifengQrCodeText` TEXT NOT NULL, `mappingStatus` TEXT NOT NULL, `productCode` TEXT NOT NULL, `productName` TEXT NOT NULL, `skuCode` TEXT NOT NULL, `manufacturerName` TEXT NOT NULL, `caseSpecName` TEXT NOT NULL, `qtyPerCarton` INTEGER NOT NULL, `boxQty` INTEGER NOT NULL, `remoteUpdatedAt` TEXT NOT NULL, `syncedAt` INTEGER NOT NULL, PRIMARY KEY(`userId`, `namespaceId`, `mappingId`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_local_box_label_mappings_userId_namespaceId_supplierLabelCode` ON `local_box_label_mappings` (`userId`, `namespaceId`, `supplierLabelCode`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_local_box_label_mappings_userId_namespaceId_supplierBoxNo` ON `local_box_label_mappings` (`userId`, `namespaceId`, `supplierBoxNo`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_local_box_label_mappings_userId_namespaceId_supplierBoxUid` ON `local_box_label_mappings` (`userId`, `namespaceId`, `supplierBoxUid`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_local_box_label_mappings_userId_namespaceId_jifengBoxNo` ON `local_box_label_mappings` (`userId`, `namespaceId`, `jifengBoxNo`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_local_box_label_mappings_userId_namespaceId_jifengQrCodeText` ON `local_box_label_mappings` (`userId`, `namespaceId`, `jifengQrCodeText`)")
+        }
+    }
+
+    private val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `receiving_sessions` ADD COLUMN `remoteSyncedAt` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE `receiving_sessions` SET `remoteSyncedAt` = `updatedAt` WHERE `remoteSyncedAt` = 0")
+        }
+    }
+
+    private val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `central_receiving_snapshot_meta` (`userId` INTEGER NOT NULL, `namespaceId` INTEGER NOT NULL, `activeGeneration` TEXT NOT NULL, `snapshotAt` INTEGER NOT NULL, `complete` INTEGER NOT NULL, `lastSyncError` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`userId`, `namespaceId`))")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `central_receiving_receipts` (`userId` INTEGER NOT NULL, `namespaceId` INTEGER NOT NULL, `remoteId` INTEGER NOT NULL, `status` TEXT NOT NULL, `payload` TEXT NOT NULL, `generation` TEXT NOT NULL, PRIMARY KEY(`userId`, `namespaceId`, `generation`, `remoteId`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_central_receiving_receipts_userId_namespaceId_generation_status` ON `central_receiving_receipts` (`userId`, `namespaceId`, `generation`, `status`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `central_receiving_labels` (`userId` INTEGER NOT NULL, `namespaceId` INTEGER NOT NULL, `boxPlanId` INTEGER NOT NULL, `centralReceiptId` INTEGER NOT NULL, `centralReceiptItemId` INTEGER NOT NULL, `labelCode` TEXT NOT NULL, `boxUid` TEXT NOT NULL, `boxNo` TEXT NOT NULL, `remoteStatus` TEXT NOT NULL, `signStatus` TEXT NOT NULL, `localStatus` TEXT NOT NULL, `payload` TEXT NOT NULL, `generation` TEXT NOT NULL, `lastLocalScannedAt` INTEGER NOT NULL, PRIMARY KEY(`userId`, `namespaceId`, `generation`, `boxPlanId`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_central_receiving_labels_userId_namespaceId_generation_centralReceiptId` ON `central_receiving_labels` (`userId`, `namespaceId`, `generation`, `centralReceiptId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_central_receiving_labels_userId_namespaceId_generation_labelCode` ON `central_receiving_labels` (`userId`, `namespaceId`, `generation`, `labelCode`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_central_receiving_labels_userId_namespaceId_generation_boxUid` ON `central_receiving_labels` (`userId`, `namespaceId`, `generation`, `boxUid`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_central_receiving_labels_userId_namespaceId_generation_boxNo` ON `central_receiving_labels` (`userId`, `namespaceId`, `generation`, `boxNo`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `central_receiving_scans` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `clientScanId` TEXT NOT NULL, `userId` INTEGER NOT NULL, `namespaceId` INTEGER NOT NULL, `boxPlanId` INTEGER NOT NULL, `centralReceiptId` INTEGER NOT NULL, `labelCode` TEXT NOT NULL, `rawCode` TEXT NOT NULL, `scannedAt` INTEGER NOT NULL, `snapshotAt` INTEGER NOT NULL, `status` TEXT NOT NULL, `resultCode` TEXT NOT NULL, `resultMessage` TEXT NOT NULL, `retryCount` INTEGER NOT NULL, `syncedAt` INTEGER NOT NULL)")
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_central_receiving_scans_clientScanId` ON `central_receiving_scans` (`clientScanId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_central_receiving_scans_userId_namespaceId_status_scannedAt` ON `central_receiving_scans` (`userId`, `namespaceId`, `status`, `scannedAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_central_receiving_scans_userId_namespaceId_boxPlanId_scannedAt` ON `central_receiving_scans` (`userId`, `namespaceId`, `boxPlanId`, `scannedAt`)")
+        }
+    }
+
+    internal val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `local_warehouse_locations` (`userId` INTEGER NOT NULL, `namespaceId` INTEGER NOT NULL, `locationId` INTEGER NOT NULL, `warehouseId` INTEGER NOT NULL, `warehouseCode` TEXT NOT NULL, `warehouseName` TEXT NOT NULL, `zoneId` INTEGER NOT NULL, `zoneCode` TEXT NOT NULL, `zoneName` TEXT NOT NULL, `code` TEXT NOT NULL, `name` TEXT NOT NULL, `type` TEXT NOT NULL, `isActive` INTEGER NOT NULL, `remoteUpdatedAt` TEXT NOT NULL, `syncedAt` INTEGER NOT NULL, PRIMARY KEY(`userId`, `namespaceId`, `locationId`))")
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_local_warehouse_locations_userId_namespaceId_warehouseCode_code` ON `local_warehouse_locations` (`userId`, `namespaceId`, `warehouseCode`, `code`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_local_warehouse_locations_userId_namespaceId_code` ON `local_warehouse_locations` (`userId`, `namespaceId`, `code`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `warehouse_location_cache_meta` (`userId` INTEGER NOT NULL, `namespaceId` INTEGER NOT NULL, `refreshedAt` INTEGER NOT NULL, `complete` INTEGER NOT NULL, `totalCount` INTEGER NOT NULL, PRIMARY KEY(`userId`, `namespaceId`))")
+            db.execSQL("ALTER TABLE `local_inbound_sessions` ADD COLUMN `warehouseCode` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `local_inbound_sessions` ADD COLUMN `warehouseName` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `local_inbound_snapshots` ADD COLUMN `warehouseLocationId` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `local_inbound_batches` ADD COLUMN `warehouseLocationId` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `local_inbound_batches` ADD COLUMN `locationName` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `local_inbound_batches` ADD COLUMN `zoneName` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `local_inbound_items` ADD COLUMN `localWarehouseLocationId` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `local_inbound_items` ADD COLUMN `remoteWarehouseLocationId` INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
+    internal val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `local_inbound_sessions` ADD COLUMN `exceptionCount` INTEGER NOT NULL DEFAULT -1")
+            db.execSQL("ALTER TABLE `local_inbound_snapshots` ADD COLUMN `receiptScanStatus` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `local_inbound_snapshots` ADD COLUMN `exceptionReason` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `local_inbound_snapshots` ADD COLUMN `remoteScannedBy` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `local_inbound_snapshots` ADD COLUMN `remoteScannedAt` INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
+    internal val MIGRATION_9_10 = object : Migration(9, 10) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `local_inbound_sessions` ADD COLUMN `productCacheComplete` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `local_inbound_sessions` ADD COLUMN `productCacheAt` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `local_inbound_sessions` ADD COLUMN `lastOpenedAt` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `local_inbound_product_summaries` (`userId` INTEGER NOT NULL, `namespaceId` INTEGER NOT NULL, `sessionId` INTEGER NOT NULL, `productId` INTEGER NOT NULL, `productCode` TEXT NOT NULL, `productName` TEXT NOT NULL, `productImage` TEXT NOT NULL, `skuCount` INTEGER NOT NULL, `totalBoxCount` INTEGER NOT NULL, `inboundedBoxCount` INTEGER NOT NULL, `pendingBoxCount` INTEGER NOT NULL, `exceptionBoxCount` INTEGER NOT NULL, `snapshotAt` INTEGER NOT NULL, PRIMARY KEY(`userId`, `namespaceId`, `sessionId`, `productId`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_local_inbound_product_summaries_userId_namespaceId_sessionId_pendingBoxCount` ON `local_inbound_product_summaries` (`userId`, `namespaceId`, `sessionId`, `pendingBoxCount`)")
+        }
+    }
+
+    internal val MIGRATION_10_11 = object : Migration(10, 11) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `local_inbound_product_summaries` ADD COLUMN `skuCodesJson` TEXT NOT NULL DEFAULT '[]'")
+            db.execSQL("ALTER TABLE `local_inbound_product_summaries` ADD COLUMN `boxPlanIdsJson` TEXT NOT NULL DEFAULT '[]'")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `receiving_product_progress_cache` (`userId` INTEGER NOT NULL, `namespaceId` INTEGER NOT NULL, `businessType` TEXT NOT NULL, `documentId` INTEGER NOT NULL, `productKey` TEXT NOT NULL, `productId` INTEGER NOT NULL, `productCode` TEXT NOT NULL, `productName` TEXT NOT NULL, `productImage` TEXT NOT NULL, `skuCount` INTEGER NOT NULL, `skuCodesJson` TEXT NOT NULL, `sourceItemIdsJson` TEXT NOT NULL, `boxPlanIdsJson` TEXT NOT NULL, `totalBoxCount` INTEGER NOT NULL, `completedBoxCount` INTEGER NOT NULL, `pendingBoxCount` INTEGER NOT NULL, `exceptionBoxCount` INTEGER NOT NULL, `workStatus` TEXT NOT NULL, `lastOperatedAt` INTEGER NOT NULL, PRIMARY KEY(`userId`, `namespaceId`, `businessType`, `documentId`, `productKey`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_receiving_product_progress_cache_userId_namespaceId_businessType_documentId_pendingBoxCount` ON `receiving_product_progress_cache` (`userId`, `namespaceId`, `businessType`, `documentId`, `pendingBoxCount`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `receiving_product_progress_meta` (`userId` INTEGER NOT NULL, `namespaceId` INTEGER NOT NULL, `businessType` TEXT NOT NULL, `documentId` INTEGER NOT NULL, `complete` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`userId`, `namespaceId`, `businessType`, `documentId`))")
+        }
+    }
+
+    internal val MIGRATION_11_12 = object : Migration(11, 12) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `product_count_tasks` (`clientTaskId` TEXT NOT NULL, `userId` INTEGER NOT NULL, `namespaceId` INTEGER NOT NULL, `remoteId` INTEGER NOT NULL, `status` TEXT NOT NULL, `productCode` TEXT NOT NULL, `productName` TEXT NOT NULL, `resetGeneration` INTEGER NOT NULL, `revision` INTEGER NOT NULL, `editorDeviceId` TEXT NOT NULL, `serverCount` INTEGER NOT NULL, `syncStatus` TEXT NOT NULL, `lastSyncError` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `completedAt` INTEGER NOT NULL, PRIMARY KEY(`clientTaskId`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_count_tasks_userId_namespaceId_status_updatedAt` ON `product_count_tasks` (`userId`, `namespaceId`, `status`, `updatedAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_count_tasks_remoteId` ON `product_count_tasks` (`remoteId`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `product_count_entries` (`clientScanId` TEXT NOT NULL, `userId` INTEGER NOT NULL, `namespaceId` INTEGER NOT NULL, `taskClientId` TEXT NOT NULL, `resetGeneration` INTEGER NOT NULL, `labelCode` TEXT NOT NULL, `originalRawCode` TEXT NOT NULL, `skuCodesJson` TEXT NOT NULL, `productCode` TEXT NOT NULL, `productName` TEXT NOT NULL, `resolutionSource` TEXT NOT NULL, `duplicateConfirmed` INTEGER NOT NULL, `outcome` TEXT NOT NULL, `syncStatus` TEXT NOT NULL, `syncError` TEXT NOT NULL, `scannedAt` INTEGER NOT NULL, PRIMARY KEY(`clientScanId`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_count_entries_userId_namespaceId_taskClientId_resetGeneration_scannedAt` ON `product_count_entries` (`userId`, `namespaceId`, `taskClientId`, `resetGeneration`, `scannedAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_product_count_entries_taskClientId_resetGeneration_labelCode` ON `product_count_entries` (`taskClientId`, `resetGeneration`, `labelCode`)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `sku_product_index` (`userId` INTEGER NOT NULL, `namespaceId` INTEGER NOT NULL, `skuCode` TEXT NOT NULL, `productId` INTEGER NOT NULL, `productCode` TEXT NOT NULL, `productName` TEXT NOT NULL, `remoteUpdatedAt` TEXT NOT NULL, `syncedAt` INTEGER NOT NULL, PRIMARY KEY(`userId`, `namespaceId`, `skuCode`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sku_product_index_userId_namespaceId_productCode` ON `sku_product_index` (`userId`, `namespaceId`, `productCode`)")
+        }
+    }
+
+    internal val MIGRATION_12_13 = object : Migration(12, 13) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `product_count_tasks` ADD COLUMN `uploadStatus` TEXT NOT NULL DEFAULT 'local'")
+            db.execSQL("ALTER TABLE `product_count_tasks` ADD COLUMN `serverRevision` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `product_count_tasks` ADD COLUMN `lastUploadId` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `product_count_tasks` ADD COLUMN `uploadedAt` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `product_count_entries` ADD COLUMN `skuItemsJson` TEXT NOT NULL DEFAULT '[]'")
+            db.execSQL("ALTER TABLE `product_count_entries` ADD COLUMN `sequenceNo` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `product_count_entries` ADD COLUMN `validationStatus` TEXT NOT NULL DEFAULT 'pending'")
+            db.execSQL("ALTER TABLE `product_count_entries` ADD COLUMN `validationMessage` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("UPDATE `product_count_entries` SET `skuItemsJson` = COALESCE((SELECT json_group_array(json_object('sku_code', value, 'quantity', NULL, 'quantity_source', 'unknown')) FROM json_each(`skuCodesJson`)), '[]')")
+            db.execSQL("UPDATE `product_count_entries` SET `sequenceNo` = rowid WHERE `sequenceNo` = 0")
+            db.execSQL("DELETE FROM `pending_sync_operations` WHERE `module` = 'product_counting'")
+        }
+    }
     private const val DATABASE_NAME = "fscm.db"
 }
 

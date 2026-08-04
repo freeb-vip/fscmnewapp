@@ -43,18 +43,24 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -64,6 +70,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -92,8 +99,16 @@ import com.google.samples.apps.nowinandroid.fscm.data.PurchaseApproval
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingQuickScanResponse
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingSession
 import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrder
+import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrderCategory
+import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrderFilters
+import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrderWarehouse
+import com.google.samples.apps.nowinandroid.fscm.data.allowedSupplierOrderStatuses
 import com.google.samples.apps.nowinandroid.fscm.data.isLikelyBoxLabelQr
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerInputMode
+import com.google.samples.apps.nowinandroid.fscm.device.isSuccessfulScanResult
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private val BusinessBrand = Color(0xFF1677FF)
 private val BusinessDeep = Color(0xFF0958D9)
@@ -156,49 +171,59 @@ fun CentralReceivingScreen(
         onDispose(viewModel::unregisterScanner)
     }
     BusinessPage {
+        item { Notice(state.error, state.message, viewModel::consumeNotice) }
+        item {
+            FscmProgressOverview(
+                title = stringResource(R.string.business_receiving_progress_overview),
+                totalLabel = stringResource(R.string.business_metric_total_boxes),
+                pendingLabel = stringResource(R.string.business_metric_pending),
+                completedLabel = stringResource(R.string.business_metric_received),
+                exceptionLabel = stringResource(R.string.business_metric_exception),
+                metrics = centralReceivingProgress(state.statistics),
+            )
+        }
         item {
             BusinessScanPanel(
                 title = stringResource(R.string.business_quick_receiving),
                 description = stringResource(R.string.business_quick_central_receiving_description),
                 loading = state.submitting,
                 broadcastMode = scannerState.configuredMode == ScannerInputMode.IntentBroadcast,
-                lastScannedCode = state.previewRawCode,
+                lastScannedCode = state.lastScannedCode,
                 onScan = viewModel::preview,
             )
         }
-        if (state.unrecognized) {
-            item { UnrecognizedBoxLabelCard() }
-        }
-        state.preview?.let { preview ->
-            item {
-                CentralQuantityConfirmCard(
-                    preview = preview,
-                    quantity = state.quantity,
-                    submitting = state.submitting,
-                    onQuantityChange = viewModel::changeQuantity,
-                    onCancel = viewModel::clearPreview,
-                    onConfirm = viewModel::confirm,
-                )
-            }
-        }
-        item { Notice(state.error, state.message, viewModel::consumeNotice) }
         item {
-            MetricRow(
-                listOf(
-                    stringResource(R.string.business_metric_total_boxes) to state.statistics.totalBoxCount.toString(),
-                    stringResource(R.string.business_metric_pending) to state.statistics.pendingBoxCount.toString(),
-                    stringResource(R.string.business_metric_received) to state.statistics.receivedBoxCount.toString(),
-                    stringResource(R.string.business_metric_exception) to state.statistics.exceptionBoxCount.toString(),
-                ),
-            )
+            BusinessCard {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            if (state.snapshotAt > 0) {
+                                stringResource(R.string.business_central_local_snapshot, formatCentralSnapshotTime(state.snapshotAt))
+                            } else {
+                                stringResource(R.string.business_central_no_snapshot)
+                            },
+                            fontWeight = FontWeight.SemiBold,
+                            color = BusinessInk,
+                        )
+                        Text(
+                            stringResource(R.string.business_central_sync_summary, state.pendingSyncCount, state.problemCount),
+                            color = if (state.problemCount > 0) BusinessWarning else BusinessMuted,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    IconButton(onClick = viewModel::sync) {
+                        Icon(Icons.Rounded.Sync, contentDescription = stringResource(R.string.receiving_sync_now), tint = BusinessBrand)
+                    }
+                }
+            }
         }
         if (state.recentScans.isNotEmpty()) {
             item { SectionTitle(stringResource(R.string.business_recent_scans)) }
             items(state.recentScans.take(8)) { result ->
                 CentralScanRow(
                     result = result,
-                    onRetry = result.pendingOperationId.takeIf { it > 0 && result.syncStatus == "failed" }?.let { id -> { viewModel.retryPending(id) } },
-                    onCancel = result.pendingOperationId.takeIf { it > 0 }?.let { id -> { viewModel.cancelPending(id) } },
+                    onRetry = result.pendingOperationId.takeIf { it > 0 && result.syncStatus in setOf("retryable", "rejected") }?.let { id -> { viewModel.retryPending(id) } },
+                    onCancel = result.pendingOperationId.takeIf { it > 0 && result.syncStatus in setOf("pending", "retryable", "rejected") }?.let { id -> { viewModel.cancelPending(id) } },
                 )
             }
         }
@@ -223,40 +248,28 @@ fun CentralReceiptDetailScreen(
     }
     BusinessPage {
         item { Notice(state.error, state.message, viewModel::consumeNotice) }
+        item {
+            BusinessScanPanel(
+                stringResource(R.string.business_scan_in_document),
+                stringResource(R.string.business_scan_auto_confirm),
+                state.submitting,
+            ) { viewModel.preview(id, it) }
+        }
         state.receipt?.let { receipt ->
             item {
-                BusinessCard {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(receipt.code.ifBlank { "CR-${receipt.id}" }, fontWeight = FontWeight.Bold, color = BusinessInk)
-                        StatusPill(businessStatusText(receipt.status), statusColor(receipt.status))
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text(receipt.sourceName.ifBlank { receipt.externalOrderNo.ifBlank { stringResource(R.string.business_unbound_source) } }, color = BusinessMuted)
-                    Text(receipt.warehouseName.ifBlank { receipt.warehouseCode.ifBlank { stringResource(R.string.business_central_warehouse) } }, color = BusinessMuted, style = MaterialTheme.typography.bodySmall)
-                }
+                FscmProgressOverview(
+                    title = stringResource(R.string.business_receiving_progress_overview),
+                    totalLabel = stringResource(R.string.business_metric_total_boxes),
+                    pendingLabel = stringResource(R.string.business_metric_pending),
+                    completedLabel = stringResource(R.string.business_metric_received),
+                    exceptionLabel = stringResource(R.string.business_metric_exception),
+                    metrics = centralReceivingProgress(state.statistics),
+                )
             }
         }
-        item { BusinessScanPanel(stringResource(R.string.business_scan_in_document), stringResource(R.string.business_scan_then_confirm), state.submitting) { viewModel.preview(id, it) } }
-        state.preview?.let { preview ->
-            item {
-                BusinessCard {
-                    Text(preview.item?.labelCode.orEmpty().ifBlank { state.previewRawCode }, fontWeight = FontWeight.Bold)
-                    Text(
-                        if (preview.localFallback) stringResource(R.string.business_offline_pending) else preview.message.ifBlank { businessStatusText(preview.status) },
-                        color = statusColor(preview.status),
-                    )
-                    preview.item?.skuCode?.takeIf { it.isNotBlank() }?.let { Text("SKU $it", color = BusinessMuted) }
-                    Spacer(Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = viewModel::clearPreview, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.common_cancel)) }
-                        Button(
-                            onClick = { viewModel.confirm(id) },
-                            enabled = !preview.duplicate && preview.status !in setOf("wrong_order", "unknown", "exception"),
-                            modifier = Modifier.weight(1f),
-                        ) { Text(stringResource(if (preview.status == "pending_sync") R.string.business_save_pending_sync else R.string.scan_receiving)) }
-                    }
-                }
-            }
+        if (state.recentScans.isNotEmpty()) {
+            item { SectionTitle(stringResource(R.string.business_recent_scans)) }
+            items(state.recentScans.take(6)) { result -> CentralScanRow(result) }
         }
         if (state.receipt?.items?.isNotEmpty() == true) {
             item { SectionTitle(stringResource(R.string.business_sku_receiving_progress)) }
@@ -284,6 +297,7 @@ fun CentralReceiptDetailScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SupplierOrdersScreen(
     onOpenDetail: (Long) -> Unit,
@@ -291,23 +305,272 @@ fun SupplierOrdersScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { viewModel.load() }
+
+    if (state.filterSheetVisible) {
+        SupplierOrderFilterSheet(
+            filters = state.draftFilters,
+            warehouses = state.warehouses,
+            warehousesLoading = state.warehousesLoading,
+            warehouseError = state.warehouseError,
+            onFiltersChange = viewModel::updateDraftFilters,
+            onRetryWarehouses = viewModel::loadWarehouses,
+            onApply = viewModel::applyFilters,
+            onReset = viewModel::resetFilters,
+            onDismiss = viewModel::dismissFilters,
+        )
+    }
+    state.statusConfirmation?.let { confirmation ->
+        SupplierOrderStatusDialog(
+            confirmation = confirmation,
+            remark = state.statusRemark,
+            submitting = state.submittingOrderId == confirmation.order.id,
+            onRemarkChange = viewModel::setStatusRemark,
+            onConfirm = viewModel::confirmStatusUpdate,
+            onDismiss = viewModel::dismissStatusConfirmation,
+        )
+    }
+
     BusinessPage {
-        item { SearchBar(state.query, stringResource(R.string.business_search_supplier_orders), viewModel::setQuery, viewModel::load) }
+        item {
+            SearchBar(
+                state.query,
+                stringResource(R.string.business_search_supplier_orders),
+                viewModel::setQuery,
+            ) { viewModel.load(reset = true) }
+        }
         item { Notice(state.error, state.message, viewModel::consumeNotice) }
         item {
             MetricRow(
                 listOf(
                     stringResource(R.string.business_metric_orders) to state.total.toString(),
                     stringResource(R.string.business_metric_boxes) to state.orders.sumOf { it.totalBoxCount }.toString(),
-                    stringResource(R.string.business_metric_volume) to "%.3f m³".format(state.orders.sumOf { it.totalVolume }),
+                    stringResource(R.string.business_metric_volume) to "%.3f m\u00b3".format(state.orders.sumOf { it.totalVolume }),
                 ),
             )
         }
-        item { BusinessFilters(state.filter, viewModel::setFilter) }
+        item { SupplierOrderCategories(state.category, viewModel::setCategory) }
         if (state.loading && state.orders.isEmpty()) item { LoadingRow() }
         if (!state.loading && state.orders.isEmpty()) item { EmptyState(stringResource(R.string.business_no_supplier_orders)) }
-        items(state.orders, key = { it.id }) { order -> SupplierOrderCard(order) { onOpenDetail(order.id) } }
+        items(state.orders, key = { it.id }) { order ->
+            SupplierOrderCard(
+                order = order,
+                submitting = state.submittingOrderId == order.id,
+                onClick = { onOpenDetail(order.id) },
+                onStatus = { target -> viewModel.requestStatusUpdate(order, target) },
+            )
+        }
+        if (state.hasMore) {
+            item {
+                OutlinedButton(
+                    onClick = viewModel::loadMore,
+                    enabled = !state.loadingMore,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (state.loadingMore) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text(stringResource(R.string.common_load_more))
+                    }
+                }
+            }
+        }
     }
+}
+
+@Composable
+private fun SupplierOrderCategories(
+    selected: SupplierOrderCategory,
+    onSelected: (SupplierOrderCategory) -> Unit,
+) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        SupplierOrderCategory.entries.forEach { category ->
+            FilterChip(
+                selected = selected == category,
+                onClick = { onSelected(category) },
+                label = {
+                    Text(
+                        stringResource(
+                            when (category) {
+                                SupplierOrderCategory.InProgress -> R.string.business_supplier_in_progress
+                                SupplierOrderCategory.Completed -> R.string.status_completed
+                                SupplierOrderCategory.All -> R.string.common_all
+                            },
+                        ),
+                    )
+                },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SupplierOrderFilterSheet(
+    filters: SupplierOrderFilters,
+    warehouses: List<SupplierOrderWarehouse>,
+    warehousesLoading: Boolean,
+    warehouseError: UiText?,
+    onFiltersChange: ((SupplierOrderFilters) -> SupplierOrderFilters) -> Unit,
+    onRetryWarehouses: () -> Unit,
+    onApply: () -> Unit,
+    onReset: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var warehouseMenuExpanded by remember { mutableStateOf(false) }
+    val selectedWarehouse = warehouses.firstOrNull { it.code == filters.warehouseCode }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                stringResource(R.string.business_supplier_filters),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = BusinessInk,
+            )
+            Box(Modifier.fillMaxWidth()) {
+                OutlinedButton(
+                    onClick = { warehouseMenuExpanded = true },
+                    enabled = !warehousesLoading,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        selectedWarehouse?.let { "${it.name} \u00b7 ${it.code}" }
+                            ?: stringResource(R.string.business_all_warehouses),
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null)
+                }
+                DropdownMenu(
+                    expanded = warehouseMenuExpanded,
+                    onDismissRequest = { warehouseMenuExpanded = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.business_all_warehouses)) },
+                        onClick = {
+                            warehouseMenuExpanded = false
+                            onFiltersChange { it.copy(warehouseCode = "") }
+                        },
+                    )
+                    warehouses.forEach { warehouse ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    "${warehouse.name} \u00b7 ${warehouse.code}",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            onClick = {
+                                warehouseMenuExpanded = false
+                                onFiltersChange { it.copy(warehouseCode = warehouse.code) }
+                            },
+                        )
+                    }
+                }
+            }
+            if (warehousesLoading) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text(stringResource(R.string.business_loading_warehouses), color = BusinessMuted)
+                }
+            }
+            warehouseError?.let { error ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(error.resolve(), color = BusinessDanger, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onRetryWarehouses) { Text(stringResource(R.string.common_retry)) }
+                }
+            }
+            OutlinedTextField(
+                value = filters.productCode,
+                onValueChange = { value -> onFiltersChange { it.copy(productCode = value) } },
+                label = { Text(stringResource(R.string.business_product_code_filter)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = filters.manufacturerName,
+                onValueChange = { value -> onFiltersChange { it.copy(manufacturerName = value) } },
+                label = { Text(stringResource(R.string.business_manufacturer_filter)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = filters.purchaseOrderCode,
+                onValueChange = { value -> onFiltersChange { it.copy(purchaseOrderCode = value) } },
+                label = { Text(stringResource(R.string.business_purchase_order_filter)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(onClick = onReset, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.business_reset_filters))
+                }
+                Button(onClick = onApply, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.business_apply_filters))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SupplierOrderStatusDialog(
+    confirmation: SupplierOrderStatusConfirmation,
+    remark: String,
+    submitting: Boolean,
+    onRemarkChange: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val order = confirmation.order
+    val targetText = supplierStatusText(confirmation.targetStatus)
+    AlertDialog(
+        onDismissRequest = { if (!submitting) onDismiss() },
+        title = { Text(stringResource(R.string.business_confirm_status_transition, targetText)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    stringResource(
+                        R.string.business_status_transition_summary,
+                        order.code.ifBlank { "SO-${order.id}" },
+                        supplierStatusText(order.status),
+                        targetText,
+                    ),
+                )
+                OutlinedTextField(
+                    value = remark,
+                    onValueChange = onRemarkChange,
+                    label = { Text(stringResource(R.string.business_status_remark)) },
+                    enabled = !submitting,
+                    minLines = 2,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = !submitting) {
+                if (submitting) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    Text(stringResource(R.string.common_confirm))
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !submitting) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        },
+    )
 }
 
 @Composable
@@ -822,8 +1085,58 @@ private fun SupplierOrderCard(order: SupplierOrder, onClick: () -> Unit) = Busin
     }
     Text(order.manufacturer?.shortName.orEmpty().ifBlank { order.manufacturer?.name ?: stringResource(R.string.business_unbound_manufacturer) }, color = BusinessInk)
     Text(order.purchaseOrder?.code.orEmpty().ifBlank { stringResource(R.string.business_unbound_purchase_order) }, color = BusinessMuted)
-    Text(order.productRefs.take(3).joinToString(" · ") { it.code }.ifBlank { stringResource(R.string.business_no_product_code) }, color = BusinessMuted, maxLines = 2)
+    Text(order.productRefs.take(3).joinToString(" \u00b7 ") { it.code }.ifBlank { stringResource(R.string.business_no_product_code) }, color = BusinessMuted, maxLines = 2)
     Text(stringResource(R.string.business_order_amount_volume, order.totalAmount, order.totalBoxCount, order.totalVolume), color = BusinessDeep)
+}
+
+@Composable
+private fun SupplierOrderCard(
+    order: SupplierOrder,
+    submitting: Boolean,
+    onClick: () -> Unit,
+    onStatus: (String) -> Unit,
+) = BusinessCard(onClick) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(
+            order.code.ifBlank { "SO-${order.id}" },
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        StatusPill(supplierStatusText(order.status), statusColor(order.status))
+    }
+    Text(order.manufacturer?.shortName.orEmpty().ifBlank { order.manufacturer?.name ?: stringResource(R.string.business_unbound_manufacturer) }, color = BusinessInk)
+    Text(order.purchaseOrder?.code.orEmpty().ifBlank { stringResource(R.string.business_unbound_purchase_order) }, color = BusinessMuted)
+    Text(order.productRefs.take(3).joinToString(" \u00b7 ") { it.code }.ifBlank { stringResource(R.string.business_no_product_code) }, color = BusinessMuted, maxLines = 2)
+    Text(stringResource(R.string.business_order_amount_volume, order.totalAmount, order.totalBoxCount, order.totalVolume), color = BusinessDeep)
+    val targets = allowedSupplierOrderStatuses(order.status)
+    if (order.status == "pending_quote") {
+        Text(
+            stringResource(R.string.business_supplier_review_required),
+            color = BusinessWarning,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    } else if (targets.isNotEmpty()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            targets.forEach { target ->
+                OutlinedButton(
+                    onClick = { onStatus(target) },
+                    enabled = !submitting,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(supplierStatusText(target), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            if (submitting) {
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            }
+        }
+    }
 }
 
 @Composable
@@ -846,7 +1159,7 @@ private fun CentralScanRow(
 ) = ScanResultRow(
     code = result.item?.labelCode.orEmpty().ifBlank { result.item?.boxNo.orEmpty() },
     message = centralResultMessage(result),
-    success = (result.confirmed || result.status in setOf("normal", "received")) && !result.duplicate,
+    success = result.isSuccessfulScanResult(),
     onRetry = onRetry,
     onCancel = onCancel,
 )
@@ -861,10 +1174,12 @@ private fun receivingResultMessage(result: ReceivingQuickScanResponse): String =
 
 @Composable
 private fun centralResultMessage(result: CentralReceiptScanResult): String =
-    if (result.localFallback) {
-        stringResource(if (result.duplicate) R.string.business_offline_duplicate else R.string.business_offline_saved)
-    } else {
-        result.message.ifBlank { businessStatusText(result.status) }
+    result.message.ifBlank {
+        if (result.localFallback) {
+            stringResource(if (result.duplicate) R.string.business_offline_duplicate else R.string.business_offline_saved)
+        } else {
+            businessStatusText(result.status)
+        }
     }
 
 @Composable
@@ -877,7 +1192,7 @@ private fun ScanResultRow(
 ) = BusinessCard {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(code.ifBlank { stringResource(R.string.business_unrecognized_box_label) }, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-        StatusPill(stringResource(if (success) R.string.common_success else R.string.status_pending), if (success) BusinessSuccess else BusinessWarning)
+        StatusPill(stringResource(if (success) R.string.common_success else R.string.error_title), if (success) BusinessSuccess else BusinessDanger)
     }
     Text(message, color = BusinessMuted)
     if (onRetry != null || onCancel != null) {
@@ -921,15 +1236,15 @@ internal fun businessStatusTextRes(status: String): Int? = when (status.lowercas
     "partial" -> R.string.business_status_partial
     "scanning" -> R.string.business_status_scanning
     "normal" -> R.string.business_status_receivable
-    "received" -> R.string.status_received
+    "received", "received_local" -> R.string.status_received
     "completed" -> R.string.status_completed
     "cancelled" -> R.string.status_cancelled
-    "duplicate" -> R.string.status_duplicate
+    "duplicate", "duplicate_received", "duplicate_local" -> R.string.status_duplicate
     "wrong_order" -> R.string.business_status_wrong_order
     "unknown" -> R.string.common_unknown
     "damaged" -> R.string.status_damaged
     "voided" -> R.string.status_voided
-    "pending_sync", "complete_pending_sync" -> R.string.business_save_pending_sync
+    "uploading", "retryable", "pending_validation", "pending_sync", "complete_pending_sync" -> R.string.business_save_pending_sync
     else -> null
 }
 
@@ -954,10 +1269,13 @@ internal fun supplierStatusTextRes(status: String): Int? = when (status.lowercas
 }
 
 private fun statusColor(status: String): Color = when (status.lowercase()) {
-    "completed", "received", "normal", "ready_to_order", "arrived_central_warehouse", "archived" -> BusinessSuccess
-    "damaged", "wrong_order", "unknown", "exception", "cancelled", "voided" -> BusinessDanger
-    "partial", "pending_sync", "pending_quote", "pending_price_approval" -> BusinessWarning
+    "completed", "received", "received_local", "normal", "ready_to_order", "arrived_central_warehouse", "archived" -> BusinessSuccess
+    "damaged", "wrong_order", "unknown", "rejected", "exception", "cancelled", "voided" -> BusinessDanger
+    "partial", "pending", "uploading", "retryable", "pending_validation", "pending_sync", "pending_quote", "pending_price_approval" -> BusinessWarning
     else -> BusinessBrand
 }
 
 private fun String.businessTime(): String = takeIf { it.isNotBlank() }?.take(16)?.replace('T', ' ') ?: "-"
+
+private fun formatCentralSnapshotTime(value: Long): String =
+    SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(value))

@@ -11,3 +11,13 @@
 #
 # Backward-compatible fallback for all flavors:
 # BACKEND_URL=http://127.0.0.1:3000/api/
+
+# App version. Increment FSCM_VERSION_CODE for every release.
+# FSCM_VERSION_CODE=9
+# FSCM_VERSION_NAME=0.1.3
+
+# Production APK signing. Keep real values in local.properties or CI secrets only.
+# FSCM_RELEASE_STORE_FILE=D:\\secure\\fscm-release.jks
+# FSCM_RELEASE_STORE_PASSWORD=
+# FSCM_RELEASE_KEY_ALIAS=
+# FSCM_RELEASE_KEY_PASSWORD=

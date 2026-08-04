@@ -32,7 +32,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class CentralReceivingRepository @Inject constructor(
+class LegacyCentralReceivingRepository @Inject constructor(
     private val api: FscmApiClient,
     private val sessionStore: SessionStore,
     private val offlineCacheDao: OfflineCacheDao,
@@ -211,28 +211,26 @@ class SupplierOrderRepository @Inject constructor(
     private val api: FscmApiClient,
     @param:FscmJson private val json: Json,
 ) {
-    suspend fun orders(filter: BusinessFilter, keyword: String): BusinessPage<SupplierOrder> {
-        val params = mutableMapOf(
-            "status_group" to when (filter) {
-                BusinessFilter.Pending -> "in_progress"
-                BusinessFilter.Completed -> "completed"
-                BusinessFilter.All -> "all"
-            },
-            "page" to "1",
-            "pageSize" to "50",
-        )
-        keyword.trim().takeIf { it.isNotEmpty() }?.let { params["keyword"] = it }
-        return decodeBusinessPage(api.get("supplier-orders", params), json)
-    }
+    suspend fun orders(query: SupplierOrderQuery): BusinessPage<SupplierOrder> =
+        decodeBusinessPage(api.get("supplier-orders", query.toQueryParams()), json)
+
+    suspend fun warehouses(): List<SupplierOrderWarehouse> =
+        api.get("warehouses", mapOf("is_active" to "true"))
 
     suspend fun order(id: Long): SupplierOrder {
         require(id > 0) { "厂家订单 ID 无效" }
         return decodeBusinessObject(api.get("supplier-orders/$id"), json)
     }
 
-    suspend fun updateStatus(id: Long, status: String) {
+    suspend fun updateStatus(id: Long, status: String, remark: String = "") {
         require(id > 0 && status.isNotBlank())
-        api.put<JsonElement>("supplier-orders/$id/status", buildJsonObject { put("status", status) })
+        api.put<JsonElement>(
+            "supplier-orders/$id/status",
+            buildJsonObject {
+                put("status", status)
+                remark.trim().takeIf(String::isNotEmpty)?.let { put("remark", it) }
+            },
+        )
     }
 }
 

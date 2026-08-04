@@ -21,6 +21,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,10 +32,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -44,7 +47,9 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Sync
@@ -54,9 +59,16 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -71,6 +83,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -84,12 +97,20 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.google.samples.apps.nowinandroid.R
+import com.google.samples.apps.nowinandroid.core.designsystem.component.NiaTab
+import com.google.samples.apps.nowinandroid.core.designsystem.component.NiaTabRow
 import com.google.samples.apps.nowinandroid.core.ui.BarcodeScanner
+import com.google.samples.apps.nowinandroid.fscm.data.InboundDraftBoxDetail
+import com.google.samples.apps.nowinandroid.fscm.data.InboundItemStatus
 import com.google.samples.apps.nowinandroid.fscm.data.InboundSessionStatus
 import com.google.samples.apps.nowinandroid.fscm.data.InboundSessionSummary
+import com.google.samples.apps.nowinandroid.fscm.data.InboundWorkspace
 import com.google.samples.apps.nowinandroid.fscm.data.LocalInboundItemEntity
-import com.google.samples.apps.nowinandroid.fscm.data.isLikelyBoxLabelQr
+import com.google.samples.apps.nowinandroid.fscm.data.LocalInboundProductSummaryEntity
+import com.google.samples.apps.nowinandroid.fscm.data.LocalInboundSnapshotEntity
+import com.google.samples.apps.nowinandroid.fscm.data.calculateInboundDraftMetrics
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerInputMode
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -112,6 +133,7 @@ fun InboundSessionListScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { viewModel.load() }
+    val visibleSessions = state.visibleSessions
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(InboundBackground),
         contentPadding = PaddingValues(12.dp),
@@ -121,19 +143,75 @@ fun InboundSessionListScreen(
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.inbound_select_session), color = InboundInk, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                IconButton(onClick = viewModel::load, enabled = !state.loading) {
-                    Icon(Icons.Rounded.Refresh, contentDescription = stringResource(R.string.common_retry), tint = InboundBrand)
+                IconButton(onClick = viewModel::load, enabled = !state.loading && !state.preparingOffline) {
+                    if (state.preparingOffline) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Rounded.Refresh, contentDescription = stringResource(R.string.common_retry), tint = InboundBrand)
+                    }
                 }
             }
         }
-        if (state.loading && state.sessions.isEmpty()) {
+        if (state.preparingOffline) {
+            item { InboundNotice(stringResource(R.string.inbound_preparing_offline_data), false) }
+        }
+        item {
+            InboundSessionFilters(
+                selected = state.filter,
+                activeCount = state.sessions.count { it.status != InboundSessionStatus.Complete.value },
+                completeCount = state.sessions.count { it.status == InboundSessionStatus.Complete.value },
+                onSelected = viewModel::setFilter,
+            )
+        }
+        if (state.loading && visibleSessions.isEmpty()) {
             item { InboundLoading() }
         }
-        if (!state.loading && state.sessions.isEmpty() && state.error == null) {
-            item { InboundEmpty(stringResource(R.string.inbound_no_sessions)) }
+        if (!state.loading && visibleSessions.isEmpty() && state.error == null) {
+            item {
+                InboundEmpty(
+                    stringResource(
+                        when (state.filter) {
+                            InboundSessionFilter.Active -> R.string.inbound_no_active_sessions
+                            InboundSessionFilter.Complete -> R.string.inbound_no_completed_sessions
+                        },
+                    ),
+                )
+            }
         }
-        items(state.sessions, key = { it.sessionId }) { session ->
+        items(visibleSessions, key = { it.sessionId }) { session ->
             InboundSessionCard(session = session, onClick = { onOpenSession(session.sessionId) })
+        }
+    }
+}
+
+@Composable
+private fun InboundSessionFilters(
+    selected: InboundSessionFilter,
+    activeCount: Int,
+    completeCount: Int,
+    onSelected: (InboundSessionFilter) -> Unit,
+) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        InboundSessionFilter.entries.forEach { filter ->
+            val count = when (filter) {
+                InboundSessionFilter.Active -> activeCount
+                InboundSessionFilter.Complete -> completeCount
+            }
+            FilterChip(
+                selected = selected == filter,
+                onClick = { onSelected(filter) },
+                label = {
+                    Text(
+                        "${stringResource(
+                            when (filter) {
+                                InboundSessionFilter.Active -> R.string.inbound_status_active
+                                InboundSessionFilter.Complete -> R.string.inbound_status_complete
+                            },
+                        )} ($count)",
+                    )
+                },
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
@@ -168,59 +246,47 @@ fun InboundSessionScreen(
 
     val workspace = state.workspace
     val summary = workspace?.summary
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().background(InboundBackground),
-        contentPadding = PaddingValues(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        state.error?.let { error -> item { InboundNotice(error.resolve(), true, viewModel::consumeNotice) } }
-        state.message?.let { message -> item { InboundNotice(message.resolve(), false, viewModel::consumeNotice) } }
-        if (state.loading && workspace == null) item { InboundLoading() }
-        summary?.let { current ->
-            item { InboundProgressHeader(current) }
-            item {
-                InboundMetrics(
-                    total = current.totalCount,
-                    inbounded = current.inboundedCount + current.localAssignedCount,
-                    remaining = current.remainingCount,
-                    conflicts = current.conflictCount,
-                )
-            }
-            item {
-                InboundSyncBand(
-                    summary = current,
-                    submitting = state.submitting,
-                    onSync = viewModel::manualSync,
-                )
-            }
-            when {
-                current.status == InboundSessionStatus.Complete.value -> item { InboundCompleteBand() }
-                workspace.draftBatch == null && current.remainingCount <= 0 -> item { InboundWaitingBand() }
-                workspace.draftBatch == null -> item {
-                    InboundScanInput(
-                        title = stringResource(R.string.inbound_scan_location),
-                        value = input,
-                        loading = state.submitting,
-                        broadcastMode = scannerState.effectiveMode == ScannerInputMode.IntentBroadcast,
-                        onValueChange = { value ->
-                            input = value
-                            if (value.hasScanTerminator()) viewModel.scan(value.cleanScanInput())
-                        },
-                        onSubmit = { viewModel.scan(input.cleanScanInput()) },
-                        onCamera = openCamera,
-                    )
+    val draftBatch = workspace?.draftBatch
+    if (workspace != null && draftBatch != null) {
+        Column(Modifier.fillMaxSize().background(InboundBackground)) {
+            state.error?.let { error ->
+                Box(Modifier.padding(start = 12.dp, top = 12.dp, end = 12.dp)) {
+                    InboundNotice(error.resolve(), true, viewModel::consumeNotice)
                 }
-                else -> {
-                    item {
-                        InboundLocationBand(
-                            locationCode = workspace.draftBatch.locationCode,
-                            boxCount = workspace.draftItems.size,
-                            onCancel = viewModel::cancelDraft,
-                        )
-                    }
-                    item {
+            }
+            InboundActiveBatchContent(
+                workspace = workspace,
+                input = input,
+                loading = state.submitting,
+                broadcastMode = scannerState.effectiveMode == ScannerInputMode.IntentBroadcast,
+                onValueChange = { value ->
+                    input = value
+                    if (value.hasScanTerminator()) viewModel.scan(value.cleanScanInput())
+                },
+                onSubmit = { viewModel.scan(input.cleanScanInput()) },
+                onCamera = openCamera,
+                onFinish = viewModel::requestFinish,
+                onRequestCancel = viewModel::requestCancelDraft,
+                onDelete = viewModel::deleteDraftBox,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().background(InboundBackground),
+            contentPadding = PaddingValues(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            state.error?.let { error -> item { InboundNotice(error.resolve(), true, viewModel::consumeNotice) } }
+            state.message?.let { message -> item { InboundNotice(message.resolve(), false, viewModel::consumeNotice) } }
+            if (state.loading && workspace == null) item { InboundLoading() }
+            summary?.let { current ->
+                when {
+                    current.status == InboundSessionStatus.Complete.value -> item { InboundCompleteBand() }
+                    current.remainingCount <= 0 -> item { InboundWaitingBand() }
+                    else -> item {
                         InboundScanInput(
-                            title = stringResource(R.string.inbound_scan_box),
+                            title = stringResource(R.string.inbound_scan_location),
                             value = input,
                             loading = state.submitting,
                             broadcastMode = scannerState.effectiveMode == ScannerInputMode.IntentBroadcast,
@@ -232,23 +298,29 @@ fun InboundSessionScreen(
                             onCamera = openCamera,
                         )
                     }
-                    if (workspace.draftItems.isNotEmpty()) {
-                        item { Text(stringResource(R.string.inbound_current_boxes), color = InboundInk, fontWeight = FontWeight.Bold) }
-                        items(workspace.draftItems, key = { it.requestId }) { item ->
-                            InboundBoxRow(item = item, removable = true, onDelete = { viewModel.deleteDraftBox(item.requestId) })
-                        }
-                    }
-                    item {
-                        Button(
-                            onClick = viewModel::requestFinish,
-                            enabled = workspace.draftItems.isNotEmpty() && !state.submitting,
-                            modifier = Modifier.fillMaxWidth().height(48.dp),
-                        ) {
-                            Icon(Icons.Rounded.CheckCircle, contentDescription = null)
-                            Spacer(Modifier.size(8.dp))
-                            Text(stringResource(R.string.inbound_finish_location))
-                        }
-                    }
+                }
+                item {
+                    FscmProgressOverview(
+                        title = stringResource(R.string.inbound_progress_overview),
+                        totalLabel = stringResource(R.string.inbound_total),
+                        pendingLabel = stringResource(R.string.inbound_metric_pending),
+                        completedLabel = stringResource(R.string.inbound_metric_completed),
+                        exceptionLabel = stringResource(R.string.inbound_metric_exception),
+                        metrics = inboundProgress(current),
+                        onPendingClick = viewModel::openPendingProducts,
+                        onExceptionClick = viewModel::openIssues,
+                    )
+                }
+                item {
+                    InboundSyncBand(
+                        summary = current,
+                        submitting = state.submitting,
+                        refreshingSnapshot = state.refreshingSnapshot,
+                        syncProcessed = state.syncProcessed,
+                        syncTotal = state.syncTotal,
+                        onSync = viewModel::manualSync,
+                        onOpenDetails = viewModel::openSyncDetails,
+                    )
                 }
             }
         }
@@ -272,6 +344,28 @@ fun InboundSessionScreen(
         )
     }
 
+    if (state.cancelConfirmationOpen) {
+        AlertDialog(
+            onDismissRequest = viewModel::dismissCancelDraft,
+            title = { Text(stringResource(R.string.inbound_cancel_location)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.inbound_cancel_confirmation,
+                        workspace?.draftBatch?.locationCode.orEmpty(),
+                        workspace?.draftItems?.size ?: 0,
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::cancelDraft) {
+                    Text(stringResource(R.string.inbound_cancel_location), color = InboundDanger)
+                }
+            },
+            dismissButton = { TextButton(onClick = viewModel::dismissCancelDraft) { Text(stringResource(R.string.common_cancel)) } },
+        )
+    }
+
     if (state.conflictDialogOpen) {
         workspace?.conflicts?.firstOrNull()?.let { conflict ->
             InboundConflictDialog(
@@ -284,6 +378,39 @@ fun InboundSessionScreen(
         }
     }
 
+    if (state.issuesOpen && workspace != null) {
+        InboundExceptionsSheet(
+            workspace = workspace,
+            onDismiss = viewModel::dismissIssues,
+        )
+    }
+
+    if (state.pendingProductsOpen && workspace != null) {
+        InboundPendingProductsSheet(
+            workspace = workspace,
+            onDismiss = viewModel::dismissPendingProducts,
+        )
+    }
+
+    if (state.syncDetailsOpen && workspace != null) {
+        InboundSyncDetailsSheet(
+            workspace = workspace,
+            submitting = state.submitting,
+            syncProcessed = state.syncProcessed,
+            syncTotal = state.syncTotal,
+            onSync = viewModel::manualSync,
+            onUseLocal = { requestId ->
+                viewModel.dismissSyncDetails()
+                viewModel.overrideRemote(requestId)
+            },
+            onUseRemote = { requestId ->
+                viewModel.dismissSyncDetails()
+                viewModel.acceptRemote(requestId)
+            },
+            onDismiss = viewModel::dismissSyncDetails,
+        )
+    }
+
     if (state.cameraOpen) {
         Dialog(onDismissRequest = viewModel::closeCamera, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -294,10 +421,27 @@ fun InboundSessionScreen(
                     resumeToken = state.cameraResumeToken,
                     selectionTitle = stringResource(if (workspace?.draftBatch == null) R.string.inbound_choose_location else R.string.inbound_choose_box),
                     selectionPrompt = stringResource(R.string.inbound_multiple_codes),
-                    preferredBarcodeMatcher = if (workspace?.draftBatch != null) ::isLikelyBoxLabelQr else null,
+                    preferredBarcodeMatcher = if (workspace?.draftBatch != null) {
+                        viewModel::isKnownBoxLabelCode
+                    } else {
+                        viewModel::isKnownLocationCode
+                    },
                     preferredBarcodeWaitMillis = 800L,
-                    noPreferredBarcodeTitle = stringResource(R.string.box_label_scan_not_detected),
-                    noPreferredBarcodePrompt = stringResource(R.string.box_label_scan_retry_prompt),
+                    allowNonPreferredBarcodeFallback = workspace?.draftBatch == null,
+                    noPreferredBarcodeTitle = stringResource(
+                        if (workspace?.draftBatch == null) {
+                            R.string.inbound_location_scan_not_detected
+                        } else {
+                            R.string.box_label_scan_not_detected
+                        },
+                    ),
+                    noPreferredBarcodePrompt = stringResource(
+                        if (workspace?.draftBatch == null) {
+                            R.string.inbound_location_scan_retry_prompt
+                        } else {
+                            R.string.box_label_scan_retry_prompt
+                        },
+                    ),
                     retryScanLabel = stringResource(R.string.box_label_scan_retry),
                 )
                 IconButton(
@@ -305,6 +449,295 @@ fun InboundSessionScreen(
                     modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(8.dp)),
                 ) {
                     Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.common_close), tint = Color.White)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InboundActiveBatchContent(
+    workspace: InboundWorkspace,
+    input: String,
+    loading: Boolean,
+    broadcastMode: Boolean,
+    onValueChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onCamera: () -> Unit,
+    onFinish: () -> Unit,
+    onRequestCancel: () -> Unit,
+    onDelete: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val batch = workspace.draftBatch ?: return
+    val details = workspace.draftBoxDetails.ifEmpty {
+        workspace.draftItems.map { item -> InboundDraftBoxDetail(item = item, skuItems = emptyList()) }
+    }
+    val metrics = calculateInboundDraftMetrics(details)
+    val listState = rememberLazyListState()
+    LaunchedEffect(details.firstOrNull()?.item?.requestId) {
+        if (details.isNotEmpty()) listState.scrollToItem(0)
+    }
+    Column(modifier.padding(horizontal = 12.dp)) {
+        Spacer(Modifier.height(10.dp))
+        InboundActiveLocationHeader(
+            locationCode = batch.locationCode,
+            locationName = batch.locationName,
+            zoneName = batch.zoneName,
+            boxCount = metrics.boxCount,
+            skuCount = metrics.skuCount,
+            totalQuantity = metrics.totalQuantity,
+            quantityComplete = metrics.quantityComplete,
+            finishEnabled = details.isNotEmpty() && !loading,
+            loading = loading,
+            onFinish = onFinish,
+            onRequestCancel = onRequestCancel,
+        )
+        Spacer(Modifier.height(8.dp))
+        InboundCompactScanInput(
+            value = input,
+            loading = loading,
+            broadcastMode = broadcastMode,
+            onValueChange = onValueChange,
+            onSubmit = onSubmit,
+            onCamera = onCamera,
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            stringResource(R.string.inbound_current_boxes),
+            color = InboundInk,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Spacer(Modifier.height(6.dp))
+        if (details.isEmpty()) {
+            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Rounded.QrCodeScanner, contentDescription = null, tint = InboundBrand, modifier = Modifier.size(30.dp))
+                    Text(stringResource(R.string.inbound_empty_location_prompt), color = InboundMuted)
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                state = listState,
+                contentPadding = PaddingValues(bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                items(details, key = { it.item.requestId }) { detail ->
+                    InboundActiveBoxRow(
+                        detail = detail,
+                        latest = detail.item.requestId == details.first().item.requestId,
+                        onDelete = { onDelete(detail.item.requestId) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InboundActiveLocationHeader(
+    locationCode: String,
+    locationName: String,
+    zoneName: String,
+    boxCount: Int,
+    skuCount: Int,
+    totalQuantity: Int,
+    quantityComplete: Boolean,
+    finishEnabled: Boolean,
+    loading: Boolean,
+    onFinish: () -> Unit,
+    onRequestCancel: () -> Unit,
+) {
+    var menuExpanded by rememberSaveable { mutableStateOf(false) }
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(8.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, InboundStroke),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.LocationOn, contentDescription = null, tint = InboundBrand, modifier = Modifier.size(28.dp))
+                Spacer(Modifier.size(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        locationCode,
+                        color = InboundInk,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    val locationDescription = listOf(zoneName, locationName).filter(String::isNotBlank).joinToString(" · ")
+                    if (locationDescription.isNotBlank()) {
+                        Text(
+                            locationDescription,
+                            color = InboundDeep,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                Box {
+                    IconButton(onClick = { menuExpanded = true }, enabled = !loading) {
+                        Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.common_more), tint = InboundMuted)
+                    }
+                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.inbound_cancel_location), color = InboundDanger) },
+                            leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null, tint = InboundDanger) },
+                            onClick = {
+                                menuExpanded = false
+                                onRequestCancel()
+                            },
+                        )
+                    }
+                }
+                Button(onClick = onFinish, enabled = finishEnabled, modifier = Modifier.height(40.dp)) {
+                    if (loading) {
+                        CircularProgressIndicator(Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.size(5.dp))
+                        Text(stringResource(R.string.inbound_finish_short))
+                    }
+                }
+            }
+            HorizontalDivider(color = InboundStroke)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(stringResource(R.string.inbound_box_count_short, boxCount), color = InboundMuted, style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.inbound_sku_count_short, skuCount), color = InboundMuted, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    if (quantityComplete || boxCount == 0) {
+                        stringResource(R.string.inbound_quantity_short, totalQuantity)
+                    } else {
+                        stringResource(R.string.inbound_quantity_pending)
+                    },
+                    color = if (quantityComplete || boxCount == 0) InboundMuted else InboundWarning,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun InboundCompactScanInput(
+    value: String,
+    loading: Boolean,
+    broadcastMode: Boolean,
+    onValueChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onCamera: () -> Unit,
+) {
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(8.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, InboundStroke),
+    ) {
+        if (broadcastMode) {
+            Row(
+                Modifier.fillMaxWidth().height(52.dp).padding(start = 12.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.QrCodeScanner, contentDescription = null, tint = InboundBrand, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.size(8.dp))
+                Text(
+                    stringResource(if (loading) R.string.inbound_processing else R.string.inbound_waiting_scanner),
+                    color = InboundMuted,
+                    modifier = Modifier.weight(1f),
+                )
+                if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                IconButton(onClick = onCamera, enabled = !loading) {
+                    Icon(Icons.Rounded.CameraAlt, contentDescription = stringResource(R.string.inbound_camera_scan), tint = InboundBrand)
+                }
+            }
+        } else {
+            Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text(stringResource(R.string.inbound_scan_box)) },
+                    singleLine = true,
+                    enabled = !loading,
+                    trailingIcon = {
+                        IconButton(onClick = onSubmit, enabled = value.isNotBlank() && !loading) {
+                            Icon(Icons.Rounded.QrCodeScanner, contentDescription = stringResource(R.string.common_confirm), tint = InboundBrand)
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { onSubmit() }),
+                )
+                IconButton(onClick = onCamera, enabled = !loading) {
+                    Icon(Icons.Rounded.CameraAlt, contentDescription = stringResource(R.string.inbound_camera_scan), tint = InboundBrand)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InboundActiveBoxRow(
+    detail: InboundDraftBoxDetail,
+    latest: Boolean,
+    onDelete: () -> Unit,
+) {
+    Surface(
+        color = if (latest) Color(0xFFEEF6FF) else Color.White,
+        shape = RoundedCornerShape(6.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (latest) Color(0xFF91CAFF) else InboundStroke),
+    ) {
+        Column(Modifier.padding(start = 12.dp, top = 9.dp, bottom = 9.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            detail.item.labelCode,
+                            color = InboundInk,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        if (latest) {
+                            Spacer(Modifier.size(7.dp))
+                            Surface(color = InboundBrand.copy(alpha = 0.12f), shape = RoundedCornerShape(4.dp)) {
+                                Text(
+                                    stringResource(R.string.inbound_latest_scan),
+                                    color = InboundDeep,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        stringResource(R.string.inbound_scanned_at, formatInboundTime(detail.item.scannedAt)),
+                        color = InboundMuted,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.common_delete), tint = InboundDanger)
+                }
+            }
+            if (detail.skuItems.isEmpty()) {
+                Text(stringResource(R.string.inbound_sku_pending), color = InboundWarning, style = MaterialTheme.typography.bodySmall)
+            } else {
+                detail.skuItems.forEach { sku ->
+                    Row(Modifier.fillMaxWidth().padding(end = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(sku.skuCode, color = InboundDeep, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        Spacer(Modifier.size(8.dp))
+                        Text(
+                            sku.quantity?.let { stringResource(R.string.inbound_sku_quantity, it) }
+                                ?: stringResource(R.string.inbound_sku_quantity_pending),
+                            color = if (sku.quantity == null) InboundWarning else InboundInk,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
             }
         }
@@ -324,61 +757,72 @@ private fun InboundSessionCard(session: InboundSessionSummary, onClick: () -> Un
                 Icon(Icons.Rounded.Warehouse, contentDescription = null, tint = InboundBrand)
                 Spacer(Modifier.size(8.dp))
                 Text(session.sessionCode, color = InboundInk, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                InboundStatusPill(session.status)
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    InboundStatusPill(session.status)
+                    if (session.snapshotComplete && session.locationCacheComplete) {
+                        Text(
+                            stringResource(R.string.inbound_offline_ready),
+                            color = InboundBrand,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(stringResource(R.string.inbound_progress_value, session.inboundedCount + session.localAssignedCount, session.totalCount), color = InboundDeep)
                 Text(stringResource(R.string.inbound_remaining_value, session.remainingCount), color = if (session.remainingCount == 0) InboundSuccess else InboundWarning)
             }
             if (!session.snapshotComplete) Text(stringResource(R.string.inbound_snapshot_not_ready), color = InboundWarning, style = MaterialTheme.typography.bodySmall)
+            if (!session.locationCacheComplete) {
+                Text(stringResource(R.string.inbound_location_cache_not_ready), color = InboundWarning, style = MaterialTheme.typography.bodySmall)
+            }
             if (session.pendingCount > 0 || session.conflictCount > 0) {
                 Text(stringResource(R.string.inbound_pending_conflict_value, session.pendingCount, session.conflictCount), color = InboundMuted, style = MaterialTheme.typography.bodySmall)
             }
-        }
-    }
-}
-
-@Composable
-private fun InboundProgressHeader(summary: InboundSessionSummary) = InboundCard {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Rounded.Warehouse, contentDescription = null, tint = InboundBrand)
-        Spacer(Modifier.size(8.dp))
-        Column(Modifier.weight(1f)) {
-            Text(summary.sessionCode, color = InboundInk, fontWeight = FontWeight.Bold)
-            Text(stringResource(R.string.inbound_session_progress), color = InboundMuted, style = MaterialTheme.typography.bodySmall)
-        }
-        InboundStatusPill(summary.status)
-    }
-}
-
-@Composable
-private fun InboundMetrics(total: Int, inbounded: Int, remaining: Int, conflicts: Int) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        listOf(
-            stringResource(R.string.inbound_total) to total,
-            stringResource(R.string.inbound_assigned) to inbounded.coerceAtMost(total),
-            stringResource(R.string.inbound_remaining) to remaining,
-            stringResource(R.string.inbound_conflicts) to conflicts,
-        ).forEach { (label, value) ->
-            Surface(modifier = Modifier.weight(1f), shape = RoundedCornerShape(8.dp), color = Color.White, border = androidx.compose.foundation.BorderStroke(1.dp, InboundStroke)) {
-                Column(Modifier.padding(vertical = 9.dp, horizontal = 3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(value.toString(), color = InboundDeep, fontWeight = FontWeight.Bold)
-                    Text(label, color = InboundMuted, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
+            if (session.exceptionCount > 0) {
+                Text(
+                    stringResource(R.string.inbound_center_exception_count, session.exceptionCount),
+                    color = InboundDanger,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
         }
     }
 }
 
 @Composable
-private fun InboundSyncBand(summary: InboundSessionSummary, submitting: Boolean, onSync: () -> Unit) = InboundCard {
+private fun InboundSyncBand(
+    summary: InboundSessionSummary,
+    submitting: Boolean,
+    refreshingSnapshot: Boolean,
+    syncProcessed: Int,
+    syncTotal: Int,
+    onSync: () -> Unit,
+    onOpenDetails: () -> Unit,
+) = InboundCard {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Rounded.Sync, contentDescription = null, tint = InboundBrand)
         Spacer(Modifier.size(8.dp))
-        Column(Modifier.weight(1f)) {
+        Column(
+            Modifier
+                .weight(1f)
+                .clickable(onClick = onOpenDetails)
+                .padding(vertical = 4.dp),
+        ) {
             Text(stringResource(R.string.inbound_sync_status), color = InboundInk, fontWeight = FontWeight.Bold)
             Text(
-                if (summary.lastSyncAt > 0) stringResource(R.string.inbound_last_sync, formatInboundTime(summary.lastSyncAt)) else stringResource(R.string.inbound_never_synced),
+                when {
+                    submitting && syncTotal > 0 -> "$syncProcessed / $syncTotal"
+                    refreshingSnapshot -> stringResource(R.string.inbound_snapshot_refreshing)
+                    summary.snapshotComplete && summary.locationCacheComplete -> stringResource(
+                        R.string.inbound_offline_data_updated,
+                        formatInboundTime(maxOf(summary.lastSyncAt, summary.locationCacheRefreshedAt)),
+                    )
+                    summary.snapshotComplete -> stringResource(R.string.inbound_location_cache_not_ready)
+                    summary.lastSyncAt > 0 -> stringResource(R.string.inbound_last_sync, formatInboundTime(summary.lastSyncAt))
+                    else -> stringResource(R.string.inbound_never_synced)
+                },
                 color = InboundMuted,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -390,24 +834,18 @@ private fun InboundSyncBand(summary: InboundSessionSummary, submitting: Boolean,
         }
     }
     if (summary.pendingCount > 0 || summary.conflictCount > 0 || summary.rejectedCount > 0) {
-        Text(
-            stringResource(R.string.inbound_sync_counts, summary.pendingCount, summary.conflictCount, summary.rejectedCount),
-            color = if (summary.conflictCount > 0 || summary.rejectedCount > 0) InboundWarning else InboundMuted,
-            style = MaterialTheme.typography.bodySmall,
-        )
-    }
-}
-
-@Composable
-private fun InboundLocationBand(locationCode: String, boxCount: Int, onCancel: () -> Unit) = InboundCard {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Rounded.LocationOn, contentDescription = null, tint = InboundBrand)
-        Spacer(Modifier.size(8.dp))
-        Column(Modifier.weight(1f)) {
-            Text(locationCode, color = InboundInk, fontWeight = FontWeight.Bold)
-            Text(stringResource(R.string.inbound_location_box_count, boxCount), color = InboundMuted, style = MaterialTheme.typography.bodySmall)
+        Row(
+            Modifier.fillMaxWidth().clickable(onClick = onOpenDetails),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                stringResource(R.string.inbound_sync_counts, summary.pendingCount, summary.conflictCount, summary.rejectedCount),
+                color = if (summary.conflictCount > 0 || summary.rejectedCount > 0) InboundWarning else InboundMuted,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(Icons.Rounded.ErrorOutline, contentDescription = null, tint = InboundWarning, modifier = Modifier.size(18.dp))
         }
-        TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel), color = InboundDanger) }
     }
 }
 
@@ -451,17 +889,431 @@ private fun InboundScanInput(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun InboundBoxRow(item: LocalInboundItemEntity, removable: Boolean, onDelete: () -> Unit) = InboundCard {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Rounded.QrCodeScanner, contentDescription = null, tint = InboundDeep, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.size(8.dp))
-        Column(Modifier.weight(1f)) {
-            Text(item.labelCode, color = InboundInk, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(item.localLocationCode, color = InboundMuted, style = MaterialTheme.typography.bodySmall)
+private fun InboundExceptionsSheet(
+    workspace: InboundWorkspace,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                stringResource(R.string.inbound_center_exceptions),
+                color = InboundInk,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+            )
         }
-        if (removable) IconButton(onClick = onDelete) { Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.common_delete), tint = InboundDanger) }
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
+            contentPadding = PaddingValues(bottom = 24.dp),
+        ) {
+            item {
+                InboundIssueSectionTitle(
+                    stringResource(R.string.inbound_center_exceptions),
+                    workspace.summary.exceptionCount,
+                    InboundDanger,
+                )
+            }
+            if (workspace.centerExceptions.isEmpty()) {
+                item { InboundIssueEmpty(stringResource(R.string.inbound_no_center_exceptions)) }
+            } else {
+                items(workspace.centerExceptions, key = { "center-${it.boxPlanId}" }) { item ->
+                    InboundCenterExceptionRow(item)
+                }
+            }
+        }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun InboundPendingProductsSheet(
+    workspace: InboundWorkspace,
+    onDismiss: () -> Unit,
+) {
+    var query by rememberSaveable { mutableStateOf("") }
+    val products = com.google.samples.apps.nowinandroid.fscm.data.pendingInboundProducts(
+        workspace.pendingProducts,
+        query,
+    )
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                stringResource(R.string.inbound_pending_products_title),
+                color = InboundInk,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text(stringResource(R.string.inbound_product_search)) },
+            )
+            if (!workspace.summary.productCacheComplete) {
+                InboundNotice(
+                    text = stringResource(
+                        if (workspace.pendingProducts.isEmpty()) {
+                            R.string.inbound_product_cache_unavailable
+                        } else {
+                            R.string.inbound_products_updating
+                        },
+                    ),
+                    error = false,
+                )
+            } else if (workspace.summary.productCacheAt > 0) {
+                Text(
+                    stringResource(
+                        R.string.inbound_product_cache_updated,
+                        formatInboundTime(workspace.summary.productCacheAt),
+                    ),
+                    color = InboundMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp),
+        ) {
+            if (products.isEmpty()) {
+                item {
+                    InboundIssueEmpty(
+                        stringResource(
+                            if (query.isBlank()) R.string.inbound_no_pending_products else R.string.inbound_no_product_search_results,
+                        ),
+                    )
+                }
+            } else {
+                items(products, key = { it.productId }) { product ->
+                    InboundPendingProductRow(product)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InboundPendingProductRow(product: LocalInboundProductSummaryEntity) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier.size(58.dp).clip(RoundedCornerShape(6.dp)).background(InboundBackground),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (product.productImage.isNotBlank()) {
+                AsyncImage(
+                    model = product.productImage,
+                    contentDescription = product.productName,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                )
+            } else {
+                Icon(Icons.Rounded.Inventory2, contentDescription = null, tint = InboundMuted)
+            }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(
+                product.productCode,
+                color = InboundDeep,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                product.productName,
+                color = InboundInk,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(
+                        R.string.inbound_product_progress,
+                        product.inboundedBoxCount,
+                        product.totalBoxCount,
+                    ),
+                    color = InboundSuccess,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    stringResource(R.string.inbound_product_pending_count, product.pendingBoxCount),
+                    color = InboundWarning,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+            LinearProgressIndicator(
+                progress = {
+                    if (product.totalBoxCount <= 0) {
+                        0f
+                    } else {
+                        product.inboundedBoxCount.toFloat().div(product.totalBoxCount).coerceIn(0f, 1f)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                color = InboundBrand,
+                trackColor = Color(0xFFE6F0FF),
+            )
+            if (product.exceptionBoxCount > 0) {
+                Text(
+                    stringResource(R.string.inbound_product_exception_count, product.exceptionBoxCount),
+                    color = InboundDanger,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        }
+    }
+    HorizontalDivider(color = InboundStroke)
+}
+
+internal enum class InboundSyncDetailsTab {
+    Pending,
+    Conflict,
+    Failed,
+}
+
+internal fun localSyncItemsForTab(
+    items: List<LocalInboundItemEntity>,
+    tab: InboundSyncDetailsTab,
+): List<LocalInboundItemEntity> = items.filter { item ->
+    when (tab) {
+        InboundSyncDetailsTab.Pending -> item.status in setOf(InboundItemStatus.Pending.value, InboundItemStatus.Syncing.value)
+        InboundSyncDetailsTab.Conflict -> item.status == InboundItemStatus.ConflictPending.value
+        InboundSyncDetailsTab.Failed -> item.status == InboundItemStatus.Rejected.value
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun InboundSyncDetailsSheet(
+    workspace: InboundWorkspace,
+    submitting: Boolean,
+    syncProcessed: Int,
+    syncTotal: Int,
+    onSync: () -> Unit,
+    onUseLocal: (String) -> Unit,
+    onUseRemote: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var selectedTabIndex by rememberSaveable { mutableStateOf(0) }
+    val tabs = InboundSyncDetailsTab.entries
+    val selectedTab = tabs[selectedTabIndex]
+    val visibleItems = localSyncItemsForTab(workspace.localSyncItems, selectedTab)
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.inbound_local_sync_data),
+                    color = InboundInk,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                if (submitting && syncTotal > 0) {
+                    Text(
+                        stringResource(R.string.inbound_sync_progress, syncProcessed, syncTotal),
+                        color = InboundMuted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+            OutlinedButton(onClick = onSync, enabled = !submitting) {
+                if (submitting) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Rounded.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+                Spacer(Modifier.size(5.dp))
+                Text(stringResource(R.string.inbound_manual_sync))
+            }
+        }
+        NiaTabRow(selectedTabIndex = selectedTabIndex, modifier = Modifier.fillMaxWidth()) {
+            tabs.forEachIndexed { index, tab ->
+                val count = localSyncItemsForTab(workspace.localSyncItems, tab).size
+                NiaTab(
+                    selected = selectedTabIndex == index,
+                    onClick = { selectedTabIndex = index },
+                    text = {
+                        Text(
+                            stringResource(
+                                when (tab) {
+                                    InboundSyncDetailsTab.Pending -> R.string.inbound_sync_tab_pending
+                                    InboundSyncDetailsTab.Conflict -> R.string.inbound_sync_tab_conflict
+                                    InboundSyncDetailsTab.Failed -> R.string.inbound_sync_tab_failed
+                                },
+                                count,
+                            ),
+                        )
+                    },
+                )
+            }
+        }
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp),
+            contentPadding = PaddingValues(bottom = 24.dp),
+        ) {
+            if (visibleItems.isEmpty()) {
+                item { InboundIssueEmpty(stringResource(R.string.inbound_no_sync_items_for_status)) }
+            } else {
+                items(visibleItems, key = { it.requestId }) { item ->
+                    InboundLocalSyncIssueRow(
+                        item = item,
+                        submitting = submitting,
+                        onUseLocal = { onUseLocal(item.requestId) },
+                        onUseRemote = { onUseRemote(item.requestId) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InboundIssueSectionTitle(title: String, count: Int, color: Color) {
+    Row(
+        modifier = Modifier.fillMaxWidth().background(InboundBackground).padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, color = InboundInk, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        Text(count.coerceAtLeast(0).toString(), color = color, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun InboundCenterExceptionRow(item: LocalInboundSnapshotEntity) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                item.labelCode.ifBlank { item.boxNo.ifBlank { item.boxUid } },
+                color = InboundDeep,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(localizedStatusText(item.status), color = InboundDanger, style = MaterialTheme.typography.labelMedium)
+        }
+        Text(
+            item.exceptionReason.ifBlank { localizedStatusText(item.status) },
+            color = InboundInk,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        if (item.receiptScanStatus.isNotBlank()) {
+            InboundIssueMeta(stringResource(R.string.inbound_receipt_scan_status), localizedStatusText(item.receiptScanStatus))
+        }
+        if (item.locationCode.isNotBlank()) {
+            InboundIssueMeta(stringResource(R.string.inbound_remote_location), item.locationCode)
+        }
+        if (item.remoteScannedBy.isNotBlank()) {
+            InboundIssueMeta(stringResource(R.string.inbound_scanned_by), item.remoteScannedBy)
+        }
+        if (item.remoteScannedAt > 0) {
+            InboundIssueMeta(stringResource(R.string.inbound_exception_time), formatInboundTime(item.remoteScannedAt))
+        }
+    }
+    HorizontalDivider(color = InboundStroke)
+}
+
+@Composable
+private fun InboundLocalSyncIssueRow(
+    item: LocalInboundItemEntity,
+    submitting: Boolean,
+    onUseLocal: () -> Unit,
+    onUseRemote: () -> Unit,
+) {
+    val conflict = item.status == InboundItemStatus.ConflictPending.value
+    val pending = item.status in setOf(InboundItemStatus.Pending.value, InboundItemStatus.Syncing.value)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                item.labelCode,
+                color = InboundDeep,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                stringResource(
+                    when {
+                        pending -> R.string.inbound_status_pending_sync
+                        conflict -> R.string.inbound_status_conflict
+                        else -> R.string.inbound_status_failed
+                    },
+                ),
+                color = when {
+                    pending -> InboundBrand
+                    conflict -> InboundWarning
+                    else -> InboundDanger
+                },
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+        if (item.errorMessage.isNotBlank()) {
+            Text(item.errorMessage, color = InboundInk, style = MaterialTheme.typography.bodyMedium)
+        }
+        if (item.errorCode != 0) {
+            InboundIssueMeta(stringResource(R.string.inbound_error_code), item.errorCode.toString())
+        }
+        InboundIssueMeta(stringResource(R.string.inbound_local_location), item.localLocationCode)
+        InboundIssueMeta(stringResource(R.string.inbound_scanned_time), formatInboundTime(item.scannedAt))
+        InboundIssueMeta(stringResource(R.string.inbound_batch_id), item.batchId)
+        if (item.remoteLocationCode.isNotBlank()) {
+            InboundIssueMeta(stringResource(R.string.inbound_remote_location), item.remoteLocationCode)
+        }
+        if (conflict) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onUseRemote, enabled = !submitting, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.inbound_use_remote_location))
+                }
+                Button(onClick = onUseLocal, enabled = !submitting, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.inbound_use_local_location))
+                }
+            }
+        }
+    }
+    HorizontalDivider(color = InboundStroke)
+}
+
+@Composable
+private fun InboundIssueMeta(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, color = InboundMuted, style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.size(12.dp))
+        Text(
+            value.ifBlank { "-" },
+            color = InboundInk,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(1f),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun InboundIssueEmpty(text: String) {
+    Text(
+        text,
+        color = InboundMuted,
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 18.dp),
+    )
 }
 
 @Composable

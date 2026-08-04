@@ -16,5 +16,6 @@
   -->
 
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false" />
+    <!-- Edge nodes advertise dynamic LAN IP addresses over HTTP/WebSocket. -->
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

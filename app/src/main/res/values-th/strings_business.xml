@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="business_quick_receiving">รับสินค้าด้วยการสแกนด่วน</string><string name="business_quick_receiving_description">สแกนฉลากกล่อง ยืนยันจำนวน แล้วส่งการรับสินค้า</string><string name="business_quick_central_receiving_description">สแกนฉลากกล่อง ยืนยันจำนวน แล้วส่งการรับสินค้าเข้าคลังรวม</string>
-    <string name="business_recent_scans">การสแกนล่าสุด</string><string name="business_metric_pending">รอรับ</string><string name="business_metric_completed">เสร็จสิ้น</string><string name="business_metric_exception_boxes">กล่องผิดปกติ</string><string name="business_metric_total_boxes">กล่องทั้งหมด</string><string name="business_metric_received">รับแล้ว</string><string name="business_metric_exception">ผิดปกติ</string>
+    <string name="business_quick_receiving">รับสินค้าด้วยการสแกนด่วน</string><string name="business_quick_receiving_description">สแกนฉลากกล่อง ยืนยันจำนวน แล้วส่งการรับสินค้า</string><string name="business_quick_central_receiving_description">สแกนฉลากกล่องเพื่อยืนยันหนึ่งกล่องได้ทันที แม้ออฟไลน์</string>
+    <string name="business_recent_scans">การสแกนล่าสุด</string><string name="business_metric_pending">รอรับ</string><string name="business_metric_completed">เสร็จสิ้น</string><string name="business_metric_exception_boxes">กล่องผิดปกติ</string><string name="business_metric_total_boxes">กล่องทั้งหมด</string><string name="business_metric_received">รับแล้ว</string><string name="business_metric_exception">ผิดปกติ</string><string name="business_receiving_progress_overview">ความคืบหน้าการรับสินค้า</string>
     <string name="business_no_warehouse_receipts">ไม่มีรายการรับสินค้าเข้าคลัง</string><string name="business_no_central_receipts">ไม่มีรายการรับสินค้าเข้าคลังรวม</string><string name="business_unbound_source">ไม่ได้เชื่อมโยงเลขที่ต้นทาง</string><string name="business_central_warehouse">คลังรวม</string>
-    <string name="business_scan_in_document">สแกนภายในเอกสาร</string><string name="business_scan_then_confirm">ระบุฉลากกล่องแล้วจึงยืนยันการรับ</string><string name="business_save_pending_sync">บันทึกเพื่อซิงค์</string><string name="business_sku_receiving_progress">ความคืบหน้าการรับ SKU</string><string name="business_received_expected_boxes">รับแล้ว %1$d / คาดไว้ %2$d กล่อง</string><string name="business_box_label_details">รายละเอียดฉลากกล่อง</string><string name="business_no_sku_info">ไม่มีข้อมูล SKU</string>
+    <string name="business_scan_in_document">สแกนรหัสฉลากกล่อง</string><string name="business_scan_then_confirm">ระบุฉลากกล่องแล้วจึงยืนยันการรับ</string><string name="business_save_pending_sync">บันทึกเพื่อซิงค์</string><string name="business_sku_receiving_progress">ความคืบหน้าการรับ SKU</string><string name="business_received_expected_boxes">รับแล้ว %1$d / คาดไว้ %2$d กล่อง</string><string name="business_box_label_details">รายละเอียดฉลากกล่อง</string><string name="business_no_sku_info">ไม่มีข้อมูล SKU</string>
     <string name="business_search_supplier_orders">ค้นหาผู้ผลิต คำสั่งซื้อ หรือใบสั่งซื้อ</string><string name="business_search_approvals">ค้นหาคำสั่งซื้อ ผู้ผลิต หรือ SKU</string><string name="business_metric_orders">คำสั่งซื้อ</string><string name="business_metric_boxes">กล่อง</string><string name="business_metric_volume">ปริมาตร</string><string name="business_metric_total">รวม</string><string name="business_metric_pending_review">รอตรวจสอบ</string><string name="business_metric_amount">จำนวนเงิน</string>
     <string name="business_no_supplier_orders">ไม่มีคำสั่งซื้อจากผู้ผลิต</string><string name="business_no_approvals">ไม่มีรายการอนุมัติการจัดซื้อ</string><string name="business_unbound_manufacturer">ไม่ได้เชื่อมโยงผู้ผลิต</string><string name="business_unbound_purchase_order">ไม่ได้เชื่อมโยงใบสั่งซื้อ</string><string name="business_amount_boxes_quantity">จำนวนเงิน %1$.2f · กล่อง %2$d · จำนวน %3$d</string><string name="business_related_products">สินค้าที่เกี่ยวข้อง</string><string name="business_product_number">สินค้า %1$d</string>
     <string name="business_approval_summary">SKU %1$d · กล่อง %2$d · จำนวน %3$d</string><string name="business_missing_prices_block">ขาดราคา %1$d รายการ จึงอนุมัติไม่ได้</string><string name="business_review_details">รายละเอียดการตรวจสอบ</string><string name="business_unnamed_product">สินค้ายังไม่มีชื่อ</string><string name="business_item_summary">กล่อง %1$d · จำนวน %2$d · ราคาต่อหน่วย %3$.2f</string><string name="business_missing_price">ขาดราคา</string><string name="business_remark_value">หมายเหตุ: %1$s</string>
@@ -35,4 +35,21 @@
     <string name="business_local_receiving_not_saved">บันทึกใบรับสินค้าในเครื่องไม่สำเร็จ</string>
     <string name="business_local_sync_offline">ขณะออฟไลน์ไม่สามารถซิงค์ข้อมูลการรับสินค้าได้</string>
     <string name="business_local_receiving_not_found">ไม่พบใบรับสินค้าในเครื่อง</string>
-</resources>
+    <string name="business_scan_auto_confirm">สแกนฉลากกล่องเพื่อยืนยันรับหนึ่งกล่องทันที</string>
+    <string name="business_central_local_snapshot">อัปเดตข้อมูลในเครื่องเมื่อ %1$s</string>
+    <string name="business_central_no_snapshot">ยังไม่มีรายการฉลากกล่องในเครื่องที่สมบูรณ์</string>
+    <string name="business_central_sync_summary">รอซิงค์ %1$d · มีปัญหา %2$d</string>
+    <string name="business_supplier_in_progress">In progress</string>
+    <string name="business_supplier_filters">Filters</string>
+    <string name="business_all_warehouses">All warehouses</string>
+    <string name="business_loading_warehouses">Loading warehouses</string>
+    <string name="business_product_code_filter">Product code</string>
+    <string name="business_manufacturer_filter">Manufacturer name</string>
+    <string name="business_purchase_order_filter">Purchase order number</string>
+    <string name="business_reset_filters">Reset</string>
+    <string name="business_apply_filters">Apply</string>
+    <string name="business_confirm_status_transition">Update status to %1$s?</string>
+    <string name="business_status_transition_summary">Order %1$s: %2$s to %3$s</string>
+    <string name="business_status_remark">Remark (optional)</string>
+    <string name="business_supplier_review_required">This order is awaiting price review. Continue in Purchase Approvals.</string>
+    <string name="business_warehouse_options_failed">Unable to load warehouse options</string></resources>

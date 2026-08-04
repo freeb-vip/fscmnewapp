@@ -89,11 +89,11 @@ interface UserDataRepository {
      */
     suspend fun setDisplayMode(displayMode: DisplayMode)
 
-    /**
-     * Sets this device's default edge node and label prefix for SKU quick printing.
-     */
-    suspend fun setSkuQuickPrintPreferences(defaultNodeId: Long?, labelPrefix: String)
-
-    /** Sets this device's default edge node for manufacturer box-mark printing. */
-    suspend fun setDefaultBoxMarkPrintNode(defaultNodeId: Long?)
+    /** Sets this device's default edge node and its SKU/box-mark print preferences atomically. */
+    suspend fun setEdgePrintPreferences(
+        defaultNodeId: Long?,
+        skuTemplateCode: String,
+        boxMarkTemplateCode: String,
+        labelPrefix: String,
+    )
 }

@@ -118,10 +118,11 @@ class EdgeServiceDiscovery @Inject constructor(
             }.onFailure { finish() }
         }
 
-    private fun cachedBaseUrls(): Set<String> =
+    fun cachedBaseUrls(): List<String> =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getStringSet(KEY_BASE_URLS, emptySet())
             .orEmpty()
+            .toList()
 
     private fun cacheBaseUrls(urls: Set<String>) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

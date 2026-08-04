@@ -2,7 +2,7 @@
 <resources>
     <string name="business_quick_receiving">Quick scan receiving</string>
     <string name="business_quick_receiving_description">Scan a carton label, confirm the quantity, then submit the receipt</string>
-    <string name="business_quick_central_receiving_description">Scan a carton label, confirm the quantity, then submit consolidation receiving</string>
+    <string name="business_quick_central_receiving_description">Scan a carton mark to confirm one carton, even while offline</string>
     <string name="business_recent_scans">Recent scans</string>
     <string name="business_metric_pending">Pending</string>
     <string name="business_metric_completed">Completed</string>
@@ -10,11 +10,12 @@
     <string name="business_metric_total_boxes">Total boxes</string>
     <string name="business_metric_received">Received</string>
     <string name="business_metric_exception">Exception</string>
+    <string name="business_receiving_progress_overview">Receiving progress</string>
     <string name="business_no_warehouse_receipts">No warehouse receipts</string>
     <string name="business_no_central_receipts">No consolidation receipts</string>
     <string name="business_unbound_source">No source order linked</string>
     <string name="business_central_warehouse">Consolidation warehouse</string>
-    <string name="business_scan_in_document">Scan within document</string>
+    <string name="business_scan_in_document">Scan a carton label code</string>
     <string name="business_scan_then_confirm">Identify the carton label, then confirm receiving</string>
     <string name="business_save_pending_sync">Save for sync</string>
     <string name="business_sku_receiving_progress">SKU receiving progress</string>
@@ -117,4 +118,21 @@
     <string name="business_local_receiving_not_saved">Unable to save the local receiving order</string>
     <string name="business_local_sync_offline">Receiving cannot be synced while offline</string>
     <string name="business_local_receiving_not_found">Local receiving order not found</string>
-</resources>
+    <string name="business_scan_auto_confirm">Scan a carton mark to confirm one carton immediately</string>
+    <string name="business_central_local_snapshot">Local data updated %1$s</string>
+    <string name="business_central_no_snapshot">No complete local carton snapshot</string>
+    <string name="business_central_sync_summary">Pending sync %1$d · Issues %2$d</string>
+    <string name="business_supplier_in_progress">In progress</string>
+    <string name="business_supplier_filters">Filters</string>
+    <string name="business_all_warehouses">All warehouses</string>
+    <string name="business_loading_warehouses">Loading warehouses</string>
+    <string name="business_product_code_filter">Product code</string>
+    <string name="business_manufacturer_filter">Manufacturer name</string>
+    <string name="business_purchase_order_filter">Purchase order number</string>
+    <string name="business_reset_filters">Reset</string>
+    <string name="business_apply_filters">Apply</string>
+    <string name="business_confirm_status_transition">Update status to %1$s?</string>
+    <string name="business_status_transition_summary">Order %1$s: %2$s to %3$s</string>
+    <string name="business_status_remark">Remark (optional)</string>
+    <string name="business_supplier_review_required">This order is awaiting price review. Continue in Purchase Approvals.</string>
+    <string name="business_warehouse_options_failed">Unable to load warehouse options</string></resources>

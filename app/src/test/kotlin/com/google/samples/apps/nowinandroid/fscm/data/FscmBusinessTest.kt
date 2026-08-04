@@ -22,6 +22,7 @@ import com.google.samples.apps.nowinandroid.fscm.ui.supplierStatusTextRes
 import kotlinx.serialization.json.Json
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
 class FscmBusinessTest {
@@ -72,6 +73,45 @@ class FscmBusinessTest {
         assertEquals(listOf("same_day_delivery"), allowedSupplierOrderStatuses("shipped"))
         assertEquals(listOf("shipped"), allowedSupplierOrderStatuses("same_day_delivery"))
         assertEquals(emptyList(), allowedSupplierOrderStatuses("arrived_central_warehouse"))
+    }
+
+    @Test
+    fun supplierOrderQuery_mapsCategoryFiltersAndPagination() {
+        val params = SupplierOrderQuery(
+            category = SupplierOrderCategory.Completed,
+            keyword = "  SO-100  ",
+            filters = SupplierOrderFilters(
+                warehouseCode = " WH-01 ",
+                productCode = " P-100 ",
+                manufacturerName = " Acme ",
+                purchaseOrderCode = " PO-01 ",
+            ),
+            page = 3,
+            pageSize = 20,
+        ).toQueryParams()
+
+        assertEquals("completed", params["status_group"])
+        assertEquals("SO-100", params["keyword"])
+        assertEquals("WH-01", params["warehouse_code"])
+        assertEquals("P-100", params["product_code"])
+        assertEquals("Acme", params["manufacturer_name"])
+        assertEquals("PO-01", params["purchase_order_code"])
+        assertEquals("3", params["page"])
+        assertEquals("20", params["pageSize"])
+    }
+
+    @Test
+    fun supplierOrderQuery_omitsBlankFiltersAndNormalizesPaging() {
+        val filters = SupplierOrderFilters(productCode = "  ")
+        val params = SupplierOrderQuery(category = SupplierOrderCategory.InProgress, filters = filters, page = 0, pageSize = 0).toQueryParams()
+
+        assertEquals("in_progress", params["status_group"])
+        assertEquals("1", params["page"])
+        assertEquals("1", params["pageSize"])
+        assertFalse(params.containsKey("keyword"))
+        assertFalse(params.containsKey("warehouse_code"))
+        assertFalse(params.containsKey("product_code"))
+        assertEquals(0, filters.normalized().activeCount)
     }
 
     @Test

@@ -108,6 +108,7 @@ fun BarcodeScanner(
     selectionPrompt: String = "识别到多个码，请选择本次要使用的箱唛码。",
     preferredBarcodeMatcher: ((String) -> Boolean)? = null,
     preferredBarcodeWaitMillis: Long = 800L,
+    allowNonPreferredBarcodeFallback: Boolean = false,
     noPreferredBarcodeTitle: String = "未识别到有效二维码",
     noPreferredBarcodePrompt: String = "请对准正确的二维码重新扫描。",
     retryScanLabel: String = "重新扫描",
@@ -201,6 +202,9 @@ fun BarcodeScanner(
         if (preferredBarcodeMatcher != null) {
             mainHandler.post {
                 if (isPaused) return@post
+                if (allowNonPreferredBarcodeFallback) {
+                    results.forEach { pendingCandidates[it.value] = it }
+                }
                 val preferredCandidates = results.filter { preferredBarcodeMatcher(it.value) }
                 if (preferredCandidates.isNotEmpty()) {
                     // Only candidates in this frame are selectable. Earlier SKU codes never become choices.
@@ -210,8 +214,14 @@ fun BarcodeScanner(
                     val timeout = Runnable {
                         candidateTimeout[0] = null
                         collectingCandidates = false
-                        noPreferredBarcodeDetected = true
-                        isPaused = true
+                        val fallbackCandidates = pendingCandidates.values.toList()
+                        pendingCandidates.clear()
+                        if (allowNonPreferredBarcodeFallback && fallbackCandidates.isNotEmpty()) {
+                            acceptPreferredCandidates(fallbackCandidates)
+                        } else {
+                            noPreferredBarcodeDetected = true
+                            isPaused = true
+                        }
                     }
                     candidateTimeout[0] = timeout
                     mainHandler.postDelayed(timeout, preferredBarcodeWaitMillis.coerceAtLeast(0L))

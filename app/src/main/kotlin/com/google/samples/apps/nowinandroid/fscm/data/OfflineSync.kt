@@ -20,9 +20,11 @@ import android.content.Context
 import androidx.hilt.work.HiltWorker
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
@@ -38,6 +40,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.put
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -115,13 +118,20 @@ private data class OfflineOperationSyncResult(
 class OfflineSyncScheduler @Inject constructor(
     @param:ApplicationContext private val context: Context,
 ) {
+    fun schedulePeriodic() {
+        val request = PeriodicWorkRequestBuilder<OfflineSyncWorker>(15, TimeUnit.MINUTES)
+            .setConstraints(networkConstraints())
+            .build()
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            PERIODIC_WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            request,
+        )
+    }
+
     fun enqueue() {
         val request = OneTimeWorkRequestBuilder<OfflineSyncWorker>()
-            .setConstraints(
-                Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .build(),
-            )
+            .setConstraints(networkConstraints())
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(
             UNIQUE_WORK_NAME,
@@ -130,8 +140,12 @@ class OfflineSyncScheduler @Inject constructor(
         )
     }
 
+    private fun networkConstraints(): Constraints =
+        Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+
     private companion object {
         const val UNIQUE_WORK_NAME = "fscm-offline-sync"
+        const val PERIODIC_WORK_NAME = "fscm-offline-sync-periodic"
     }
 }
 
@@ -139,6 +153,7 @@ class OfflineSyncScheduler @Inject constructor(
 class OfflineSyncRepository @Inject constructor(
     private val api: FscmApiClient,
     private val pendingSyncDao: PendingSyncDao,
+    private val productCountingDao: ProductCountingDao,
     private val sessionStore: SessionStore,
     private val deviceIdentityManager: DeviceIdentityManager,
     private val trustedClock: TrustedClock,
@@ -174,6 +189,18 @@ class OfflineSyncRepository @Inject constructor(
             dedupeByResource = true,
         )
 
+    suspend fun enqueueProductCounting(action: String, payload: ProductCountingOperationPayload): Boolean =
+        enqueue(
+            module = "product_counting",
+            action = action,
+            resourceId = if (payload.clientScanId.isBlank()) {
+                "${payload.clientTaskId}:$action:${payload.resetGeneration}"
+            } else {
+                "${payload.clientTaskId}:${payload.clientScanId}"
+            },
+            payload = json.encodeToString(payload),
+        )
+
     suspend fun enqueueReceivingVoid(payload: ReceivingVoidOperationPayload) {
         enqueue("receiving", "void", payload.sessionId.toString(), json.encodeToString(payload))
     }
@@ -184,9 +211,33 @@ class OfflineSyncRepository @Inject constructor(
 
     suspend fun syncPending(): Boolean {
         val session = sessionStore.current()
+        val namespaceId = session.currentNamespace?.id ?: 0
+        val actorUserId = session.user?.id ?: 0
+        val operations = pendingSyncDao.pendingForSync().filter {
+            it.namespaceId == namespaceId && it.actorUserId == actorUserId
+        }
+        return syncOperations(operations)
+    }
+
+    suspend fun syncReceivingSession(sessionId: Long): Boolean {
+        val session = sessionStore.current()
+        val operations = pendingSyncDao.pendingForModule(
+            namespaceId = session.currentNamespace?.id ?: 0,
+            actorUserId = session.user?.id ?: 0,
+            module = "receiving",
+        ).filter { operation ->
+            operation.status in SYNCABLE_STATUSES &&
+                (operation.resourceId == sessionId.toString() || operation.resourceId.startsWith("$sessionId:"))
+        }
+        return syncOperations(operations)
+    }
+
+    private suspend fun syncOperations(operations: List<PendingSyncOperationEntity>): Boolean {
+        if (operations.isEmpty()) return true
+        val session = sessionStore.current()
         if (session.token.isBlank()) return false
         var allSucceeded = true
-        pendingSyncDao.pendingForSync().forEach { operation ->
+        operations.forEach { operation ->
             pendingSyncDao.updateStatus(
                 id = operation.id,
                 status = PendingSyncStatus.Syncing.value,
@@ -195,6 +246,7 @@ class OfflineSyncRepository @Inject constructor(
             )
             runCatching { sync(operation, session) }
                 .onSuccess { outcome ->
+                    updateProductCountingSync(operation, outcome)
                     when (outcome.status) {
                         SyncOutcomeStatus.Accepted -> pendingSyncDao.delete(operation.id)
                         SyncOutcomeStatus.Conflict -> pendingSyncDao.updateStatus(
@@ -330,6 +382,25 @@ class OfflineSyncRepository @Inject constructor(
         return SyncOutcome(SyncOutcomeStatus.Accepted)
     }
 
+    private suspend fun updateProductCountingSync(
+        operation: PendingSyncOperationEntity,
+        outcome: SyncOutcome,
+    ) {
+        if (operation.module != "product_counting") return
+        val payload = runCatching {
+            json.decodeFromString<ProductCountingOperationPayload>(operation.payload)
+        }.getOrNull() ?: return
+        val status = when (outcome.status) {
+            SyncOutcomeStatus.Accepted -> ProductCountSyncStatus.Synced.value
+            SyncOutcomeStatus.Conflict -> ProductCountSyncStatus.Conflict.value
+            SyncOutcomeStatus.Rejected -> ProductCountSyncStatus.Rejected.value
+        }
+        if (payload.clientScanId.isNotBlank()) {
+            productCountingDao.updateEntrySync(payload.clientScanId, status, outcome.message)
+        }
+        productCountingDao.updateTaskSync(payload.clientTaskId, status, outcome.message)
+    }
+
     private suspend fun syncSignedOperation(operation: PendingSyncOperationEntity): SyncOutcome {
         val body = json.encodeToJsonElement(OfflineOperationSyncRequest(listOf(operation.toEnvelope())))
         val response = api.post<OfflineOperationSyncResponse>(
@@ -412,9 +483,47 @@ class OfflineSyncRepository @Inject constructor(
                 val payload = json.decodeFromString<ReceivingCompleteOperationPayload>(operation.payload)
                 api.post<JsonObject>("receiving-sessions/${payload.sessionId}/receiving-record")
             }
+
+            "product_counting:create_task" -> {
+                val payload = json.decodeFromString<ProductCountingOperationPayload>(operation.payload)
+                api.post<JsonObject>(
+                    "mobile/app/product-counting/tasks",
+                    json.encodeToJsonElement(payload),
+                )
+            }
+
+            "product_counting:scan" -> {
+                val payload = json.decodeFromString<ProductCountingOperationPayload>(operation.payload)
+                api.post<JsonObject>(
+                    "mobile/app/product-counting/tasks/${payload.clientTaskId}/scans",
+                    json.encodeToJsonElement(payload),
+                )
+            }
+
+            "product_counting:reset",
+            "product_counting:complete",
+            "product_counting:reopen",
+            -> {
+                val payload = json.decodeFromString<ProductCountingOperationPayload>(operation.payload)
+                val action = when (operation.action) {
+                    "reset" -> "reset"
+                    "complete" -> "complete"
+                    else -> "reopen"
+                }
+                api.post<JsonObject>(
+                    "mobile/app/product-counting/tasks/${payload.clientTaskId}/$action",
+                    json.encodeToJsonElement(payload),
+                )
+            }
         }
     }
 }
+
+private val SYNCABLE_STATUSES = setOf(
+    PendingSyncStatus.Pending.value,
+    PendingSyncStatus.Syncing.value,
+    PendingSyncStatus.Failed.value,
+)
 
 private data class SyncOutcome(val status: SyncOutcomeStatus, val message: String = "")
 
@@ -491,9 +600,10 @@ internal fun SessionState.requireOfflineOperationPermission(module: String) {
     check(hasValidOfflineSession && offlineLeaseId.isNotBlank()) { "离线租约无效或已过期" }
     val requiredScope = when (module) {
         "receiving", "central_receiving" -> "receiving.write"
+        "product_counting" -> "product_counting.write"
         else -> null
     }
-    check(requiredScope == null || requiredScope in offlineScopes) { "离线租约不允许执行收货操作" }
+    check(requiredScope == null || requiredScope in offlineScopes) { "离线租约不允许执行当前操作" }
 }
 
 internal fun receivingScanResourceId(sessionId: Long, labelCode: String): String = "$sessionId:$labelCode"

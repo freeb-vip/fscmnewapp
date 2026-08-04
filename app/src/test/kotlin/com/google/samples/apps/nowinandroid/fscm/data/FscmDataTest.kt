@@ -30,7 +30,9 @@ import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class FscmDataTest {
@@ -38,6 +40,55 @@ class FscmDataTest {
         ignoreUnknownKeys = true
         explicitNulls = false
         coerceInputValues = true
+    }
+
+    @Test
+    fun loginSecurityState_decodesCaptchaFromInvalidCredentialsResponse() {
+        val payload = json.parseToJsonElement(
+            """{"code":40101,"data":{"failed_count":3,"captcha_threshold":3,"max_failed_attempts":5,"remaining_attempts":2,"require_captcha":true,"lock_remaining_seconds":0,"captcha":{"captcha_id":"challenge-1","question":"3 + 4 = ?","expires_at":"2026-07-21T12:00:00Z"},"reason_code":"INVALID_CREDENTIALS"},"msg":"invalid credentials"}""",
+        )
+        val error = FscmApiException(
+            message = "invalid credentials",
+            statusCode = 401,
+            payload = payload,
+            serverMessage = "invalid credentials",
+        )
+
+        val security = assertNotNull(error.loginSecurityStateOrNull(json))
+
+        assertEquals(3, security.failedCount)
+        assertEquals(2, security.remainingAttempts)
+        assertTrue(security.requireCaptcha)
+        assertEquals("challenge-1", security.captcha?.captchaId)
+        assertEquals("3 + 4 = ?", security.captcha?.question)
+    }
+
+    @Test
+    fun loginRequestBody_includesCaptchaOnlyWhenProvided() {
+        val device = buildJsonObject { put("device_id", "android-1") }
+
+        val plain = buildLoginRequestBody("user", "password", device)
+        val verified = buildLoginRequestBody(
+            username = "user",
+            password = "password",
+            device = device,
+            captchaId = "challenge-1",
+            captchaAnswer = "7",
+        )
+
+        assertFalse(plain.containsKey("captcha_id"))
+        assertFalse(plain.containsKey("captcha_answer"))
+        assertEquals("challenge-1", verified["captcha_id"]?.jsonPrimitive?.content)
+        assertEquals("7", verified["captcha_answer"]?.jsonPrimitive?.content)
+        assertEquals("android-1", (verified["device"] as JsonObject)["device_id"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun skuSearchQuery_normalizesForExplicitMatchMode() {
+        assertEquals("B4-", normalizeSkuSearchQuery(" tb4- "))
+        assertEquals("B4-", normalizeSkuSearchQuery("pB4-"))
+        assertEquals("B4-", normalizeSkuSearchQuery("Mb4-"))
+        assertEquals("", normalizeSkuSearchQuery(""))
     }
 
     @Test
@@ -87,6 +138,55 @@ class FscmDataTest {
         assertEquals(42, boxLabel.id)
         assertTrue(boxLabel.printable)
         assertEquals("BOX-042", boxLabel.printSnapshot?.get("label_code")?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun boxMarkPrintAvailability_requiresAuthoritativePrintContract() {
+        val snapshot = buildJsonObject { put("label_code", "BOX-042") }
+        val printable = BoxLabel(id = 42, recognized = true, printable = true, printSnapshot = snapshot)
+
+        assertEquals(BoxMarkPrintAvailability.Ready, printable.boxMarkPrintAvailability())
+        assertEquals(
+            BoxMarkPrintAvailability.NotPrintable,
+            printable.copy(printable = false).boxMarkPrintAvailability(),
+        )
+        assertEquals(
+            BoxMarkPrintAvailability.SnapshotMissing,
+            printable.copy(printSnapshot = null).boxMarkPrintAvailability(),
+        )
+        assertEquals(
+            BoxMarkPrintAvailability.OfflineFallback,
+            printable.copy(localFallback = true).boxMarkPrintAvailability(),
+        )
+    }
+
+    @Test
+    fun freshEdgeBoxLabel_returnsImmediatelyOnlyWithCompletePrintContract() {
+        val snapshot = buildJsonObject { put("label_code", "BOX-042") }
+        val printable = CatalogResult(
+            data = BoxLabel(id = 42, recognized = true, printable = true, printSnapshot = snapshot),
+            source = CatalogSource.Edge,
+        )
+
+        assertTrue(shouldUseEdgeBoxLabelWithoutCenter(printable))
+        assertFalse(shouldUseEdgeBoxLabelWithoutCenter(printable.copy(data = printable.data.copy(printable = false))))
+        assertFalse(shouldUseEdgeBoxLabelWithoutCenter(printable.copy(data = printable.data.copy(printSnapshot = null))))
+        assertFalse(shouldUseEdgeBoxLabelWithoutCenter(printable.copy(isStale = true)))
+        assertTrue(
+            shouldUseEdgeBoxLabelWithoutCenter(
+                printable.copy(data = BoxLabel(recognized = false)),
+            ),
+        )
+    }
+
+    @Test
+    fun temporaryCenterFailure_allowsEdgeDetailFallback() {
+        listOf(408, 429, 500, 503).forEach { statusCode ->
+            assertTrue(FscmApiException("temporary", statusCode).isTemporaryCenterFailure(), statusCode.toString())
+        }
+        listOf(400, 401, 404, 409).forEach { statusCode ->
+            assertFalse(FscmApiException("authoritative", statusCode).isTemporaryCenterFailure(), statusCode.toString())
+        }
     }
 
     @Test
@@ -156,6 +256,53 @@ class FscmDataTest {
     }
 
     @Test
+    fun defaultPrintOption_matchesNodeAndTemplateCode() {
+        val first = EdgePrintNodeOption(
+            node = EdgeNode(id = 7),
+            template = EdgePrintTemplate(code = "sku_small", version = "1"),
+            localReachable = true,
+        )
+        val selected = EdgePrintNodeOption(
+            node = EdgeNode(id = 7),
+            template = EdgePrintTemplate(code = "sku_large", version = "2"),
+            localReachable = true,
+        )
+        val sameCodeOnAnotherNode = EdgePrintNodeOption(
+            node = EdgeNode(id = 8),
+            template = EdgePrintTemplate(code = "sku_large", version = "2"),
+            localReachable = false,
+        )
+        val options = listOf(first, selected, sameCodeOnAnotherNode)
+
+        assertEquals(selected, options.defaultPrintOption(7, "sku_large"))
+        assertEquals(sameCodeOnAnotherNode, options.defaultPrintOption(8, "sku_large"))
+    }
+
+    @Test
+    fun defaultPrintOption_legacyNodeOnlyDefaultUsesFirstNodeTemplate() {
+        val first = EdgePrintNodeOption(
+            node = EdgeNode(id = 7),
+            template = EdgePrintTemplate(code = "sku_small"),
+            localReachable = true,
+        )
+        val second = first.copy(template = EdgePrintTemplate(code = "sku_large"))
+
+        assertEquals(first, listOf(first, second).defaultPrintOption(7, ""))
+    }
+
+    @Test
+    fun defaultPrintOption_doesNotFallbackWhenSavedTemplateIsUnavailable() {
+        val available = EdgePrintNodeOption(
+            node = EdgeNode(id = 7),
+            template = EdgePrintTemplate(code = "sku_small"),
+            localReachable = true,
+        )
+
+        assertEquals(null, listOf(available).defaultPrintOption(7, "removed_template"))
+        assertEquals(null, listOf(available).defaultPrintOption(8, "sku_small"))
+    }
+
+    @Test
     fun unwrapStandardPayload_throwsApiExceptionWhenCodeIsNotZero() {
         val payload = buildJsonObject {
             put("code", 403)
@@ -171,7 +318,7 @@ class FscmDataTest {
     }
 
     @Test
-    fun visibleMobileApps_filtersByVisibilityAndPermissionsThenSorts() {
+    fun visibleMobileApps_usesCenterAuthorizedEntriesWithoutLocalFallbacks() {
         val overview = MobileWorkbenchOverview(
             appConfig = MobileAppConfig(
                 apps = listOf(
@@ -186,14 +333,17 @@ class FscmDataTest {
 
         val apps = visibleMobileApps(
             overview = overview,
-            permissions = listOf("mobile-app:receiving", "receiving_records", "mobile-app:product"),
+            permissions = emptyList(),
         )
 
-        assertEquals(listOf("profit", "receiving", "product_management", "inbound_management", "label_print", "edge_nodes", "pda_settings"), apps.map { it.key })
+        assertEquals(
+            listOf("profit", "receiving", "product_management"),
+            apps.map { it.key },
+        )
     }
 
     @Test
-    fun visibleMobileApps_excludesEntriesWithoutImplementedNativePages() {
+    fun visibleMobileApps_includesImplementedSupplierOrdersAndExcludesUnsupportedEntries() {
         val overview = MobileWorkbenchOverview(
             apps = listOf(
                 MobileAppEntry(key = "todos", title = "待办"),
@@ -208,7 +358,8 @@ class FscmDataTest {
 
         assertTrue(apps.all { it.key in implementedMobileAppKeys })
         assertTrue(apps.any { it.key == "profit" })
-        assertTrue(apps.none { it.key in setOf("todos", "supplier_orders", "purchase_approvals", "future_app") })
+        assertTrue(apps.any { it.key == "supplier_orders" })
+        assertTrue(apps.none { it.key in setOf("todos", "purchase_approvals", "future_app") })
     }
 
     @Test
@@ -217,7 +368,7 @@ class FscmDataTest {
     }
 
     @Test
-    fun visibleMobileApps_keepsOnlyWarehouseReceivingEntry() {
+    fun visibleMobileApps_keepsWarehouseAndCentralReceivingEntries() {
         val apps = visibleMobileApps(
             overview = MobileWorkbenchOverview(
                 apps = listOf(
@@ -229,8 +380,35 @@ class FscmDataTest {
         )
 
         assertEquals(1, apps.count { it.key == "receiving" })
-        assertTrue(apps.none { it.key == "central_receiving" })
-        assertTrue(localSearchHits("集运收货", apps).isEmpty())
+        assertEquals(1, apps.count { it.key == "central_receiving" })
+        assertEquals("central_receiving", localSearchHits("集运收货", apps).single().targetCode)
+    }
+
+    @Test
+    fun visibleMobileApps_requiresAllCentralReceivingOfflinePermissions() {
+        val overview = MobileWorkbenchOverview(
+            appConfig = MobileAppConfig(
+                apps = listOf(MobileAppEntry(key = "central_receiving", title = "�����ջ�")),
+            ),
+        )
+
+        listOf("receiving_records", "mobile-app:central-receiving").forEach { permission ->
+            val apps = visibleMobileApps(
+                overview = overview,
+                permissions = listOf(permission),
+                sessionMode = SessionMode.Offline,
+            )
+
+            assertTrue(apps.none { it.key == "central_receiving" }, permission)
+        }
+
+        val apps = visibleMobileApps(
+            overview = overview,
+            permissions = listOf("mobile-app:central-receiving", "receiving_records"),
+            sessionMode = SessionMode.Offline,
+        )
+
+        assertEquals(listOf("central_receiving"), apps.map { it.key })
     }
 
     @Test
@@ -282,12 +460,17 @@ class FscmDataTest {
                 "printers": [{"name": "ZDesigner", "is_default": true, "status": "ready"}],
                 "templates": [{
                   "code": "label_60x40mm",
+                  "number": "T01",
                   "name": "SKU 标签",
                   "printer_name": "ZDesigner",
                   "width_mm": 60,
                   "height_mm": 40,
                   "orientation": "landscape",
-                  "version": "1",
+                  "layout_style": "qr_left_text_right",
+                  "text_font_size_pt": 18,
+                  "max_display_length": 16,
+                  "label_qr_prefix": "BOX-",
+                  "version": "a1b2c3d4e5f6",
                   "available": true
                 }]
               },
@@ -300,6 +483,10 @@ class FscmDataTest {
         assertEquals("ZDesigner", node.printInventory.printers.single().name)
         assertTrue(node.printInventory.templates.single().available)
         assertEquals("label_60x40mm", node.printInventory.templates.single().code)
+        assertEquals("T01", node.printInventory.templates.single().number)
+        assertEquals("qr_left_text_right", node.printInventory.templates.single().layoutStyle)
+        assertEquals(18.0, node.printInventory.templates.single().textFontSizePoints)
+        assertEquals("BOX-", node.printInventory.templates.single().labelQrPrefix)
     }
 
     @Test
@@ -335,7 +522,7 @@ class FscmDataTest {
                 id = 8,
                 code = "SKU-8",
                 name = "测试 SKU",
-                spec = "标准款",
+                spec = "标准版",
                 color = "蓝色",
                 product = Product(code = "PRODUCT-8"),
             ),
@@ -363,7 +550,7 @@ class FscmDataTest {
             json = json,
             option = EdgePrintNodeOption(
                 node = EdgeNode(id = 7),
-                template = EdgePrintTemplate(code = "barcode_60x40", version = "3"),
+                template = EdgePrintTemplate(code = "barcode_60x40", version = "3", labelQrPrefix = "Q-"),
                 localReachable = true,
             ),
             content = "BOX-2026-001",
@@ -380,7 +567,7 @@ class FscmDataTest {
         assertEquals("custom_label", snapshot["type"]?.jsonPrimitive?.content)
         assertEquals("BOX-2026-001", snapshot["label_content"]?.jsonPrimitive?.content)
         assertEquals("BOX-2026-001", snapshot["text"]?.jsonPrimitive?.content)
-        assertEquals("BOX-2026-001", snapshot["qr_payload"]?.jsonPrimitive?.content)
+        assertEquals("Q-BOX-2026-001", snapshot["qr_payload"]?.jsonPrimitive?.content)
         assertEquals("barcode_60x40", snapshot["template_code"]?.jsonPrimitive?.content)
         assertEquals("3", snapshot["template_version"]?.jsonPrimitive?.content)
     }
@@ -462,30 +649,17 @@ class FscmDataTest {
             sessionMode = SessionMode.Offline,
         )
 
-        assertEquals(listOf("receiving", "inbound_management"), apps.map { it.key })
+        assertEquals(listOf("receiving"), apps.map { it.key })
     }
 
     @Test
-    fun visibleMobileApps_defaultsIncludePdaSettingsEntry() {
-        val apps = visibleMobileApps(
-            overview = null,
-            permissions = emptyList(),
-        )
-
-        assertTrue(apps.any { it.key == "pda_settings" && it.localFallback && it.title.isEmpty() })
+    fun visibleMobileApps_withoutCenterOverviewShowsNoLocalFallbackApps() {
+        assertTrue(visibleMobileApps(overview = null, permissions = emptyList()).isEmpty())
     }
 
     @Test
-    fun defaultApps_includeSearchableEdgeNodesEntry() {
-        val apps = visibleMobileApps(
-            overview = null,
-            permissions = emptyList(),
-        )
-
-        val edgeNodes = apps.single { it.key == "edge_nodes" }
-        assertTrue(edgeNodes.localFallback)
-        assertTrue(edgeNodes.title.isEmpty())
-        assertEquals("edge_nodes", localSearchHits("局域网探测", apps).single().targetCode)
+    fun visibleMobileApps_doesNotExposeLocalFallbackEdgeNodes() {
+        assertTrue(visibleMobileApps(overview = null, permissions = emptyList()).isEmpty())
     }
 
     @Test
@@ -523,27 +697,50 @@ class FscmDataTest {
     }
 
     @Test
-    fun defaultApps_includeSearchableLabelPrintEntry() {
-        val apps = visibleMobileApps(
-            overview = null,
-            permissions = emptyList(),
-        )
-
-        val labelPrint = apps.single { it.key == "label_print" }
-        assertTrue(labelPrint.localFallback)
-        assertTrue(labelPrint.title.isEmpty())
-        assertEquals("label_print", localSearchHits("标签打印", apps).single().targetCode)
+    fun visibleMobileApps_doesNotExposeLocalFallbackLabelPrint() {
+        assertTrue(visibleMobileApps(overview = null, permissions = emptyList()).isEmpty())
     }
 
     @Test
     fun edgePrintOption_keyIncludesNodeAndTemplate() {
         val option = EdgePrintNodeOption(
             node = EdgeNode(id = 9),
-            template = EdgePrintTemplate(code = "barcode_60x40"),
+            template = EdgePrintTemplate(code = "barcode_60x40", version = "v2"),
             localReachable = true,
         )
 
-        assertEquals("9:barcode_60x40", option.selectionKey)
+        assertEquals("9:barcode_60x40:v2", option.selectionKey)
+        val secondNode = option.copy(node = EdgeNode(id = 10))
+        assertEquals("10:barcode_60x40:v2", secondNode.selectionKey)
+        assertTrue(option.selectionKey != secondNode.selectionKey)
+    }
+
+    @Test
+    fun edgePrintTemplate_decodesLocationCodeLayoutContract() {
+        val template = json.decodeFromString<EdgePrintTemplate>(
+            """
+            {
+              "type": "label",
+              "code": "location_100x150mm_landscape",
+              "name": "库位 A",
+              "printer_name": "ZDesigner",
+              "width_mm": 100,
+              "height_mm": 150,
+              "orientation": "landscape",
+              "layout_style": "location_code_quad_qr",
+              "text_font_size_pt": 28,
+              "max_display_length": 12,
+              "label_qr_prefix": "",
+              "version": "123456789abc",
+              "available": true
+            }
+            """.trimIndent(),
+        )
+
+        assertEquals("location_code_quad_qr", template.layoutStyle)
+        assertEquals(28.0, template.textFontSizePoints)
+        assertEquals(12, template.maxDisplayLength)
+        assertEquals("", template.labelQrPrefix)
     }
 
     @Test
@@ -558,6 +755,7 @@ class FscmDataTest {
     @Test
     fun edgeTemplateUnavailable_requiresConflictAndStableErrorCode() {
         assertTrue(isEdgeTemplateUnavailable(409, "LABEL_TEMPLATE_UNAVAILABLE"))
+        assertTrue(isEdgeTemplateUnavailable(409, "LABEL_TEMPLATE_CHANGED"))
         assertEquals(false, isEdgeTemplateUnavailable(400, "LABEL_TEMPLATE_UNAVAILABLE"))
         assertEquals(false, isEdgeTemplateUnavailable(409, "OTHER_ERROR"))
     }
@@ -635,7 +833,7 @@ class FscmDataTest {
     fun decodeReceivingSessionsPayload_acceptsRawArray() {
         val payload = json.encodeToJsonElement(
             listOf(
-                ReceivingSession(id = 1, code = "RCV-001"),
+                ReceivingSession(id = 1, code = "RCV-001", warehouseCode = "WH-1"),
                 ReceivingSession(id = 2, code = "RCV-002"),
             ),
         )
@@ -643,6 +841,7 @@ class FscmDataTest {
         val rows = decodeReceivingSessionsPayload(payload, json)
 
         assertEquals(listOf("RCV-001", "RCV-002"), rows.map { it.code })
+        assertEquals("WH-1", rows.first().warehouseCode)
     }
 
     @Test

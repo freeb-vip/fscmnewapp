@@ -22,6 +22,20 @@ import kotlin.test.assertFailsWith
 
 class OfflineReceivingPolicyTest {
     @Test
+    fun receivingDetailRefreshesWhenRemoteSnapshotIsTwelveHoursOld() {
+        val now = 1_800_000_000_000L
+
+        assertEquals(
+            true,
+            ReceivingSession(localSyncedAt = now - 12 * 60 * 60 * 1000L + 1).isRemoteFresh(now),
+        )
+        assertEquals(
+            false,
+            ReceivingSession(localSyncedAt = now - 12 * 60 * 60 * 1000L).isRemoteFresh(now),
+        )
+    }
+
+    @Test
     fun syncFailureDisposition_retriesTransientFailures() {
         listOf(401, 408, 425, 429, 500, 503).forEach { statusCode ->
             assertEquals(
@@ -89,5 +103,83 @@ class OfflineReceivingPolicyTest {
         assertEquals(2, result.talliedBoxCount)
         assertEquals(0, result.exceptionBoxCount)
         assertEquals("12:BOX-1", receivingScanResourceId(12, "BOX-1"))
+    }
+
+    @Test
+    fun successfulScanImmediatelyUpdatesProgressAndIgnoresDuplicateMerge() {
+        val item = ReceivingScanItem(id = 9, labelCode = "BOX-9", status = "normal")
+        val session = ReceivingSession(
+            expectedBoxCount = 5,
+            pendingBoxCount = 5,
+        )
+
+        val received = session.withReceivedScan(item, damaged = false)
+        val duplicateMerge = received.withReceivedScan(item, damaged = false)
+
+        assertEquals(1, received.scannedBoxCount)
+        assertEquals(1, received.talliedBoxCount)
+        assertEquals(4, received.pendingBoxCount)
+        assertEquals(listOf("BOX-9"), received.scanItems.map { it.labelCode })
+        assertEquals(received, duplicateMerge)
+    }
+
+    @Test
+    fun duplicateReceivingResponseRecognizesFlagAndKnownStatuses() {
+        assertEquals(true, ReceivingScanResponse(duplicate = true).isDuplicateReceipt())
+        assertEquals(
+            true,
+            ReceivingScanResponse(data = ReceivingScanItem(status = "duplicate_received")).isDuplicateReceipt(),
+        )
+        assertEquals(
+            false,
+            ReceivingScanResponse(data = ReceivingScanItem(status = "normal")).isDuplicateReceipt(),
+        )
+    }
+
+    @Test
+    fun duplicateReceivingFailureRecognizesConflictAndServerMessage() {
+        assertEquals(true, FscmApiException("conflict", 409).isDuplicateReceivingFailure())
+        assertEquals(
+            true,
+            FscmApiException("unprocessable", 422, serverMessage = "箱唛已收货").isDuplicateReceivingFailure(),
+        )
+        assertEquals(false, FscmApiException("wrong order", 422).isDuplicateReceivingFailure())
+    }
+
+    @Test
+    fun damagedScanImmediatelyUpdatesExceptionCount() {
+        val result = ReceivingSession(expectedBoxCount = 2)
+            .withReceivedScan(
+                ReceivingScanItem(id = 10, labelCode = "BOX-10", status = "damaged"),
+                damaged = true,
+            )
+
+        assertEquals(1, result.talliedBoxCount)
+        assertEquals(1, result.pendingBoxCount)
+        assertEquals(1, result.exceptionBoxCount)
+    }
+
+    @Test
+    fun receivingCompletesWhenEitherReceivedCountReachesExpectedTotal() {
+        assertEquals(
+            true,
+            ReceivingSession(expectedBoxCount = 3, talliedBoxCount = 3).isReceivingComplete(),
+        )
+        assertEquals(
+            true,
+            ReceivingSession(expectedBoxCount = 3, scannedBoxCount = 4).isReceivingComplete(),
+        )
+        assertEquals(
+            false,
+            ReceivingSession(expectedBoxCount = 3, scannedBoxCount = 2, talliedBoxCount = 2).isReceivingComplete(),
+        )
+    }
+
+    @Test
+    fun receivingCompletionHandlesStatusesAndZeroTotal() {
+        assertEquals(false, ReceivingSession(expectedBoxCount = 0).isReceivingComplete())
+        assertEquals(false, ReceivingSession(expectedBoxCount = 0, scannedBoxCount = 1).isReceivingComplete())
+        assertEquals(true, ReceivingSession(status = "completed").isReceivingComplete())
+        assertEquals(true, ReceivingSession(status = "complete_pending_sync").isReceivingComplete())
     }
 }

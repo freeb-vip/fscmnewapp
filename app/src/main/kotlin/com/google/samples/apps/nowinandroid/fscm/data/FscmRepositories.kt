@@ -22,6 +22,7 @@ import android.provider.Settings
 import android.util.Log
 import com.google.samples.apps.nowinandroid.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -51,6 +52,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.Inet4Address
 import java.net.NetworkInterface
+import java.net.URI
 import java.security.MessageDigest
 import java.util.Collections
 import java.util.Locale
@@ -71,45 +73,85 @@ class AuthRepository @Inject constructor(
     suspend fun getLoginConfig(): LoginConfig =
         api.get("auth/login-config", auth = false)
 
-    suspend fun login(username: String, password: String) {
-        val body = buildJsonObject {
-            put("username", username)
-            put("password", password)
-            put("device", json.encodeToJsonElement(deviceIdentityManager.registration()))
-        }
-        val payload = api.post<AuthPayload>(
-            path = "auth/login",
-            headers = deviceIdentityManager.proofHeaders(
-                method = "POST",
-                path = "auth/login",
-                body = body.toString(),
-                timestampMillis = System.currentTimeMillis(),
-            ),
-            body = body,
-            auth = false,
+    suspend fun login(
+        username: String,
+        password: String,
+        captchaId: String = "",
+        captchaAnswer: String = "",
+    ) {
+        val body = buildLoginRequestBody(
+            username = username,
+            password = password,
+            device = json.encodeToJsonElement(deviceIdentityManager.registration()),
+            captchaId = captchaId,
+            captchaAnswer = captchaAnswer,
         )
+        val payload = try {
+            api.post<AuthPayload>(
+                path = "auth/login",
+                headers = deviceIdentityManager.proofHeaders(
+                    method = "POST",
+                    path = "auth/login",
+                    body = body.toString(),
+                    timestampMillis = System.currentTimeMillis(),
+                ),
+                body = body,
+                auth = false,
+            )
+        } catch (error: FscmApiException) {
+            val security = error.loginSecurityStateOrNull(json) ?: throw error
+            throw LoginSecurityException(
+                security = security,
+                businessCode = error.payload.standardResponseCode(),
+                serverMessage = error.serverMessage,
+                cause = error,
+            )
+        }
         sessionStore.applyAuth(payload)
     }
 
-    suspend fun bootstrap(): Boolean {
+    suspend fun refreshLoginCaptcha(username: String): LoginCaptcha =
+        api.post(
+            path = "auth/captcha",
+            body = buildJsonObject { put("username", username) },
+            auth = false,
+        )
+
+    suspend fun restoreLocalSession(): SessionState {
         val current = sessionStore.current()
-        if (current.token.isBlank()) return sessionStore.enterOfflineMode()
-        return runCatching {
+        if (current.token.isNotBlank()) return current
+        if (current.isOffline) {
+            sessionStore.validateActiveOfflineSession()
+        } else {
+            sessionStore.enterOfflineMode()
+        }
+        return sessionStore.current()
+    }
+
+    suspend fun refreshStoredSession(): StoredSessionRefreshResult {
+        val current = sessionStore.current()
+        if (!shouldRefreshStoredSession(current)) return StoredSessionRefreshResult.NoSession
+        return try {
             val payload = api.get<AuthPayload>("auth/me")
             sessionStore.applyAuth(payload, preserveNamespace = true)
-            true
-        }.getOrElse { error ->
-            if (current.isLoggedIn && current.hasValidOfflineSession && error !is FscmApiException) {
-                sessionStore.enterOfflineMode()
-            } else {
-                sessionStore.clear()
-                false
-            }
+            StoredSessionRefreshResult.Refreshed
+        } catch (error: Throwable) {
+            recoverStoredSessionAfterRefreshFailure(
+                current = current,
+                error = error,
+                clearSession = sessionStore::clear,
+                enterOfflineMode = sessionStore::enterOfflineMode,
+            )
         }
     }
 
-    suspend fun loginOrOffline(username: String, password: String) {
-        login(username, password)
+    suspend fun loginOrOffline(
+        username: String,
+        password: String,
+        captchaId: String = "",
+        captchaAnswer: String = "",
+    ) {
+        login(username, password, captchaId, captchaAnswer)
     }
 
     suspend fun switchNamespace(namespaceId: Long) {
@@ -119,7 +161,7 @@ class AuthRepository @Inject constructor(
         )
         val matched = sessionStore.current().namespaces.firstOrNull { it.id == namespaceId }
         sessionStore.replaceNamespace(response.namespace ?: matched)
-        bootstrap()
+        refreshStoredSession()
     }
 
     suspend fun validateActiveOfflineSession(): Boolean = sessionStore.validateActiveOfflineSession()
@@ -130,6 +172,68 @@ class AuthRepository @Inject constructor(
     }
 }
 
+enum class StoredSessionRefreshResult {
+    Refreshed,
+    Offline,
+    Unavailable,
+    Expired,
+    NoSession,
+}
+
+internal fun shouldRefreshStoredSession(session: SessionState): Boolean =
+    session.isLoggedIn && session.token.isNotBlank()
+
+internal suspend fun recoverStoredSessionAfterRefreshFailure(
+    current: SessionState,
+    error: Throwable,
+    clearSession: suspend () -> Unit,
+    enterOfflineMode: suspend () -> Boolean,
+): StoredSessionRefreshResult {
+    if (error is CancellationException) throw error
+    if (error is SessionExpiredException) {
+        clearSession()
+        return StoredSessionRefreshResult.Expired
+    }
+    if (current.isLoggedIn && current.hasValidOfflineSession && enterOfflineMode()) {
+        return StoredSessionRefreshResult.Offline
+    }
+    return StoredSessionRefreshResult.Unavailable
+}
+
+class LoginSecurityException(
+    val security: LoginSecurityState,
+    val businessCode: Int?,
+    val serverMessage: String?,
+    cause: Throwable,
+) : RuntimeException(serverMessage ?: cause.message, cause)
+
+internal fun buildLoginRequestBody(
+    username: String,
+    password: String,
+    device: JsonElement,
+    captchaId: String = "",
+    captchaAnswer: String = "",
+): JsonObject = buildJsonObject {
+    put("username", username)
+    put("password", password)
+    put("device", device)
+    captchaId.takeIf(String::isNotBlank)?.let { put("captcha_id", it) }
+    captchaAnswer.takeIf(String::isNotBlank)?.let { put("captcha_answer", it) }
+}
+
+internal fun FscmApiException.loginSecurityStateOrNull(json: Json): LoginSecurityState? {
+    val data = (payload as? JsonObject)?.get("data") as? JsonObject ?: return null
+    val securityFields = setOf(
+        "failed_count",
+        "require_captcha",
+        "lock_remaining_seconds",
+        "reason_code",
+        "captcha",
+    )
+    if (data.keys.none(securityFields::contains)) return null
+    return runCatching { json.decodeFromJsonElement<LoginSecurityState>(data) }.getOrNull()
+}
+
 @Singleton
 class MobileRepository @Inject constructor(
     private val api: FscmApiClient,
@@ -138,16 +242,21 @@ class MobileRepository @Inject constructor(
     @param:FscmJson
     private val json: Json,
 ) {
-    suspend fun workbenchOverview(): MobileWorkbenchOverview {
-        val session = sessionStore.current()
+    suspend fun cachedWorkbenchOverview(session: SessionState): MobileWorkbenchOverview? {
         val namespaceId = session.currentNamespace?.id ?: 0
         val userId = session.user?.id ?: 0
-        if (session.isOffline) {
-            return cachedWorkbench(userId, namespaceId) ?: MobileWorkbenchOverview()
-        }
-        return runCatching {
-            api.get<MobileWorkbenchOverview>("mobile/app/workbench/overview")
-        }.onSuccess { overview ->
+        return cachedWorkbench(userId, namespaceId)
+    }
+
+    suspend fun refreshWorkbenchOverview(session: SessionState): MobileWorkbenchOverview {
+        val namespaceId = session.currentNamespace?.id ?: 0
+        val userId = session.user?.id ?: 0
+        val overview = api.get<MobileWorkbenchOverview>("mobile/app/workbench/overview")
+        val activeSession = sessionStore.current()
+        if (
+            activeSession.user?.id == userId &&
+            activeSession.currentNamespace?.id == namespaceId
+        ) {
             offlineCacheDao.upsert(
                 OfflineCacheEntity(
                     userId = userId,
@@ -157,9 +266,8 @@ class MobileRepository @Inject constructor(
                     updatedAt = System.currentTimeMillis(),
                 ),
             )
-        }.getOrElse { error ->
-            cachedWorkbench(userId, namespaceId)?.takeIf { error !is FscmApiException } ?: throw error
         }
+        return overview
     }
 
     private suspend fun cachedWorkbench(userId: Long, namespaceId: Long): MobileWorkbenchOverview? =
@@ -212,7 +320,7 @@ class GlobalSearchRepository @Inject constructor(
 
         val namespaceId = session.currentNamespace?.id ?: 0
         val cacheKey = searchCacheKey(session.user?.id ?: 0, normalized)
-        cachedSearch(namespaceId, cacheKey, session)?.let { return it }
+        cachedSearch(namespaceId, cacheKey, session, overview)?.let { return it }
         if (session.isOffline) throw IllegalStateException("离线状态下没有该搜索记录")
 
         val allowedTypes = loadBusinessTypes(namespaceId, session)
@@ -220,7 +328,10 @@ class GlobalSearchRepository @Inject constructor(
             "mobile/app/search",
             mapOf("q" to query.trim(), "limit" to SEARCH_LIMIT.toString()),
         ).copy(query = query.trim(), normalizedQuery = normalized)
-        val filtered = response.copy(hits = filterAllowedHits(response.hits, allowedTypes, session.permissions))
+        val visibleAppKeys = searchableMobileEntries(overview, session).mapTo(mutableSetOf()) { it.key }
+        val filtered = response.copy(
+            hits = filterAllowedHits(response.hits, allowedTypes, session.permissions, visibleAppKeys),
+        )
         if (filtered.hits.isNotEmpty()) {
             val now = System.currentTimeMillis()
             offlineCacheDao.upsert(
@@ -240,14 +351,14 @@ class GlobalSearchRepository @Inject constructor(
     suspend fun destinationFor(
         hit: GlobalSearchHit,
         overview: MobileWorkbenchOverview?,
-    ): SearchDestination {
+    ): SearchDestination? {
         if (hit.businessType != BusinessTypeCode.LocalApp.wireValue) {
             return SearchDestination.Business(hit)
         }
         val session = sessionStore.current()
         val entry = searchableMobileEntries(overview, session)
             .firstOrNull { it.key == hit.targetCode }
-            ?: MobileAppEntry(key = hit.targetCode, title = hit.title)
+            ?: return null
         return SearchDestination.LocalApp(entry)
     }
 
@@ -255,12 +366,14 @@ class GlobalSearchRepository @Inject constructor(
         namespaceId: Long,
         cacheKey: String,
         session: SessionState,
+        overview: MobileWorkbenchOverview?,
     ): GlobalSearchResponse? {
         val entity = offlineCacheDao.find(session.user?.id ?: 0, namespaceId, cacheKey) ?: return null
         if (System.currentTimeMillis() - entity.updatedAt > SEARCH_CACHE_TTL_MS) return null
         val payload = runCatching { json.decodeFromString<SearchCachePayload>(entity.payload) }.getOrNull() ?: return null
         val allowedTypes = loadBusinessTypes(namespaceId, session, allowNetwork = false)
-        val hits = filterAllowedHits(payload.response.hits, allowedTypes, session.permissions)
+        val visibleAppKeys = searchableMobileEntries(overview, session).mapTo(mutableSetOf()) { it.key }
+        val hits = filterAllowedHits(payload.response.hits, allowedTypes, session.permissions, visibleAppKeys)
         return payload.response.copy(hits = hits).takeIf { hits.isNotEmpty() }
     }
 
@@ -326,6 +439,7 @@ class EdgePrintRepository @Inject constructor(
     private val deviceIdentityManager: DeviceIdentityManager,
     private val trustedClock: TrustedClock,
     private val edgeServiceDiscovery: EdgeServiceDiscovery,
+    private val edgeTicketProvider: EdgeTicketProvider,
     @param:FscmJson
     private val json: Json,
 ) {
@@ -342,7 +456,6 @@ class EdgePrintRepository @Inject constructor(
     private val catalogMutex = Mutex()
     private var cachedCatalogNodes: List<EdgePrintNodeStatus> = emptyList()
     private var cachedCatalogNodesAt = 0L
-    private val catalogTickets = mutableMapOf<String, CachedEdgeCatalogTicket>()
 
     suspend fun availableNodes(): List<EdgePrintNodeOption> {
         return printNodes().mapNotNull { status ->
@@ -368,11 +481,16 @@ class EdgePrintRepository @Inject constructor(
 
     suspend fun registeredNodes(): List<EdgePrintNodeStatus> {
         if (sessionStore.current().isOffline) return discoverLocalNodes(includeSubnetScan = true)
-        val nodes = api.get<PagedList<EdgeNode>>(
+        val nodes = registeredCenterNodes()
+        return nodeStatuses(mergeWithLocalDiscovery(nodes))
+    }
+
+    suspend fun registeredCenterNodes(): List<EdgeNode> {
+        if (sessionStore.current().isOffline) return emptyList()
+        return api.get<PagedList<EdgeNode>>(
             "edge/nodes/available",
             edgeNodeListParams(includeOffline = true),
         ).rows()
-        return nodeStatuses(nodes)
     }
 
     suspend fun resolveBoxLabelFromEdge(labelCode: String): BoxLabel? {
@@ -416,19 +534,7 @@ class EdgePrintRepository @Inject constructor(
     }
 
     private suspend fun catalogTicket(node: EdgeNode): String = catalogMutex.withLock {
-        val now = System.currentTimeMillis()
-        catalogTickets[node.nodeId]
-            ?.takeIf { it.validUntilMillis > now + CATALOG_TICKET_REFRESH_MARGIN_MS }
-            ?.token
-            ?: api.post<EdgeCatalogTicketResponse>(
-                path = "edge/catalog-ticket",
-                headers = mapOf("X-FSCM-Edge-Node-ID" to node.nodeId),
-            ).token.also { token ->
-                catalogTickets[node.nodeId] = CachedEdgeCatalogTicket(
-                    token = token,
-                    validUntilMillis = now + CATALOG_TICKET_CACHE_MS,
-                )
-            }
+        edgeTicketProvider.ticket(node.nodeId) ?: error("Edge ticket is unavailable")
     }
 
     private fun fetchLocalBoxLabel(node: EdgeNode, labelCode: String, ticket: String): BoxLabel? {
@@ -479,14 +585,42 @@ class EdgePrintRepository @Inject constructor(
             "edge/nodes/available",
             edgeNodeListParams(includeOffline = false),
         ).rows()
-        return nodeStatuses(nodes)
+        return nodeStatuses(mergeWithLocalDiscovery(nodes))
+    }
+
+    /**
+     * The center determines which nodes belong to this namespace. LAN discovery supplies the
+     * address that is actually reachable by this device, including when the center address is stale.
+     */
+    private suspend fun mergeWithLocalDiscovery(centerNodes: List<EdgeNode>): List<EdgeNode> {
+        val discovered = runCatching { discoverLocalNodes(includeSubnetScan = false) }
+            .getOrElse { error ->
+                Log.w(LOG_TAG, "Local edge discovery failed", error)
+                emptyList()
+            }
+        if (discovered.isEmpty()) return centerNodes
+        val discoveredById = discovered
+            .mapNotNull { status -> status.node.nodeId.takeIf(String::isNotBlank)?.let { it to status.node } }
+            .toMap()
+        return centerNodes.map { center ->
+            val local = discoveredById[center.nodeId] ?: return@map center
+            center.copy(
+                lanBaseUrl = local.lanBaseUrl,
+                capabilities = local.capabilities.ifEmpty { center.capabilities },
+            )
+        }
     }
 
     private suspend fun nodeStatuses(nodes: List<EdgeNode>): List<EdgePrintNodeStatus> {
         return coroutineScope {
             nodes.map { node ->
                 async(Dispatchers.IO) {
-                    EdgePrintNodeStatus(node, probe(node))
+                    val localReachable = probe(node)
+                    val localInventory = if (localReachable) fetchLocalPrintInventory(node.lanBaseUrl) else null
+                    EdgePrintNodeStatus(
+                        node = localInventory?.let { node.copy(printInventory = it) } ?: node,
+                        localReachable = localReachable,
+                    )
                 }
             }.awaitAll()
         }.sortedWith(
@@ -581,9 +715,7 @@ class EdgePrintRepository @Inject constructor(
         copies: Int,
         idempotencyKey: String,
     ): EdgePrintSubmission {
-        require(label.id > 0) { "箱唛缺少有效 ID" }
-        require(label.printable) { "当前箱唛不可打印" }
-        require(label.printSnapshot != null) { "箱唛缺少打印快照" }
+        require(label.boxMarkPrintAvailability() == BoxMarkPrintAvailability.Ready) { "当前箱唛不可打印" }
         require(copies in 1..100) { "打印份数必须在 1 到 100 之间" }
         require(idempotencyKey.startsWith("mobile-box-mark-") && idempotencyKey.length <= 200) {
             "箱唛打印幂等键无效"
@@ -607,6 +739,12 @@ class EdgePrintRepository @Inject constructor(
         } else {
             submitRemoteBoxMark(option, label, copies, idempotencyKey)
         }
+    }
+
+    suspend fun isEdgeReachable(node: EdgeNode): Boolean = withContext(Dispatchers.IO) {
+        if (node.lanBaseUrl.isBlank()) return@withContext false
+        val payload = fetchProbe(node.lanBaseUrl, localClient) ?: return@withContext false
+        payload.ok && payload.nodeId == node.nodeId
     }
 
     private fun probe(node: EdgeNode): Boolean {
@@ -636,28 +774,7 @@ class EdgePrintRepository @Inject constructor(
 
     private fun discoverLocalNode(baseUrl: String): EdgePrintNodeStatus? {
         val probe = fetchProbe(baseUrl, discoveryClient) ?: return null
-        val config = fetchLocalPrintConfig(baseUrl)
-        val printer = config?.defaultPrinter.orEmpty()
-        val templateCode = config?.template.orEmpty()
-        val inventory = EdgePrintInventory(
-            printers = printer.takeIf { it.isNotBlank() }
-                ?.let { listOf(EdgePrinter(name = it, isDefault = true, status = "ready")) }
-                .orEmpty(),
-            templates = templateCode.takeIf { it.isNotBlank() }
-                ?.let {
-                    listOf(
-                        EdgePrintTemplate(
-                            code = it,
-                            name = it,
-                            printerName = printer,
-                            widthMM = config?.widthMM ?: 0.0,
-                            heightMM = config?.heightMM ?: 0.0,
-                            orientation = config?.orientation.orEmpty(),
-                            available = printer.isNotBlank(),
-                        ),
-                    )
-                }.orEmpty(),
-        )
+        val inventory = fetchLocalPrintInventory(baseUrl) ?: EdgePrintInventory()
         return EdgePrintNodeStatus(
             node = EdgeNode(
                 nodeId = probe.nodeId,
@@ -671,16 +788,30 @@ class EdgePrintRepository @Inject constructor(
         )
     }
 
-    private fun fetchLocalPrintConfig(baseUrl: String): LocalEdgePrintConfig? = runCatching {
-        val request = Request.Builder()
-            .url(baseUrl.trimEnd('/') + "/edge/print-config")
-            .get()
-            .build()
-        localClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return@use null
-            json.decodeFromString<LocalEdgePrintConfig>(response.body?.string().orEmpty())
+    private fun fetchLocalPrintInventory(baseUrl: String): EdgePrintInventory? {
+        for (candidate in localEdgeBaseUrlCandidates(baseUrl)) {
+            val current = runCatching {
+                val request = Request.Builder().url(candidate + "/edge/print-inventory").get().build()
+                localClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@use null
+                    val body = json.decodeFromString<LocalEdgePrintInventoryResponse>(response.body?.string().orEmpty())
+                    EdgePrintInventory(printers = body.printers, templates = body.templates)
+                }
+            }.getOrNull()
+            if (current != null) return current
+
+            val legacy = runCatching {
+                val request = Request.Builder().url(candidate + "/edge/web/label-templates").get().build()
+                localClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@use null
+                    val body = json.decodeFromString<LegacyEdgeTemplateEnvelope>(response.body?.string().orEmpty())
+                    legacyInventory(body.templates)
+                }
+            }.getOrNull()
+            if (legacy != null) return legacy
         }
-    }.getOrNull()
+        return null
+    }
 
     private fun localSubnetPrefixes(): List<String> = runCatching {
         currentLocalIPv4Addresses()
@@ -837,8 +968,6 @@ class EdgePrintRepository @Inject constructor(
         const val MAX_DISCOVERY_SUBNETS = 2
         const val LOG_TAG = "FscmEdgeDiscovery"
         const val CATALOG_NODE_CACHE_MS = 60_000L
-        const val CATALOG_TICKET_CACHE_MS = 7L * 60L * 60L * 1000L
-        const val CATALOG_TICKET_REFRESH_MARGIN_MS = 60_000L
     }
 }
 
@@ -846,6 +975,7 @@ class EdgePrintRepository @Inject constructor(
 class EdgeTerminalRepository @Inject constructor(
     private val api: FscmApiClient,
     private val edgePrintRepository: EdgePrintRepository,
+    private val edgeTicketProvider: EdgeTicketProvider,
     private val sessionStore: SessionStore,
     @param:ApplicationContext private val context: Context,
     @param:FscmJson private val json: Json,
@@ -855,17 +985,24 @@ class EdgeTerminalRepository @Inject constructor(
     private var lastRegistrationAtMillis = 0L
 
     suspend fun registerCurrentTerminal() {
+        maintainCenterPresence()
+    }
+
+    /** Keeps the central terminal record alive without requiring LAN edge connectivity. */
+    suspend fun maintainCenterPresence() {
         val session = sessionStore.current()
         if (session.isOffline || session.token.isBlank() || session.currentNamespace == null) return
 
         val lanIp = currentLocalIPv4Addresses().firstOrNull().orEmpty()
         registrationMutex.withLock {
-            val edgeNodeId = runCatching {
-                edgePrintRepository.registeredNodes()
-                    .firstOrNull { it.localReachable }
-                    ?.node
-                    ?.nodeId
-            }.getOrNull()?.takeIf(String::isNotBlank) ?: return
+            val nodes = edgePrintRepository.registeredCenterNodes()
+            val edgeNodeId = (
+                nodes.firstOrNull { it.nodeId.isNotBlank() && it.status == "online" }
+                    ?: nodes.firstOrNull { it.nodeId.isNotBlank() }
+                )
+                ?.nodeId
+                ?.takeIf(String::isNotBlank)
+                ?: error("No edge node is registered with the center for this namespace")
             val now = System.currentTimeMillis()
             val registrationKey = listOf(
                 session.currentNamespace.id,
@@ -873,29 +1010,73 @@ class EdgeTerminalRepository @Inject constructor(
                 lanIp.ifBlank { "unknown" },
                 edgeNodeId,
             ).joinToString(":")
-            if (registrationKey == lastRegistrationKey && now - lastRegistrationAtMillis < REGISTRATION_INTERVAL_MS) return
-
-            val request = EdgeTerminalRegistrationRequest(
-                terminalId = terminalId(),
-                edgeNodeId = edgeNodeId,
-                terminalName = terminalName(),
-                appVersion = BuildConfig.VERSION_NAME,
-                platform = "android",
-                lanIp = lanIp,
-                capabilities = TERMINAL_CAPABILITIES,
+            val request = registration(edgeNodeId, lanIp)
+            val needsRegistration = registrationKey != lastRegistrationKey ||
+                now - lastRegistrationAtMillis >= REGISTRATION_INTERVAL_MS
+            val path = if (needsRegistration) "edge/terminals/register" else "edge/terminals/heartbeat"
+            api.post<Unit>(
+                path = path,
+                body = json.encodeToJsonElement(request),
             )
-            val registered = runCatching {
-                api.post<Unit>(
-                    path = "edge/terminals/register",
-                    body = json.encodeToJsonElement(request),
-                )
-            }.isSuccess
-            if (registered) {
+            if (needsRegistration) {
                 lastRegistrationKey = registrationKey
                 lastRegistrationAtMillis = now
             }
+            Log.i(LOG_TAG, "Central terminal presence updated: path=$path edgeNodeId=$edgeNodeId")
         }
     }
+
+    suspend fun connectionTarget(): EdgeTerminalConnectionTarget? {
+        val session = sessionStore.current()
+        if (!session.isLoggedIn || session.currentNamespace == null) return null
+        val nodes = edgePrintRepository.registeredNodes()
+            .filter { status ->
+                status.node.nodeId.isNotBlank() &&
+                    isRoutableEdgeBaseUrl(status.node.lanBaseUrl) &&
+                    edgePrintRepository.isEdgeReachable(status.node)
+            }
+        val lastNodeId = preferences().getString(KEY_LAST_NODE_ID, null)
+        val node = nodes.firstOrNull { it.node.nodeId == lastNodeId }?.node
+            ?: nodes.firstOrNull()?.node
+            ?: return null
+        val ticket = edgeTicketProvider.ticket(node.nodeId) ?: return null
+        preferences().edit().putString(KEY_LAST_NODE_ID, node.nodeId).apply()
+        return EdgeTerminalConnectionTarget(
+            nodeId = node.nodeId,
+            nodeName = node.nodeName,
+            baseUrl = localEdgeBaseUrlCandidates(node.lanBaseUrl).firstOrNull() ?: return null,
+            ticket = ticket,
+            registration = registration(node.nodeId, currentLocalIPv4Addresses().firstOrNull().orEmpty()),
+        )
+    }
+
+    suspend fun register(target: EdgeTerminalConnectionTarget) {
+        api.post<Unit>(
+            path = "edge/terminals/register",
+            body = json.encodeToJsonElement(target.registration),
+        )
+    }
+
+    suspend fun heartbeat(target: EdgeTerminalConnectionTarget) {
+        api.post<Unit>(
+            path = "edge/terminals/heartbeat",
+            body = json.encodeToJsonElement(target.registration),
+        )
+    }
+
+    fun clearConnectionState() {
+        preferences().edit().remove(KEY_LAST_NODE_ID).apply()
+    }
+
+    private fun registration(edgeNodeId: String, lanIp: String) = EdgeTerminalRegistrationRequest(
+        terminalId = terminalId(),
+        edgeNodeId = edgeNodeId,
+        terminalName = terminalName(),
+        appVersion = BuildConfig.VERSION_NAME,
+        platform = "android",
+        lanIp = lanIp,
+        capabilities = TERMINAL_CAPABILITIES,
+    )
 
     private fun terminalId(): String {
         val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
@@ -912,11 +1093,24 @@ class EdgeTerminalRepository @Inject constructor(
             .joinToString(" ")
             .take(200)
 
+    private fun preferences() = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
     private companion object {
+        const val LOG_TAG = "FscmEdgeTerminal"
         const val REGISTRATION_INTERVAL_MS = 60_000L
-        val TERMINAL_CAPABILITIES = listOf("mobile-app", "pda-scan", "edge-print-client")
+        const val PREFS_NAME = "fscm_edge_terminal"
+        const val KEY_LAST_NODE_ID = "last_node_id"
+        val TERMINAL_CAPABILITIES = listOf("mobile-app", "pda-scan", "edge-print-client", "find-device")
     }
 }
+
+data class EdgeTerminalConnectionTarget(
+    val nodeId: String,
+    val nodeName: String,
+    val baseUrl: String,
+    val ticket: String,
+    val registration: EdgeTerminalRegistrationRequest,
+)
 
 @Serializable
 private data class LocalEdgeProbe(
@@ -928,12 +1122,31 @@ private data class LocalEdgeProbe(
 )
 
 @Serializable
-private data class LocalEdgePrintConfig(
-    @SerialName("default_printer") val defaultPrinter: String = "",
-    val template: String = "",
-    @SerialName("width_mm") val widthMM: Double = 0.0,
-    @SerialName("height_mm") val heightMM: Double = 0.0,
-    val orientation: String = "",
+private data class LocalEdgePrintInventoryResponse(
+    @SerialName("schema_version") val schemaVersion: Int = 1,
+    val printers: List<EdgePrinter> = emptyList(),
+    val templates: List<EdgePrintTemplate> = emptyList(),
+)
+
+@Serializable
+private data class LegacyEdgeTemplateEnvelope(
+    val templates: List<LegacyEdgePrintTemplate> = emptyList(),
+)
+
+@Serializable
+private data class LegacyEdgePrintTemplate(
+    @SerialName("Id") val code: String = "",
+    @SerialName("TemplateNumber") val number: String = "",
+    @SerialName("Name") val name: String = "",
+    @SerialName("Type") val type: String = "label",
+    @SerialName("Printer") val printerName: String = "",
+    @SerialName("WidthMillimeters") val widthMM: Double = 0.0,
+    @SerialName("HeightMillimeters") val heightMM: Double = 0.0,
+    @SerialName("Orientation") val orientation: String = "",
+    @SerialName("LayoutStyle") val layoutStyle: String = "stacked",
+    @SerialName("TextFontSizePoints") val textFontSizePoints: Double = 0.0,
+    @SerialName("MaxDisplayLength") val maxDisplayLength: Int = 16,
+    @SerialName("LabelQrPrefix") val labelQrPrefix: String = "",
 )
 
 @Serializable
@@ -983,25 +1196,14 @@ private data class LocalEdgePrintResponse(
     val error: String = "",
 )
 
-@Serializable
-private data class EdgeCatalogTicketResponse(
-    val token: String = "",
-    @SerialName("expires_at") val expiresAt: String = "",
-)
-
-private data class CachedEdgeCatalogTicket(
-    val token: String,
-    val validUntilMillis: Long,
-)
-
 private class LocalDirectPrintUnavailableException(statusCode: Int) :
-    IllegalStateException("本地直打接口不可用 ($statusCode)")
+    IllegalStateException("本地直打接口不可用($statusCode)")
 
 internal class EdgePrintTemplateUnavailableException :
     IllegalStateException("打印模板已更新，请重新选择打印节点后再试")
 
 internal fun isEdgeTemplateUnavailable(statusCode: Int, errorCode: String): Boolean =
-    statusCode == 409 && errorCode == "LABEL_TEMPLATE_UNAVAILABLE"
+    statusCode == 409 && errorCode in setOf("LABEL_TEMPLATE_UNAVAILABLE", "LABEL_TEMPLATE_CHANGED")
 
 internal fun isDirectPrintRouteUnavailable(statusCode: Int): Boolean =
     statusCode == 404 || statusCode == 405
@@ -1013,6 +1215,11 @@ internal fun localEdgeBaseUrlCandidates(baseUrl: String): List<String> {
     return listOf(withoutApiSuffix, normalized).filter { it.isNotBlank() }.distinct()
 }
 
+internal fun isRoutableEdgeBaseUrl(baseUrl: String): Boolean {
+    val candidate = localEdgeBaseUrlCandidates(baseUrl).firstOrNull() ?: return false
+    val host = runCatching { java.net.URI(candidate).host }.getOrNull()?.lowercase() ?: return false
+    return host !in setOf("localhost", "127.0.0.1", "::1")
+}
 internal fun localEdgeDirectBaseUrl(baseUrl: String): String =
     localEdgeBaseUrlCandidates(baseUrl).firstOrNull() ?: baseUrl.trim().trimEnd('/')
 
@@ -1098,12 +1305,39 @@ internal fun buildLocalLabelPrintRequest(
             type = "custom_label",
             labelContent = content,
             text = content,
-            qrPayload = content,
+            qrPayload = option.template.labelQrPrefix + content,
             templateCode = option.template.code,
             templateVersion = option.template.version,
         ),
     ),
 )
+
+private fun legacyInventory(templates: List<LegacyEdgePrintTemplate>): EdgePrintInventory {
+    val mapped = templates.map { template ->
+        EdgePrintTemplate(
+            type = template.type,
+            code = template.code,
+            number = template.number,
+            name = template.name,
+            printerName = template.printerName,
+            widthMM = template.widthMM,
+            heightMM = template.heightMM,
+            orientation = template.orientation,
+            layoutStyle = template.layoutStyle,
+            textFontSizePoints = template.textFontSizePoints,
+            maxDisplayLength = template.maxDisplayLength,
+            labelQrPrefix = template.labelQrPrefix,
+            available = template.printerName.isNotBlank(),
+        )
+    }
+    return EdgePrintInventory(
+        printers = mapped.map { it.printerName }
+            .filter(String::isNotBlank)
+            .distinct()
+            .map { EdgePrinter(name = it, status = "ready") },
+        templates = mapped,
+    )
+}
 
 internal fun buildLocalBoxMarkPrintRequest(
     option: EdgePrintNodeOption,
@@ -1169,28 +1403,20 @@ internal fun localSearchHits(query: String, entries: List<MobileAppEntry>): List
 private fun searchableMobileEntries(
     overview: MobileWorkbenchOverview?,
     session: SessionState,
-): List<MobileAppEntry> {
-    val apps = visibleMobileApps(overview, session.permissions, session.sessionMode)
-    val quickEntries = overview?.quickEntries.orEmpty().filter { entry ->
-        entry.visible &&
-            (entry.permission.isBlank() || entry.permission in session.permissions) &&
-            (entry.businessPermission.isBlank() || entry.businessPermission in session.permissions)
-    }.map(::normalizeMobileAppEntry).filter { it.key in implementedMobileAppKeys }
-    return (apps + quickEntries)
-        .distinctBy { it.key }
-}
+): List<MobileAppEntry> = visibleMobileApps(overview, session.permissions, session.sessionMode)
 
 private fun filterAllowedHits(
     hits: List<GlobalSearchHit>,
     businessTypes: List<SearchBusinessType>,
     permissions: List<String>,
+    visibleAppKeys: Set<String>,
 ): List<GlobalSearchHit> {
     val enabledCodes = businessTypes.filter { it.enabled }.mapTo(mutableSetOf()) { it.code }
     return hits.filter { hit ->
         hit.businessType in enabledCodes && when (hit.businessType.toBusinessTypeCode()) {
             BusinessTypeCode.SkuDetail -> permissions.any { it in setOf("skus", "products", "mobile-app:product") }
             BusinessTypeCode.BoxLabelDetail -> permissions.any { it in setOf("mobile-app:box-labels", "mobile-app:carton", "box_labels") }
-            BusinessTypeCode.LocalApp -> true
+            BusinessTypeCode.LocalApp -> hit.targetCode in visibleAppKeys
             BusinessTypeCode.Unknown -> true
         }
     }
@@ -1278,71 +1504,84 @@ class ReceivingRepository @Inject constructor(
     private val receivingDao: ReceivingDao,
     private val offlineSyncRepository: OfflineSyncRepository,
     private val offlineSyncScheduler: OfflineSyncScheduler,
+    private val boxLabelMappingRepository: BoxLabelMappingRepository,
 ) {
     suspend fun sessions(): List<ReceivingSession> {
         val session = sessionStore.current()
         val namespaceId = session.currentNamespace?.id ?: 0
         val userId = session.user?.id ?: 0
         if (session.isOffline) return cachedSessions(userId, namespaceId)
-        return runCatching {
+        val rows = runCatching {
             decodeReceivingSessionsPayload(
                 payload = api.get("receiving-sessions", mapOf("page" to "1", "pageSize" to "50")),
                 json = json,
             )
-        }.onSuccess { rows ->
-            receivingDao.upsertSessions(rows.map { it.toEntity(userId, namespaceId, json) })
         }.getOrElse { error ->
             cachedSessions(userId, namespaceId).takeIf { it.isNotEmpty() && error !is FscmApiException } ?: throw error
         }
+        val now = System.currentTimeMillis()
+        receivingDao.upsertSessions(rows.map { it.toEntity(userId, namespaceId, json, now) })
+        return rows.map { it.copy(localCached = true, localSyncedAt = now) }
     }
 
-    suspend fun session(id: Long): ReceivingSession {
+    suspend fun session(id: Long, forceRefresh: Boolean = false): ReceivingSession {
         val session = sessionStore.current()
         val namespaceId = session.currentNamespace?.id ?: 0
         val userId = session.user?.id ?: 0
-        if (session.isOffline) return cachedSession(userId, namespaceId, id) ?: ReceivingSession(id = id)
-        return runCatching {
+        val cached = cachedSession(userId, namespaceId, id)
+        if (session.isOffline) return cached ?: ReceivingSession(id = id)
+        if (!forceRefresh && cached != null && cached.isRemoteFresh()) return cached
+        val row = runCatching {
             val payload: JsonElement = api.get<JsonElement>("receiving-sessions/$id")
             decodeBusinessObject<ReceivingSession>(payload, json)
-        }.onSuccess { row ->
-            receivingDao.upsertSession(row.toEntity(userId, namespaceId, json))
         }.getOrElse { error ->
-            cachedSession(userId, namespaceId, id).takeIf { error !is FscmApiException } ?: throw error
+            cached.takeIf { error !is FscmApiException } ?: throw error
         }
+        val now = System.currentTimeMillis()
+        receivingDao.upsertSession(row.toEntity(userId, namespaceId, json, now))
+        return row.copy(localCached = true, localSyncedAt = now)
     }
 
-    suspend fun refreshCachedSession(id: Long): ReceivingSession = session(id)
+    suspend fun refreshCachedSession(id: Long): ReceivingSession = session(id, forceRefresh = true)
+
+    suspend fun sync(id: Long): ReceivingSession {
+        check(!sessionStore.current().isOffline) { "Network connection is unavailable" }
+        offlineSyncRepository.syncReceivingSession(id)
+        return session(id, forceRefresh = true)
+    }
 
     suspend fun preview(id: Long, rawCode: String): ReceivingScanResponse {
-        val parsed = parseBoxLabelQr(rawCode)
+        val parsed = boxLabelMappingRepository.resolve(rawCode)
         if (sessionStore.current().isOffline) {
-            return offlinePreview(parsed)
+            return offlinePreview(parsed ?: throw BoxLabelMappingCacheMissException())
         }
         return runCatching {
             api.post<ReceivingScanResponse>(
                 "receiving-sessions/$id/scan-preview",
-                buildJsonObject { put("raw_code", parsed.labelCode) },
+                buildJsonObject { put("raw_code", rawCode.trim()) },
             )
         }.getOrElse { error ->
             if (error is FscmApiException) throw error
-            offlinePreview(parsed)
+            offlinePreview(parsed ?: throw BoxLabelMappingCacheMissException())
         }
     }
 
     suspend fun quickScan(rawCode: String, actualReceivedQty: Int? = null): ReceivingQuickScanResponse {
-        val parsed = parseBoxLabelQr(rawCode)
-        if (sessionStore.current().isOffline) return enqueueOfflineQuickScan(parsed, actualReceivedQty)
+        val parsed = boxLabelMappingRepository.resolve(rawCode)
+        if (sessionStore.current().isOffline) {
+            return enqueueOfflineQuickScan(parsed ?: throw BoxLabelMappingCacheMissException(), actualReceivedQty)
+        }
         return runCatching {
             api.post<ReceivingQuickScanResponse>(
                 "receiving-sessions/scan",
                 buildJsonObject {
-                    put("raw_code", parsed.labelCode)
+                    put("raw_code", rawCode.trim())
                     actualReceivedQty?.let { put("actual_received_qty", it) }
                 },
             )
         }.getOrElse { error ->
             if (error is FscmApiException) throw error
-            enqueueOfflineQuickScan(parsed, actualReceivedQty)
+            enqueueOfflineQuickScan(parsed ?: throw BoxLabelMappingCacheMissException(), actualReceivedQty)
         }
     }
 
@@ -1397,26 +1636,28 @@ class ReceivingRepository @Inject constructor(
     suspend fun cancelPending(id: Long) = offlineSyncRepository.cancelPending(id)
 
     suspend fun previewQuickScan(rawCode: String): ReceivingQuickScanResponse {
-        val parsed = parseBoxLabelQr(rawCode)
+        val parsed = boxLabelMappingRepository.resolve(rawCode)
         if (sessionStore.current().isOffline) {
+            val local = parsed ?: throw BoxLabelMappingCacheMissException()
             return ReceivingQuickScanResponse(
-                data = parsed.toLocalReceivingScanItem(status = "pending_sync"),
+                data = local.toLocalReceivingScanItem(status = "pending_sync"),
                 message = "已离线识别，确认后保存待同步",
-                parsedPayload = parsed,
+                parsedPayload = local,
                 localFallback = true,
             )
         }
         return runCatching {
             api.post<ReceivingQuickScanResponse>(
                 "receiving-sessions/scan-preview",
-                buildJsonObject { put("raw_code", parsed.labelCode) },
+                buildJsonObject { put("raw_code", rawCode.trim()) },
             ).copy(parsedPayload = parsed)
         }.getOrElse { error ->
             if (error is FscmApiException) throw error
+            val local = parsed ?: throw BoxLabelMappingCacheMissException()
             ReceivingQuickScanResponse(
-                data = parsed.toLocalReceivingScanItem(status = "pending_sync"),
+                data = local.toLocalReceivingScanItem(status = "pending_sync"),
                 message = "网络不可用，确认后保存待同步",
-                parsedPayload = parsed,
+                parsedPayload = local,
                 localFallback = true,
             )
         }
@@ -1428,15 +1669,16 @@ class ReceivingRepository @Inject constructor(
         damaged: Boolean,
         actualReceivedQty: Int? = null,
     ): ReceivingScanResponse {
-        val parsed = parseBoxLabelQr(rawCode)
+        val parsed = boxLabelMappingRepository.resolve(rawCode)
         if (sessionStore.current().isOffline) {
-            return enqueueOfflineScan(id, parsed, damaged, actualReceivedQty)
+            return enqueueOfflineScan(id, parsed ?: throw BoxLabelMappingCacheMissException(), damaged, actualReceivedQty)
         }
-        return runCatching {
+        var cachedByOfflineFallback = false
+        val response = runCatching {
             api.post<ReceivingScanResponse>(
                 "receiving-sessions/$id/scan",
                 buildJsonObject {
-                    put("raw_code", parsed.labelCode)
+                    put("raw_code", rawCode.trim())
                     put("damaged", damaged)
                     put("tally_count", true)
                     if (actualReceivedQty != null) put("actual_received_qty", actualReceivedQty)
@@ -1444,8 +1686,17 @@ class ReceivingRepository @Inject constructor(
             )
         }.getOrElse { error ->
             if (error is FscmApiException) throw error
-            enqueueOfflineScan(id, parsed, damaged, actualReceivedQty)
+            cachedByOfflineFallback = true
+            enqueueOfflineScan(id, parsed ?: throw BoxLabelMappingCacheMissException(), damaged, actualReceivedQty)
         }
+        if (!cachedByOfflineFallback && !response.isDuplicateReceipt()) {
+            runCatching {
+                updateCachedSession(sessionStore.namespaceId(), id) { session ->
+                    session.withReceivedScan(response.data, damaged)
+                }
+            }
+        }
+        return response
     }
 
     suspend fun voidScan(id: Long, item: ReceivingScanItem) {
@@ -1462,25 +1713,30 @@ class ReceivingRepository @Inject constructor(
         runCatching {
             api.post<JsonObject>(
                 "receiving-sessions/$id/scan-items/${item.id}/void",
-                buildJsonObject { put("reason", "移动端取消扫码") },
+                buildJsonObject { put("reason", "移动端取消扫描") },
             )
         }.getOrElse { error ->
             if (error is FscmApiException) throw error
             enqueueOfflineVoid(id, item.id)
         }
+        runCatching {
+            updateCachedSession(sessionStore.namespaceId(), id) { session -> session.withoutPendingScan(item) }
+        }
     }
 
-    suspend fun complete(id: Long) {
+    suspend fun complete(id: Long): ReceivingSession {
         if (sessionStore.current().isOffline) {
-            enqueueOfflineComplete(id)
-            return
+            return enqueueOfflineComplete(id)
         }
-        runCatching {
+        val completed = runCatching {
             api.post<JsonObject>("receiving-sessions/$id/receiving-record")
+            updateCachedSession(sessionStore.namespaceId(), id) { it.copy(status = "completed") }
         }.getOrElse { error ->
             if (error is FscmApiException) throw error
             enqueueOfflineComplete(id)
         }
+        if (completed.status == "complete_pending_sync") return completed
+        return runCatching { session(id, forceRefresh = true) }.getOrDefault(completed)
     }
 
     private suspend fun enqueueOfflineScan(
@@ -1495,28 +1751,23 @@ class ReceivingRepository @Inject constructor(
             actualReceivedQty = actualReceivedQty ?: parsed.totalQuantity.takeIf { it > 0 } ?: 0,
             status = if (damaged) "pending_exception" else "pending_sync",
         )
+        var duplicate = false
         updateCachedSession(namespaceId, id) { session ->
-            val scanItems = listOf(localItem) + session.scanItems
-            session.copy(
-                scanItems = scanItems,
-                scannedBoxCount = session.scannedBoxCount + 1,
-                talliedBoxCount = session.talliedBoxCount + 1,
-                pendingBoxCount = (session.pendingBoxCount - 1).coerceAtLeast(0),
-                exceptionBoxCount = session.exceptionBoxCount + if (damaged) 1 else 0,
+            session.withReceivedScan(localItem, damaged).also { updated -> duplicate = updated === session }
+        }
+        if (!duplicate) {
+            offlineSyncRepository.enqueueReceivingScan(
+                ReceivingScanOperationPayload(
+                    sessionId = id,
+                    rawCode = parsed.labelCode,
+                    damaged = damaged,
+                    actualReceivedQty = actualReceivedQty,
+                    originalRawCode = parsed.originalRawCode,
+                    items = parsed.items,
+                ),
             )
         }
-        offlineSyncRepository.enqueueReceivingScan(
-            ReceivingScanOperationPayload(
-                sessionId = id,
-                rawCode = parsed.labelCode,
-                damaged = damaged,
-                actualReceivedQty = actualReceivedQty,
-                originalRawCode = parsed.originalRawCode,
-                items = parsed.items,
-            ),
-        )
-        offlineSyncScheduler.enqueue()
-        return ReceivingScanResponse(localItem)
+        return ReceivingScanResponse(data = localItem, duplicate = duplicate)
     }
 
     private suspend fun enqueueOfflineQuickScan(
@@ -1531,7 +1782,6 @@ class ReceivingRepository @Inject constructor(
                 items = parsed.items,
             ),
         )
-        offlineSyncScheduler.enqueue()
         return ReceivingQuickScanResponse(
             data = parsed.toLocalReceivingScanItem(
                 id = -System.currentTimeMillis(),
@@ -1564,32 +1814,93 @@ class ReceivingRepository @Inject constructor(
         }
         if (itemId > 0) {
             offlineSyncRepository.enqueueReceivingVoid(ReceivingVoidOperationPayload(id, itemId))
-            offlineSyncScheduler.enqueue()
         }
     }
 
-    private suspend fun enqueueOfflineComplete(id: Long) {
+    private suspend fun enqueueOfflineComplete(id: Long): ReceivingSession {
         val namespaceId = sessionStore.namespaceId()
-        updateCachedSession(namespaceId, id) { it.copy(status = "complete_pending_sync") }
+        val updated = updateCachedSession(namespaceId, id) { it.copy(status = "complete_pending_sync") }
         offlineSyncRepository.enqueueReceivingComplete(ReceivingCompleteOperationPayload(id))
-        offlineSyncScheduler.enqueue()
+        return updated
     }
 
     private suspend fun updateCachedSession(
         namespaceId: Long,
         id: Long,
         transform: (ReceivingSession) -> ReceivingSession,
-    ) {
+    ): ReceivingSession {
         val userId = sessionStore.current().user?.id ?: 0
-        val current = cachedSession(userId, namespaceId, id) ?: ReceivingSession(id = id)
-        receivingDao.upsertSession(transform(current).toEntity(userId, namespaceId, json))
+        val existing = receivingDao.session(userId, namespaceId, id)
+        val current = existing?.toModel(json) ?: ReceivingSession(id = id)
+        val remoteSyncedAt = existing?.remoteSyncedAt ?: System.currentTimeMillis()
+        val updated = transform(current)
+        receivingDao.upsertSession(
+            updated.toEntity(userId, namespaceId, json, remoteSyncedAt),
+        )
+        return updated.copy(localCached = true, localSyncedAt = remoteSyncedAt)
     }
 
     private suspend fun cachedSessions(userId: Long, namespaceId: Long): List<ReceivingSession> =
-        receivingDao.sessions(userId, namespaceId).mapNotNull { it.toModel(json) }
+        receivingDao.sessions(userId, namespaceId).mapNotNull { entity ->
+            entity.toModel(json)?.copy(
+                localCached = true,
+                localSyncedAt = entity.remoteSyncedAt,
+            )
+        }
 
     private suspend fun cachedSession(userId: Long, namespaceId: Long, id: Long): ReceivingSession? =
-        receivingDao.session(userId, namespaceId, id)?.toModel(json)
+        receivingDao.session(userId, namespaceId, id)?.let { entity ->
+            entity.toModel(json)?.copy(
+                localCached = true,
+                localSyncedAt = entity.remoteSyncedAt,
+            )
+        }
+}
+
+internal fun ReceivingSession.isRemoteFresh(now: Long = System.currentTimeMillis()): Boolean =
+    localSyncedAt > 0 && now - localSyncedAt < RECEIVING_DETAIL_MAX_AGE_MILLIS
+
+internal fun ReceivingSession.isReceivingComplete(): Boolean =
+    status.lowercase() in setOf("completed", "complete_pending_sync") ||
+        (
+            expectedBoxCount > 0 &&
+                maxOf(scannedBoxCount.coerceAtLeast(0), talliedBoxCount.coerceAtLeast(0)) >= expectedBoxCount
+            )
+
+private const val RECEIVING_DETAIL_MAX_AGE_MILLIS = 12 * 60 * 60 * 1000L
+
+internal fun ReceivingScanResponse.isDuplicateReceipt(): Boolean =
+    duplicate || data.status.lowercase() in setOf("duplicate", "duplicate_received", "already_received")
+
+internal fun Throwable.isDuplicateReceivingFailure(): Boolean {
+    val apiError = this as? FscmApiException ?: return false
+    val message = listOfNotNull(apiError.serverMessage, apiError.message).joinToString(" ").lowercase()
+    return apiError.statusCode == 409 ||
+        listOf("已收货", "请勿重复", "already received", "duplicate").any(message::contains)
+}
+
+internal fun ReceivingSession.withReceivedScan(
+    item: ReceivingScanItem,
+    damaged: Boolean,
+): ReceivingSession {
+    val alreadyRecorded = scanItems.any { existing ->
+        (item.id != 0L && existing.id == item.id) ||
+            (item.labelCode.isNotBlank() && existing.labelCode.equals(item.labelCode, ignoreCase = true)) ||
+            (item.boxUid.isNotBlank() && existing.boxUid.equals(item.boxUid, ignoreCase = true))
+    }
+    if (alreadyRecorded) return this
+    val scanned = scannedBoxCount.coerceAtLeast(0) + 1
+    val tallied = talliedBoxCount.coerceAtLeast(0) + 1
+    val completed = maxOf(scanned, tallied)
+    return copy(
+        scanItems = listOf(item) + scanItems,
+        scannedBoxCount = scanned,
+        talliedBoxCount = tallied,
+        pendingBoxCount = expectedBoxCount.takeIf { it > 0 }
+            ?.let { (it - completed).coerceAtLeast(0) }
+            ?: (pendingBoxCount - 1).coerceAtLeast(0),
+        exceptionBoxCount = exceptionBoxCount.coerceAtLeast(0) + if (damaged) 1 else 0,
+    )
 }
 
 internal fun ReceivingSession.withoutPendingScan(item: ReceivingScanItem): ReceivingSession = copy(
@@ -1605,87 +1916,239 @@ internal fun ReceivingSession.withoutPendingScan(item: ReceivingScanItem): Recei
 @Singleton
 class ProductRepository @Inject constructor(
     private val api: FscmApiClient,
+    private val edgeCatalogClient: EdgeCatalogClient,
+    private val sessionStore: SessionStore,
     @param:FscmJson private val json: Json,
 ) {
     suspend fun products(
         keyword: String = "",
         page: Int = 1,
         pageSize: Int = 20,
-    ): PagedList<Product> = api.get(
-        "products",
-        mapOf(
-            "keyword" to normalizeSku(keyword),
+    ): PagedList<Product> = productsResult(keyword, page, pageSize).data
+
+    suspend fun productsResult(
+        keyword: String = "",
+        page: Int = 1,
+        pageSize: Int = 20,
+    ): CatalogResult<PagedList<Product>> {
+        val params = mapOf(
+            "keyword" to normalizeSkuSearchQuery(keyword),
             "page" to page.toString(),
             "pageSize" to pageSize.toString(),
-        ),
-    )
+        )
+        val edge = runCatching { edgeCatalogClient.get("products", params)?.toProductPageResult() }
+            .getOrElse { error -> if (error is FscmApiException) throw error else null }
+        if (edge != null && !edge.isStale) return edge
+        if (sessionStore.current().isOffline) {
+            return edge ?: throw IllegalStateException("离线状态下没有可用的产品目录节点")
+        }
+        return runCatching {
+            CatalogResult<PagedList<Product>>(
+                data = api.get("products", params),
+                source = CatalogSource.Center,
+            )
+        }.getOrElse { error -> edge.takeIf { error !is FscmApiException } ?: throw error }
+    }
 
     suspend fun skus(
         keyword: String = "",
         page: Int = 1,
         pageSize: Int = 20,
-    ): PagedList<Sku> {
+        exactMatch: Boolean = false,
+    ): PagedList<Sku> = skusResult(keyword, page, pageSize, exactMatch).data
+
+    suspend fun skusResult(
+        keyword: String = "",
+        page: Int = 1,
+        pageSize: Int = 20,
+        exactMatch: Boolean = false,
+    ): CatalogResult<PagedList<Sku>> {
         val params = mutableMapOf(
             "page" to page.toString(),
             "pageSize" to pageSize.toString(),
+            "match_mode" to if (exactMatch) "exact" else "prefix",
         )
         if (keyword.startsWith("productId:")) {
             params["product_id"] = keyword.removePrefix("productId:")
         } else {
-            params["keyword"] = normalizeSku(keyword)
+            params["keyword"] = normalizeSkuSearchQuery(keyword)
         }
-        return api.get("skus", params)
+        val edge = runCatching { edgeCatalogClient.get("skus", params)?.toSkuPageResult() }
+            .getOrElse { error -> if (error is FscmApiException) throw error else null }
+        if (edge != null && !edge.isStale) return edge
+        if (sessionStore.current().isOffline) {
+            return edge ?: throw IllegalStateException("离线状态下没有可用的 SKU 目录节点")
+        }
+        return runCatching {
+            CatalogResult<PagedList<Sku>>(
+                data = api.get("skus", params),
+                source = CatalogSource.Center,
+            )
+        }.getOrElse { error -> edge.takeIf { error !is FscmApiException } ?: throw error }
     }
 
-    suspend fun sku(idOrCode: String): Sku {
+    suspend fun sku(idOrCode: String): Sku = skuResult(idOrCode).data
+
+    suspend fun skuResult(idOrCode: String): CatalogResult<Sku> {
         val encoded = java.net.URLEncoder.encode(idOrCode.trim(), "UTF-8")
-        val payload: JsonElement = api.get("skus/$encoded")
-        return decodeBusinessObject(payload, json)
-    }
-
-    private fun normalizeSku(query: String): String {
-        val q = query.trim()
-        if (q.length <= 1) return q
-
-        // If user inputs "TB10-", we want to match both "TB10-*" and "B10-*"
-        // The backend usually handles substring matching.
-        // By stripping the T/P/R prefix even for partial inputs,
-        // the backend search "B10-" will typically match both "TB10-T1" and "B10-T1"
-        // because "B10-" is a substring of both if the index is smart,
-        // OR we just provide the "root" part to increase hit rate.
-
-        val firstChar = q[0]
-        if (firstChar in "TPR") {
-            if (q.length > 1 && (q[1].isUpperCase() || q[1].isDigit())) {
-                return q.substring(1)
-            }
+        val edge = runCatching { edgeCatalogClient.get("skus/$encoded")?.toSkuResult() }
+            .getOrElse { error -> if (error is FscmApiException) throw error else null }
+        if (edge != null && !edge.isStale) return edge
+        if (sessionStore.current().isOffline) {
+            return edge ?: throw IllegalStateException("离线状态下没有可用的 SKU 目录节点")
         }
-        return q
+        return runCatching {
+            val payload: JsonElement = api.get("skus/$encoded")
+            CatalogResult<Sku>(
+                data = decodeBusinessObject<Sku>(payload, json),
+                source = CatalogSource.Center,
+            )
+        }.getOrElse { error -> edge.takeIf { error !is FscmApiException } ?: throw error }
     }
+
+    private fun EdgeCatalogResponse.toProductPageResult(): CatalogResult<PagedList<Product>> {
+        val page = decodeEdgeCatalogPage<Product>(payload, json)
+        val enriched = page.copy(
+            data = page.data.map { it.withEdgeMedia(this) },
+            items = page.items.map { it.withEdgeMedia(this) },
+            list = page.list.map { it.withEdgeMedia(this) },
+            records = page.records.map { it.withEdgeMedia(this) },
+        )
+        return enriched.toCatalogResult(this)
+    }
+
+    private fun EdgeCatalogResponse.toSkuPageResult(): CatalogResult<PagedList<Sku>> {
+        val page = decodeEdgeCatalogPage<Sku>(payload, json)
+        val enriched = page.copy(
+            data = page.data.map { it.withEdgeMedia(this) },
+            items = page.items.map { it.withEdgeMedia(this) },
+            list = page.list.map { it.withEdgeMedia(this) },
+            records = page.records.map { it.withEdgeMedia(this) },
+        )
+        return enriched.toCatalogResult(this)
+    }
+
+    private fun EdgeCatalogResponse.toSkuResult(): CatalogResult<Sku> =
+        json.decodeFromJsonElement<Sku>(payload).withEdgeMedia(this).toCatalogResult(this)
 }
+
+internal fun normalizeSkuSearchQuery(query: String): String =
+    query.trim().uppercase(Locale.ROOT).let { normalized ->
+        if (normalized.firstOrNull() in SKU_SEARCH_PREFIXES) normalized.drop(1) else normalized
+    }
+
+private val SKU_SEARCH_PREFIXES = setOf('T', 'P', 'M')
 
 @Singleton
 class CartonRepository @Inject constructor(
     private val api: FscmApiClient,
     private val sessionStore: SessionStore,
-    private val edgePrintRepository: EdgePrintRepository,
+    private val edgeCatalogClient: EdgeCatalogClient,
+    private val boxLabelMappingRepository: BoxLabelMappingRepository,
     @param:FscmJson private val json: Json,
 ) {
-    suspend fun resolveBoxLabel(rawCode: String): BoxLabel {
-        val parsed = parseBoxLabelQr(rawCode)
-        val local = parsed.toLocalBoxLabel()
-        val edge = runCatching { edgePrintRepository.resolveBoxLabelFromEdge(parsed.labelCode) }.getOrNull()
-        if (edge != null) return edge.mergeParsedPayload(parsed)
-        if (sessionStore.current().isOffline) return local
-        val encoded = java.net.URLEncoder.encode(parsed.labelCode, "UTF-8")
+    suspend fun resolveBoxLabel(rawCode: String): BoxLabel = resolveBoxLabelResult(rawCode).data
+
+    suspend fun resolveBoxLabelResult(rawCode: String): CatalogResult<BoxLabel> {
+        val parsed = boxLabelMappingRepository.resolve(rawCode)
+        val cachedMapping = boxLabelMappingRepository.cachedMapping(rawCode)
+        val local = cachedMapping?.toCachedBoxLabel(rawCode) ?: parsed?.toLocalBoxLabel()
+        val edge = runCatching {
+            edgeCatalogClient.post(
+                path = "box-labels/resolve",
+                body = buildJsonObject {
+                    put("raw_code", rawCode.trim())
+                    parsed?.labelCode?.takeIf(String::isNotBlank)?.let { put("label_code", it) }
+                },
+            )?.let { response ->
+                decodeBusinessObject<BoxLabel>(response.payload, json)
+                    .mergeLocalResolution(parsed, cachedMapping, rawCode)
+                    .toCatalogResult(response)
+            }
+        }.getOrElse { error -> if (error is FscmApiException) throw error else null }
+        if (edge != null && shouldUseEdgeBoxLabelWithoutCenter(edge)) return edge
+        if (sessionStore.current().isOffline) {
+            return edge ?: local?.let {
+                CatalogResult(it, CatalogSource.Offline, isStale = true)
+            } ?: throw BoxLabelMappingCacheMissException()
+        }
         return runCatching {
-            val payload: JsonElement = api.get("box-labels/$encoded/resolve")
-            decodeBusinessObject<BoxLabel>(payload, json).mergeParsedPayload(parsed)
+            val payload: JsonElement = api.post(
+                "box-labels/resolve",
+                buildJsonObject { put("raw_code", rawCode.trim()) },
+            )
+            val resolved = decodeBusinessObject<BoxLabel>(payload, json)
+            CatalogResult(
+                data = resolved.mergeLocalResolution(parsed, cachedMapping, rawCode),
+                source = CatalogSource.Center,
+            )
         }.getOrElse { error ->
-            if (error is FscmApiException) throw error
-            local.copy(warnings = listOf("边缘节点和中心均不可用，当前仅展示二维码离线参数"))
+            if (error is FscmApiException && !error.isTemporaryCenterFailure()) throw error
+            edge?.copy(
+                data = edge.data.copy(
+                    printable = false,
+                    printSnapshot = null,
+                    localFallback = true,
+                ),
+                isStale = true,
+            ) ?: local?.let {
+                CatalogResult(it, CatalogSource.Offline, isStale = true)
+            } ?: throw BoxLabelMappingCacheMissException()
         }
     }
+}
+
+internal fun shouldUseEdgeBoxLabelWithoutCenter(result: CatalogResult<BoxLabel>): Boolean =
+    !result.isStale && (!result.data.recognized || result.data.hasCompleteBoxMarkPrintContract())
+
+internal fun FscmApiException.isTemporaryCenterFailure(): Boolean =
+    statusCode == 408 || statusCode == 429 || statusCode >= 500
+
+private fun <T> T.toCatalogResult(response: EdgeCatalogResponse): CatalogResult<T> = CatalogResult(
+    data = this,
+    source = if (response.servedByEdge) CatalogSource.Edge else CatalogSource.Center,
+    nodeId = response.node.nodeId.takeIf { response.servedByEdge }.orEmpty(),
+    nodeName = response.node.nodeName.takeIf { response.servedByEdge }.orEmpty(),
+    isStale = response.servedByEdge && response.node.isStale,
+    syncedAt = response.node.syncedAt.takeIf { response.servedByEdge }.orEmpty(),
+)
+
+internal inline fun <reified T> decodeEdgeCatalogPage(payload: JsonElement, json: Json): PagedList<T> =
+    if (payload is JsonArray) {
+        val rows = json.decodeFromJsonElement<List<T>>(payload)
+        PagedList(data = rows, total = rows.size.toLong())
+    } else {
+        json.decodeFromJsonElement(payload)
+    }
+
+private fun Product.withEdgeMedia(response: EdgeCatalogResponse): Product = copy(
+    catalogMedia = response.mediaRequest(media, thumbnailUrl.ifBlank { imageUrl }),
+    skus = skus.map { it.withEdgeMedia(response) },
+)
+
+private fun Sku.withEdgeMedia(response: EdgeCatalogResponse): Sku = copy(
+    catalogMedia = response.mediaRequest(
+        media,
+        thumbnailUrl.ifBlank { imageUrl }.ifBlank { product?.thumbnailUrl.orEmpty() },
+    ),
+    product = product?.withEdgeMedia(response),
+)
+
+internal fun EdgeCatalogResponse.mediaRequest(media: MediaRef?, legacyUrl: String): CatalogMediaRequest? {
+    val path = media?.thumbnailPath.orEmpty().ifBlank { media?.originalPath.orEmpty() }
+    if (path.isBlank()) return null
+    val base = node.baseUrl.trimEnd('/') + "/"
+    val url = runCatching { URI(base).resolve(path.trimStart('/')).toString() }.getOrNull() ?: return null
+    val header = authorization.entries.firstOrNull() ?: return null
+    val identity = media?.id.orEmpty().ifBlank { path }
+    val version = media?.version.orEmpty().ifBlank { "current" }
+    return CatalogMediaRequest(
+        url = url,
+        centralUrl = media?.centralUrl.orEmpty().ifBlank { legacyUrl },
+        cacheKey = "catalog:$identity:$version:thumbnail",
+        headerName = header.key,
+        headerValue = header.value,
+    )
 }
 
 private fun BoxLabelQrPayload.toLocalReceivingScanItem(
@@ -1726,6 +2189,31 @@ private fun BoxLabel.mergeParsedPayload(parsed: BoxLabelQrPayload) = copy(
     },
 )
 
+private fun BoxLabel.mergeLocalResolution(
+    parsed: BoxLabelQrPayload?,
+    mapping: LocalBoxLabelMappingEntity?,
+    rawCode: String,
+): BoxLabel {
+    val parsedResult = parsed?.let(::mergeParsedPayload) ?: this
+    if (mapping == null) return parsedResult
+    return parsedResult.copy(
+        labelCode = parsedResult.labelCode.ifBlank { mapping.supplierLabelCode },
+        boxUid = parsedResult.boxUid.ifBlank { mapping.supplierBoxUid },
+        boxNo = parsedResult.boxNo.ifBlank { mapping.supplierBoxNo },
+        productCode = parsedResult.productCode.ifBlank { mapping.productCode },
+        productName = parsedResult.productName.ifBlank { mapping.productName },
+        skuCode = parsedResult.skuCode.ifBlank { mapping.skuCode },
+        caseSpecName = parsedResult.caseSpecName.ifBlank { mapping.caseSpecName },
+        qtyPerCarton = parsedResult.qtyPerCarton.takeIf { it > 0 } ?: mapping.qtyPerCarton,
+        plannedBoxQty = parsedResult.plannedBoxQty.takeIf { it > 0 } ?: mapping.boxQty,
+        scannedCode = parsedResult.scannedCode.ifBlank { rawCode.trim() },
+        resolvedVia = parsedResult.resolvedVia.ifBlank { "jifeng_mapping" },
+        jifengBoxNo = parsedResult.jifengBoxNo.ifBlank { mapping.jifengBoxNo },
+        jifengQrCodeText = parsedResult.jifengQrCodeText.ifBlank { mapping.jifengQrCodeText },
+        supplierLabelCode = parsedResult.supplierLabelCode.ifBlank { mapping.supplierLabelCode },
+    )
+}
+
 private data class PendingReceivingPayload(
     val rawCode: String,
     val originalRawCode: String,
@@ -1737,7 +2225,12 @@ private data class PendingReceivingPayload(
 private suspend fun SessionStore.namespaceId(): Long =
     current().currentNamespace?.id ?: 0
 
-private fun ReceivingSession.toEntity(userId: Long, namespaceId: Long, json: Json): ReceivingSessionEntity =
+private fun ReceivingSession.toEntity(
+    userId: Long,
+    namespaceId: Long,
+    json: Json,
+    remoteSyncedAt: Long = System.currentTimeMillis(),
+): ReceivingSessionEntity =
     ReceivingSessionEntity(
         userId = userId,
         namespaceId = namespaceId,
@@ -1745,6 +2238,7 @@ private fun ReceivingSession.toEntity(userId: Long, namespaceId: Long, json: Jso
         code = code,
         payload = json.encodeToString(this),
         updatedAt = System.currentTimeMillis(),
+        remoteSyncedAt = remoteSyncedAt,
     )
 
 private fun ReceivingSessionEntity.toModel(json: Json): ReceivingSession? =
@@ -1764,22 +2258,20 @@ fun visibleMobileApps(
     permissions: List<String>,
     sessionMode: SessionMode = SessionMode.Online,
 ): List<MobileAppEntry> {
-    val configured = overview?.appConfig?.apps?.takeIf { it.isNotEmpty() }
-        ?: overview?.apps?.takeIf { it.isNotEmpty() }
-        ?: defaultMobileApps
+    val configured = overview?.appConfig?.apps ?: overview?.apps ?: return emptyList()
     val permissionSet = permissions.mapTo(mutableSetOf()) { it.trim() }
-    return (configured.map(::normalizeMobileAppEntry) + defaultMobileApps).distinctBy { it.key }
+    return configured
+        .map(::normalizeMobileAppEntry)
+        .map(::applyLocalMobileAppMetadata)
+        .distinctBy { it.key }
         .filter { it.visible }
         .filter { it.key in implementedMobileAppKeys }
-        .filter { it.permission.isBlank() || it.permission in permissionSet || it.permission == "mobile-app:product" }
-        .filter { it.businessPermission.isBlank() || it.businessPermission in permissionSet || it.businessPermission == "products" }
         .filter { app ->
             sessionMode == SessionMode.Online ||
                 (app.offlineSupported && app.key in offlineImplementedAppKeys && app.hasOfflinePermissions(permissionSet))
         }
         .sortedWith(compareBy<MobileAppEntry> { it.sort }.thenBy { it.title })
 }
-
 private fun normalizeMobileAppEntry(entry: MobileAppEntry): MobileAppEntry {
     val normalizedKey = when (entry.key) {
         "carton_management" -> "box_labels"
@@ -1794,9 +2286,12 @@ private fun normalizeMobileAppEntry(entry: MobileAppEntry): MobileAppEntry {
 internal val implementedMobileAppKeys = setOf(
     "receiving",
     "inbound_management",
+    "central_receiving",
     "profit",
     "product_management",
+    "product_counting",
     "box_labels",
+    "supplier_orders",
     "label_print",
     "edge_nodes",
     "pda_settings",
@@ -1820,10 +2315,20 @@ private val legacyLabelPrintAppKeys = setOf(
     "custom_label_print",
 )
 
+private fun applyLocalMobileAppMetadata(entry: MobileAppEntry): MobileAppEntry {
+    val fallback = defaultMobileApps.firstOrNull { it.key == entry.key } ?: return entry
+    return entry.copy(
+        offlineSupported = entry.offlineSupported || fallback.offlineSupported,
+        offlineSyncable = entry.offlineSyncable || fallback.offlineSyncable,
+        offlineDataScope = entry.offlineDataScope.ifBlank { fallback.offlineDataScope },
+        offlineRequiredPermissions = entry.offlineRequiredPermissions.ifEmpty { fallback.offlineRequiredPermissions },
+    )
+}
+
 private fun MobileAppEntry.hasOfflinePermissions(permissionSet: Set<String>): Boolean =
     offlineRequiredPermissions.all { it in permissionSet }
 
-private val offlineImplementedAppKeys = setOf("receiving", "inbound_management")
+private val offlineImplementedAppKeys = setOf("receiving", "inbound_management", "central_receiving", "product_counting")
 
 val defaultMobileApps = listOf(
     MobileAppEntry(
@@ -1855,6 +2360,37 @@ val defaultMobileApps = listOf(
         offlineSyncable = true,
         offlineDataScope = "namespace",
         offlineRequiredPermissions = listOf("mobile-app:receiving", "receiving_records"),
+    ),
+    MobileAppEntry(
+        key = "central_receiving",
+        title = "",
+        description = "",
+        path = "/pages/central-receiving/index",
+        permission = "mobile-app:central-receiving",
+        businessPermission = "receiving_records",
+        icon = "",
+        color = "#1677ff",
+        sort = 46,
+        offlineSupported = true,
+        offlineSyncable = true,
+        offlineDataScope = "namespace",
+        offlineRequiredPermissions = listOf("mobile-app:central-receiving", "receiving_records"),
+    ),
+    MobileAppEntry("supplier_orders", "", "", "/pages/supplier-orders/index", "mobile-app:supplier-orders", "supplier-orders", "", "#14b8a6", sort = 35),
+    MobileAppEntry(
+        key = "product_counting",
+        title = "",
+        description = "",
+        path = "/pages/product-counting/index",
+        permission = "mobile-app:product-counting",
+        businessPermission = "",
+        icon = "fact_check",
+        color = "#1677ff",
+        sort = 48,
+        offlineSupported = true,
+        offlineSyncable = true,
+        offlineDataScope = "namespace",
+        offlineRequiredPermissions = listOf("mobile-app:product-counting"),
     ),
     MobileAppEntry("profit", "", "", "/pages/profit/index", "mobile-app:profit", "", "", "#52c41a", sort = 50),
     MobileAppEntry("product_management", "", "", "/pages/product/index", "mobile-app:product", "products", "", "#1890ff", sort = 60),

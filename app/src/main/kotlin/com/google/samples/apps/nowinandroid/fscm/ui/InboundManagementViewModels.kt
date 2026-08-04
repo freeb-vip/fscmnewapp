@@ -20,20 +20,27 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.samples.apps.nowinandroid.R
+import com.google.samples.apps.nowinandroid.fscm.data.BoxLabelMappingRepository
 import com.google.samples.apps.nowinandroid.fscm.data.FscmApiException
 import com.google.samples.apps.nowinandroid.fscm.data.InboundClientError
 import com.google.samples.apps.nowinandroid.fscm.data.InboundClientException
+import com.google.samples.apps.nowinandroid.fscm.data.InboundItemStatus
+import com.google.samples.apps.nowinandroid.fscm.data.InboundSessionStatus
 import com.google.samples.apps.nowinandroid.fscm.data.InboundSessionSummary
 import com.google.samples.apps.nowinandroid.fscm.data.InboundWorkspace
 import com.google.samples.apps.nowinandroid.fscm.data.LocalInboundRepository
-import com.google.samples.apps.nowinandroid.fscm.data.LocalInboundSyncScheduler
+import com.google.samples.apps.nowinandroid.fscm.data.inboundStandardCode
+import com.google.samples.apps.nowinandroid.fscm.data.isKnownMappedBoxLabel
+import com.google.samples.apps.nowinandroid.fscm.device.ReceivingScanFeedback
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerManager
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerRuntimeState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -41,9 +48,30 @@ import javax.inject.Inject
 
 data class InboundSessionListUiState(
     val loading: Boolean = false,
+    val preparingOffline: Boolean = false,
     val sessions: List<InboundSessionSummary> = emptyList(),
+    val filter: InboundSessionFilter = InboundSessionFilter.Active,
     val error: UiText? = null,
-)
+) {
+    val visibleSessions: List<InboundSessionSummary>
+        get() = filterInboundSessions(sessions, filter)
+}
+
+enum class InboundSessionFilter {
+    Active,
+    Complete,
+}
+
+internal fun filterInboundSessions(
+    sessions: List<InboundSessionSummary>,
+    filter: InboundSessionFilter,
+): List<InboundSessionSummary> = sessions.filter { session ->
+    val complete = session.status == InboundSessionStatus.Complete.value
+    when (filter) {
+        InboundSessionFilter.Active -> !complete
+        InboundSessionFilter.Complete -> complete
+    }
+}
 
 @HiltViewModel
 class InboundSessionListViewModel @Inject constructor(
@@ -54,29 +82,63 @@ class InboundSessionListViewModel @Inject constructor(
 
     fun load() = viewModelScope.launch {
         _state.update { it.copy(loading = true, error = null) }
-        runCatching { repository.sessionSummaries() }
-            .onSuccess { sessions -> _state.value = InboundSessionListUiState(sessions = sessions) }
+        runCatching { repository.sessionSummaries(refreshRemote = false) }
+            .onSuccess { sessions ->
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        preparingOffline = true,
+                        sessions = sessions,
+                    )
+                }
+                runCatching { repository.prepareOfflineData() }
+                    .onSuccess { prepared ->
+                        _state.update {
+                            it.copy(
+                                loading = false,
+                                preparingOffline = false,
+                                sessions = prepared,
+                                error = null,
+                            )
+                        }
+                    }
+                    .onFailure { error ->
+                        _state.update { it.copy(preparingOffline = false, error = error.inboundUiText()) }
+                    }
+            }
             .onFailure { error -> _state.update { it.copy(loading = false, error = error.inboundUiText()) } }
     }
+
+    fun setFilter(filter: InboundSessionFilter) = _state.update { it.copy(filter = filter) }
 }
 
 data class InboundSessionUiState(
     val loading: Boolean = false,
     val submitting: Boolean = false,
+    val refreshingSnapshot: Boolean = false,
+    val syncProcessed: Int = 0,
+    val syncTotal: Int = 0,
     val workspace: InboundWorkspace? = null,
     val error: UiText? = null,
     val message: UiText? = null,
     val cameraOpen: Boolean = false,
     val cameraResumeToken: Long = 0,
     val finishConfirmationOpen: Boolean = false,
+    val cancelConfirmationOpen: Boolean = false,
     val conflictDialogOpen: Boolean = false,
+    val issuesOpen: Boolean = false,
+    val pendingProductsOpen: Boolean = false,
+    val syncDetailsOpen: Boolean = false,
+    val knownJifengCodes: Set<String> = emptySet(),
+    val knownLocationCodes: Set<String> = emptySet(),
 )
 
 @HiltViewModel
 class InboundSessionViewModel @Inject constructor(
     private val repository: LocalInboundRepository,
-    private val syncScheduler: LocalInboundSyncScheduler,
+    private val boxLabelMappingRepository: BoxLabelMappingRepository,
     private val scannerManager: ScannerManager,
+    private val scanFeedback: ReceivingScanFeedback,
 ) : ViewModel() {
     private val _state = MutableStateFlow(InboundSessionUiState())
     val state = _state.asStateFlow()
@@ -86,24 +148,74 @@ class InboundSessionViewModel @Inject constructor(
         initialValue = scannerManager.scannerState.value,
     )
     private var sessionId: Long = 0
+    private var productCacheJob: Job? = null
 
     fun load(id: Long) {
         sessionId = id
+        productCacheJob?.cancel()
+        productCacheJob = viewModelScope.launch {
+            repository.observeProductCache(id).collectLatest { cache ->
+                _state.update { state ->
+                    val workspace = state.workspace ?: return@update state
+                    val pendingCount = cache.localSyncItems.count {
+                        it.status in setOf(InboundItemStatus.Pending.value, InboundItemStatus.Syncing.value)
+                    }
+                    val conflicts = cache.localSyncItems.filter { it.status == InboundItemStatus.ConflictPending.value }
+                    val rejected = cache.localSyncItems.filter { it.status == InboundItemStatus.Rejected.value }
+                    val session = cache.session
+                    state.copy(
+                        workspace = workspace.copy(
+                            pendingProducts = cache.items,
+                            localSyncItems = cache.localSyncItems,
+                            conflicts = conflicts,
+                            syncIssues = conflicts + rejected,
+                            summary = workspace.summary.copy(
+                                productCacheComplete = cache.complete,
+                                productCacheAt = cache.updatedAt,
+                                totalCount = session?.totalCount?.takeIf { it > 0 } ?: workspace.summary.totalCount,
+                                inboundedCount = session?.inboundedCount ?: workspace.summary.inboundedCount,
+                                centerPendingCount = session?.unassignedCount ?: workspace.summary.centerPendingCount,
+                                exceptionCount = session?.exceptionCount?.takeIf { it >= 0 } ?: workspace.summary.exceptionCount,
+                                pendingCount = pendingCount,
+                                conflictCount = conflicts.size,
+                                rejectedCount = rejected.size,
+                                lastSyncAt = session?.lastSyncSuccessAt ?: workspace.summary.lastSyncAt,
+                                status = session?.status ?: workspace.summary.status,
+                            ),
+                        ),
+                    )
+                }
+            }
+        }
         viewModelScope.launch {
             _state.update { it.copy(loading = true, workspace = null, error = null) }
             runCatching { repository.prepareSession(id) }
-                .onSuccess { workspace -> _state.update { it.copy(loading = false, workspace = workspace) } }
+                .onSuccess { workspace ->
+                    val aliases = boxLabelMappingRepository.knownJifengAliases()
+                    val locations = repository.knownLocationCodes(id)
+                    _state.update {
+                        it.copy(
+                            loading = false,
+                            workspace = workspace,
+                            knownJifengCodes = aliases,
+                            knownLocationCodes = locations,
+                        )
+                    }
+                    refreshSnapshotIfNeeded(id)
+                }
                 .onFailure { error -> _state.update { it.copy(loading = false, error = error.inboundUiText()) } }
         }
     }
 
     fun scan(rawCode: String) {
-        if (rawCode.isBlank() || sessionId == 0L || _state.value.loading || _state.value.submitting) return
+        val currentState = _state.value
+        if (rawCode.isBlank() || sessionId == 0L || currentState.loading || currentState.submitting) return
+        val workspace = currentState.workspace
+        val scanningLocation = workspace?.draftBatch == null
+        _state.update { it.copy(submitting = true, error = null, message = null) }
         viewModelScope.launch {
-            _state.update { it.copy(submitting = true, error = null, message = null) }
-            val workspace = _state.value.workspace
             val result = runCatching {
-                if (workspace?.draftBatch == null) {
+                if (scanningLocation) {
                     repository.startBatch(sessionId, rawCode)
                     repository.workspace(sessionId)
                 } else {
@@ -112,17 +224,26 @@ class InboundSessionViewModel @Inject constructor(
                 }
             }
             result.onSuccess { refreshed ->
+                scanFeedback.success()
+                val knownLocations = if (scanningLocation) {
+                    _state.value.knownLocationCodes + refreshed.draftBatch?.locationCode.orEmpty()
+                } else {
+                    _state.value.knownLocationCodes
+                }
                 _state.update {
                     it.copy(
                         submitting = false,
                         workspace = refreshed,
                         message = UiText.Resource(
-                            if (workspace?.draftBatch == null) R.string.inbound_location_locked else R.string.inbound_box_saved,
+                            if (scanningLocation) R.string.inbound_location_locked else R.string.inbound_box_saved,
                         ),
-                        cameraResumeToken = it.cameraResumeToken + 1,
+                        cameraOpen = if (scanningLocation) false else it.cameraOpen,
+                        cameraResumeToken = if (scanningLocation) it.cameraResumeToken else it.cameraResumeToken + 1,
+                        knownLocationCodes = knownLocations.filter(String::isNotBlank).toSet(),
                     )
                 }
             }.onFailure { error ->
+                scanFeedback.failure()
                 _state.update {
                     it.copy(
                         submitting = false,
@@ -134,9 +255,20 @@ class InboundSessionViewModel @Inject constructor(
         }
     }
 
+    fun isKnownBoxLabelCode(code: String): Boolean =
+        isKnownMappedBoxLabel(code, _state.value.knownJifengCodes)
+
+    fun isKnownLocationCode(code: String): Boolean =
+        runCatching { com.google.samples.apps.nowinandroid.fscm.data.normalizeInboundLocation(code) }
+            .getOrNull() in _state.value.knownLocationCodes
+
     fun requestFinish() = _state.update { it.copy(finishConfirmationOpen = true) }
 
     fun dismissFinish() = _state.update { it.copy(finishConfirmationOpen = false) }
+
+    fun requestCancelDraft() = _state.update { it.copy(cancelConfirmationOpen = true) }
+
+    fun dismissCancelDraft() = _state.update { it.copy(cancelConfirmationOpen = false) }
 
     fun finishBatch() {
         val batch = _state.value.workspace?.draftBatch ?: return
@@ -145,7 +277,6 @@ class InboundSessionViewModel @Inject constructor(
             _state.update { it.copy(submitting = true, finishConfirmationOpen = false, error = null) }
             runCatching { repository.finishBatch(batch.id) }
                 .onSuccess { workspace ->
-                    syncScheduler.enqueueSoon()
                     _state.update {
                         it.copy(
                             submitting = false,
@@ -166,27 +297,67 @@ class InboundSessionViewModel @Inject constructor(
     fun cancelDraft() {
         val batch = _state.value.workspace?.draftBatch ?: return
         viewModelScope.launch {
-            repository.cancelDraft(batch.id)
-            _state.update { it.copy(workspace = repository.workspace(sessionId), message = UiText.Resource(R.string.inbound_batch_cancelled)) }
+            _state.update { it.copy(submitting = true, cancelConfirmationOpen = false, error = null) }
+            runCatching {
+                repository.cancelDraft(batch.id)
+                repository.workspace(sessionId)
+            }.onSuccess { workspace ->
+                _state.update {
+                    it.copy(
+                        submitting = false,
+                        workspace = workspace,
+                        message = UiText.Resource(R.string.inbound_batch_cancelled),
+                    )
+                }
+            }.onFailure { error ->
+                _state.update { it.copy(submitting = false, error = error.inboundUiText()) }
+            }
         }
     }
 
     fun manualSync() {
         if (_state.value.submitting) return
         viewModelScope.launch {
-            _state.update { it.copy(submitting = true, error = null, message = null) }
-            runCatching { repository.syncSessionManually(sessionId) }
+            _state.update {
+                it.copy(submitting = true, syncProcessed = 0, syncTotal = 0, error = null, message = null)
+            }
+            runCatching {
+                repository.syncSessionManually(sessionId) { processed, total ->
+                    _state.update { it.copy(syncProcessed = processed, syncTotal = total) }
+                }
+            }
                 .onSuccess { workspace ->
                     _state.update {
                         it.copy(
                             submitting = false,
+                            syncProcessed = 0,
+                            syncTotal = 0,
                             workspace = workspace,
-                            conflictDialogOpen = workspace.conflicts.isNotEmpty(),
-                            message = if (workspace.conflicts.isEmpty()) UiText.Resource(R.string.inbound_sync_finished) else null,
+                            conflictDialogOpen = !it.issuesOpen && workspace.conflicts.isNotEmpty(),
+                            message = if (workspace.syncIssues.isEmpty()) {
+                                UiText.Resource(R.string.inbound_sync_finished)
+                            } else {
+                                UiText.Resource(
+                                    R.string.inbound_sync_finished_with_issues,
+                                    listOf(
+                                        workspace.syncIssues.count { it.status == "conflict_pending" },
+                                        workspace.syncIssues.count { it.status == "rejected" },
+                                    ),
+                                )
+                            },
                         )
                     }
                 }
-                .onFailure { error -> _state.update { it.copy(submitting = false, error = error.inboundUiText()) } }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            submitting = false,
+                            syncProcessed = 0,
+                            syncTotal = 0,
+                            error = error.inboundUiText(),
+                        )
+                    }
+                }
         }
     }
 
@@ -199,6 +370,18 @@ class InboundSessionViewModel @Inject constructor(
     }
 
     fun dismissConflictDialog() = _state.update { it.copy(conflictDialogOpen = false) }
+
+    fun openIssues() = _state.update { it.copy(issuesOpen = true) }
+
+    fun dismissIssues() = _state.update { it.copy(issuesOpen = false) }
+
+    fun openPendingProducts() = _state.update { it.copy(pendingProductsOpen = true) }
+
+    fun dismissPendingProducts() = _state.update { it.copy(pendingProductsOpen = false) }
+
+    fun openSyncDetails() = _state.update { it.copy(syncDetailsOpen = true) }
+
+    fun dismissSyncDetails() = _state.update { it.copy(syncDetailsOpen = false) }
 
     fun openCamera() = _state.update { it.copy(cameraOpen = true, cameraResumeToken = it.cameraResumeToken + 1) }
 
@@ -245,6 +428,17 @@ class InboundSessionViewModel @Inject constructor(
     private suspend fun reloadWorkspace() {
         _state.update { it.copy(workspace = repository.workspace(sessionId)) }
     }
+
+    private fun refreshSnapshotIfNeeded(id: Long) {
+        viewModelScope.launch {
+            _state.update { it.copy(refreshingSnapshot = true) }
+            runCatching { repository.refreshSessionIfStale(id) }
+                .onSuccess { refreshed ->
+                    if (refreshed != null) _state.update { it.copy(workspace = refreshed) }
+                }
+            _state.update { it.copy(refreshingSnapshot = false) }
+        }
+    }
 }
 
 private fun Throwable.inboundUiText(): UiText = when (this) {
@@ -252,10 +446,16 @@ private fun Throwable.inboundUiText(): UiText = when (this) {
         when (reason) {
             InboundClientError.SnapshotUnavailable -> R.string.inbound_snapshot_required
             InboundClientError.InvalidLocation -> R.string.inbound_invalid_location
+            InboundClientError.LocationCacheUnavailable -> R.string.inbound_location_cache_unavailable
+            InboundClientError.LocationNotFound -> R.string.inbound_location_not_found
+            InboundClientError.LocationInactive -> R.string.inbound_location_inactive
+            InboundClientError.LocationWarehouseMismatch -> R.string.inbound_location_warehouse_mismatch
+            InboundClientError.TargetWarehouseMissing -> R.string.inbound_target_warehouse_missing
             InboundClientError.SessionComplete -> R.string.inbound_session_already_complete
             InboundClientError.BatchNotFound -> R.string.inbound_batch_not_found
             InboundClientError.EmptyBatch -> R.string.inbound_empty_batch
             InboundClientError.InvalidBoxLabel -> R.string.inbound_invalid_box_label
+            InboundClientError.MappingCacheMiss -> R.string.box_label_mapping_cache_miss
             InboundClientError.BoxNotInSession -> R.string.inbound_box_not_in_session
             InboundClientError.BoxNotEligible -> R.string.inbound_box_not_eligible
             InboundClientError.BoxAlreadyAssigned -> R.string.inbound_box_already_assigned
@@ -264,6 +464,11 @@ private fun Throwable.inboundUiText(): UiText = when (this) {
             InboundClientError.OfflineSyncUnavailable -> R.string.inbound_sync_offline
         },
     )
-    is FscmApiException -> UiText.Dynamic(serverMessage ?: message.orEmpty())
+    is FscmApiException -> when (inboundStandardCode()) {
+        42244 -> UiText.Resource(R.string.inbound_location_not_found)
+        42245 -> UiText.Resource(R.string.inbound_location_inactive)
+        42246 -> UiText.Resource(R.string.inbound_location_warehouse_mismatch)
+        else -> UiText.Dynamic(serverMessage ?: message.orEmpty())
+    }
     else -> UiText.Dynamic(message ?: "Unknown error")
 }

@@ -17,6 +17,12 @@
     <string name="no_data">No data</string>
 
     <string name="login_failed">Login failed</string>
+    <string name="login_captcha">Verification code</string>
+    <string name="login_captcha_refresh">Refresh code</string>
+    <string name="login_captcha_refresh_failed">Unable to refresh verification code</string>
+    <string name="login_captcha_required">Enter the verification code</string>
+    <string name="login_security_failed_hint">Password entered incorrectly %1$d times. %2$d attempts remaining.</string>
+    <string name="login_security_locked">Password login locked after %1$d failed attempts. Try again in %2$d seconds.</string>
     <string name="switch_namespace_failed">Switch workspace failed</string>
     <string name="load_home_failed">Unable to load home</string>
     <string name="no_permission_profit">No permission for profit dashboard</string>
@@ -40,4 +46,30 @@
     <string name="language_en">English</string>
     <string name="language_th">ไทย</string>
     <string name="language_my">မြန်မာ</string>
+
+    <string name="app_update">App update</string>
+    <string name="app_update_current_version">Version %1$s (%2$d)</string>
+    <string name="app_update_checking">Checking for updates&#8230;</string>
+    <string name="app_update_available_title">Update available</string>
+    <string name="app_update_required_title">Update required</string>
+    <string name="app_update_available_message">Version %1$s (%2$d) is ready to download.</string>
+    <string name="app_update_release_notes">What&#8217;s new</string>
+    <string name="app_update_now">Update now</string>
+    <string name="app_update_later">Remind me later</string>
+    <string name="app_update_cancel_download">Cancel download</string>
+    <string name="app_update_downloading">Downloading update&#8230;</string>
+    <string name="app_update_download_progress">Downloaded %1$d%%</string>
+    <string name="app_update_ready">The update is ready to install.</string>
+    <string name="app_update_install">Install</string>
+    <string name="app_update_retry">Retry</string>
+    <string name="app_update_exit">Exit app</string>
+    <string name="app_update_latest">You already have the latest version.</string>
+    <string name="app_update_check_failed">Unable to check for updates.</string>
+    <string name="app_update_download_failed">Unable to download the update.</string>
+    <string name="app_update_verification_failed">The downloaded APK failed security verification.</string>
+    <string name="app_update_install_permission_required">Allow FSCM to install unknown apps, then retry.</string>
+    <string name="box_label_mapping_cache_miss">This Jifeng carton code is not in the local cache. Connect to the network, refresh mappings, and scan again.</string>
+    <string name="device_jifeng_box_label">Jifeng carton</string>
+    <string name="device_box_label_mapping_offline_warning">Local Jifeng mapping. Status and ownership will be validated when online.</string>
+    <string name="device_supplier_box_label">Supplier carton</string>
 </resources>

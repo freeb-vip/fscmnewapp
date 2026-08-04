@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="device_loading_sku">กำลังโหลดรายละเอียด SKU</string><string name="device_print_sku_label">พิมพ์ฉลาก SKU</string><string name="device_loading_nodes">กำลังโหลดโหนดเอดจ์</string><string name="device_print_node">โหนดพิมพ์</string><string name="device_local_reachable">เข้าถึงในเครื่องได้</string><string name="device_remote_queue">คิวระยะไกล</string><string name="device_print_copies">จำนวนสำเนา</string><string name="device_decrease_copies">ลดจำนวนสำเนา</string><string name="device_increase_copies">เพิ่มจำนวนสำเนา</string><string name="device_label_prefix">คำนำหน้าฉลาก</string><string name="device_print_content">เนื้อหาที่พิมพ์: %1$s</string><string name="device_print">พิมพ์</string>
+    <string name="device_loading_sku">กำลังโหลดรายละเอียด SKU</string><string name="device_print_sku_label">พิมพ์ฉลาก SKU</string><string name="device_loading_nodes">กำลังโหลดโหนดเอดจ์</string><string name="device_print_node">โหนดและเทมเพลตการพิมพ์</string><string name="device_local_reachable">เข้าถึงในเครื่องได้</string><string name="device_remote_queue">คิวระยะไกล</string><string name="device_print_copies">จำนวนสำเนา</string><string name="device_decrease_copies">ลดจำนวนสำเนา</string><string name="device_increase_copies">เพิ่มจำนวนสำเนา</string><string name="device_label_prefix">คำนำหน้าฉลาก</string><string name="device_print_content">เนื้อหาที่พิมพ์: %1$s</string><string name="device_print">พิมพ์</string>
     <string name="device_loading_box_label">กำลังโหลดรายละเอียดฉลากกล่อง</string><string name="device_scan_box_label">สแกนฉลากกล่อง</string><string name="device_broadcast_mode">โหมดบรอดแคสต์</string><string name="device_keyboard_mode">โหมดแป้นพิมพ์</string><string name="device_querying_box_label">กำลังค้นหาฉลากกล่อง</string><string name="device_waiting_box_label">รอสแกนฉลากกล่อง</string><string name="device_use_pda_box_label">ใช้เครื่องสแกน PDA สแกนฉลากกล่อง</string><string name="device_identify_box_label">ระบุฉลากกล่อง</string><string name="device_querying">กำลังค้นหา</string><string name="device_query_now">ค้นหาทันที</string><string name="device_scan_results">ผลการสแกน</string><string name="device_scan_prompt">สแกนหรือป้อนรหัสฉลากกล่อง</string>
     <string name="device_unassigned_code">ยังไม่ได้กำหนดรหัส</string><string name="device_unique_id">รหัสเฉพาะ: %1$s</string><string name="device_box_number">เลขกล่อง</string><string name="device_product">สินค้า</string><string name="device_case_quantity">รูปแบบกล่อง / จำนวน</string><string name="device_case_quantity_value">%1$s / %2$d ชิ้นต่อกล่อง</string><string name="device_planned_actual">แผน / จริง</string><string name="device_planned_actual_value">แผน %1$d / จริง %2$d</string><string name="device_location">ตำแหน่ง</string><string name="device_related_documents">เอกสารที่เกี่ยวข้อง</string><string name="device_supplier_order">คำสั่งซื้อจากผู้ผลิต</string><string name="device_purchase_order">ใบสั่งซื้อ</string><string name="device_receiving_order">คำสั่งรับสินค้า</string><string name="device_receipt">ใบรับสินค้า</string><string name="device_central_order">คำสั่งคลังรวม</string><string name="device_view_detail">ดูรายละเอียด %1$s</string>
     <string name="device_scanning">กำลังสแกน</string><string name="device_use_camera">ใช้กล้อง</string><string name="device_scan_result">ผลลัพธ์: %1$s</string><string name="device_unknown_result">ไม่ทราบประเภทผลลัพธ์</string><string name="device_waiting_scan">รอข้อมูลสแกน</string><string name="device_scan_instruction">กดปุ่มด้านข้าง PDA หรือใช้กล้อง</string>
     <string name="device_scan_label_content">สแกนเนื้อหาฉลาก</string><string name="device_label_content">เนื้อหาฉลาก</string><string name="device_waiting_broadcast">รอการสแกนบรอดแคสต์จาก PDA</string><string name="device_enter_scan_value">ป้อนหรือสแกนอักขระ</string><string name="device_clear_content">ล้างเนื้อหา</string><string name="device_available_templates">เทมเพลตฉลากที่ใช้ได้</string><string name="device_refresh_templates">รีเฟรชเทมเพลต</string><string name="device_local_print">พิมพ์ในเครื่อง</string><string name="device_dispatch_print">ส่งงานพิมพ์</string>
-    <string name="device_edge_service_nodes">โหนดบริการเอดจ์</string><string name="device_edge_summary">ลงทะเบียน %1$d · เข้าถึงในเครื่อง %2$d</string><string name="device_refresh_nodes">รีเฟรชโหนดเอดจ์</string><string name="device_loading_edge_nodes">กำลังโหลดโหนดกลางและตรวจสอบ LAN</string><string name="device_no_edge_nodes">ไม่พบโหนดเอดจ์ที่ลงทะเบียน</string><string name="device_sku_quick_print">พิมพ์ SKU ด่วน</string><string name="device_quick_print_description">หลังสแกนบรอดแคสต์ ให้แตะ SKU เพื่อพิมพ์หนึ่งฉลาก</string><string name="device_label_preview">ตัวอย่างฉลาก: %1$sSKU-001</string><string name="device_default_print_node">โหนดพิมพ์เริ่มต้น</string><string name="device_no_print_nodes">ไม่มีโหนดพิมพ์ฉลาก</string><string name="device_saved_node_unavailable">โหนดเริ่มต้นที่บันทึกไว้ใช้งานไม่ได้ โปรดเลือกใหม่</string>
+    <string name="device_edge_service_nodes">โหนดบริการเอดจ์</string><string name="device_edge_summary">ลงทะเบียน %1$d · เข้าถึงในเครื่อง %2$d</string><string name="device_refresh_nodes">รีเฟรชโหนดเอดจ์</string><string name="device_loading_edge_nodes">กำลังโหลดโหนดกลางและตรวจสอบ LAN</string><string name="device_no_edge_nodes">ไม่พบโหนดเอดจ์ที่ลงทะเบียน</string><string name="device_sku_quick_print">พิมพ์ SKU ด่วน</string><string name="device_quick_print_description">หลังสแกนบรอดแคสต์ ให้แตะ SKU เพื่อพิมพ์หนึ่งฉลาก</string><string name="device_label_preview">ตัวอย่างฉลาก: %1$sSKU-001</string><string name="device_default_print_node">โหนดและเทมเพลตการพิมพ์เริ่มต้น</string><string name="device_no_print_nodes">ไม่มีโหนดพิมพ์ฉลาก</string><string name="device_saved_node_unavailable">โหนดหรือเทมเพลตเริ่มต้นที่บันทึกไว้ใช้งานไม่ได้ โปรดเลือกใหม่</string>
     <string name="device_remote_available">ใช้ระยะไกลได้</string><string name="device_offline">ออฟไลน์</string><string name="device_printer_template_summary">เครื่องพิมพ์ %1$d/%2$d · เทมเพลต %3$d/%4$d</string><string name="device_lan_unconfigured">ยังไม่ได้ตั้งค่าที่อยู่ LAN</string><string name="device_node_id">รหัสโหนด</string><string name="device_lan_address">ที่อยู่ LAN</string><string name="device_connection_type">ประเภทการเชื่อมต่อ</string><string name="device_local_connection">เชื่อมต่อในเครื่อง</string><string name="device_backend_queue">คิวระยะไกลของเซิร์ฟเวอร์</string><string name="device_last_online">ออนไลน์ล่าสุด</string><string name="device_printer">เครื่องพิมพ์</string><string name="device_no_printer">ไม่พบเครื่องพิมพ์</string><string name="device_default_printer">เครื่องพิมพ์เริ่มต้น</string><string name="device_available_printer">เครื่องพิมพ์ที่ใช้ได้</string><string name="device_ready">พร้อม</string><string name="device_label_template">เทมเพลตฉลาก</string><string name="device_no_template">ยังไม่ได้ตั้งค่าเทมเพลตฉลาก</string><string name="device_printable">พิมพ์ได้</string><string name="device_default_orientation">ทิศทางเริ่มต้น</string><string name="device_printer_name">เครื่องพิมพ์: %1$s</string>
     <string name="device_global_mode">โหมดส่วนกลาง</string><string name="device_settings_description">เลือกให้ FSCM ใช้แป้นพิมพ์หรือ Intent บรอดแคสต์ในหน้าหลักและหน้าสแกน ค่าเริ่มต้นคือแป้นพิมพ์ และจะเปลี่ยนอัตโนมัติเมื่อพบการสแกนบรอดแคสต์</string><string name="device_diagnostics_copied">คัดลอกข้อมูลวินิจฉัยแล้ว</string><string name="device_app_scan_mode">โหมดสแกนของแอป</string><string name="device_keyboard_set">เลือกแป้นพิมพ์แล้ว</string><string name="device_broadcast_set">เลือกบรอดแคสต์แล้ว</string><string name="device_automatic">อัตโนมัติ</string><string name="device_current_mode">โหมดปัจจุบัน</string><string name="device_keyboard_input_mode">โหมดป้อนด้วยแป้นพิมพ์</string><string name="device_intent_broadcast_mode">โหมด Intent บรอดแคสต์</string><string name="device_auto_detection">ตรวจจับอัตโนมัติ</string><string name="device_keyboard_fallback">ใช้แป้นพิมพ์เมื่อไม่พบบรอดแคสต์</string><string name="device_manual_mode_fixed">กำหนดด้วยการเลือกเอง</string><string name="device_keyboard_input">ป้อนด้วยแป้นพิมพ์</string><string name="device_intent_broadcast">Intent บรอดแคสต์</string>
     <string name="device_pda_diagnostics">การวินิจฉัย PDA</string><string name="device_listening">กำลังรับฟัง</string><string name="device_not_listening">ไม่ได้รับฟัง</string><string name="device_receiver_enabled">เปิดตัวรับบรอดแคสต์แล้ว</string><string name="device_waiting_resume">รอหน้าจอกลับมาทำงาน</string><string name="device_action_count">การทำงาน %1$d รายการ</string><string name="device_extra_count">ข้อมูลเสริม %1$d รายการ</string><string name="device_recent_action">Action ล่าสุด</string><string name="device_recent_extra">Extra ล่าสุด</string><string name="device_no_broadcast">ไม่มีบรอดแคสต์</string><string name="device_extraction_status">สถานะการแยก</string><string name="device_barcode_extracted">แยกบาร์โค้ดแล้ว</string><string name="device_barcode_not_extracted">ยังไม่ได้แยกบาร์โค้ด</string><string name="device_recent_barcode">บาร์โค้ดล่าสุด</string><string name="device_received_time">เวลาที่รับ</string><string name="device_back_suppressed">ระงับการย้อนกลับแล้ว</string><string name="device_recent_suppression">การระงับล่าสุด</string><string name="device_recent_error">ข้อผิดพลาดล่าสุด</string><string name="device_listen_action">Action ที่รับฟัง</string><string name="device_extract_extra">Extra ที่แยก</string><string name="device_copy_diagnostics">คัดลอกข้อมูลวินิจฉัย</string><string name="device_clear_results">ล้างผลลัพธ์</string>
     <string name="device_specification">ข้อมูลจำเพาะ</string><string name="device_color_size">สี / ขนาด</string><string name="device_weight">น้ำหนัก</string><string name="device_product_info">ข้อมูลสินค้า</string><string name="device_product_name">ชื่อสินค้า</string><string name="device_product_code">รหัสสินค้า</string><string name="device_brand">แบรนด์</string>
-    <string name="device_default_sku_node_required">โปรดตั้งค่าโหนดพิมพ์ SKU เริ่มต้นในการตั้งค่าการพิมพ์ก่อน</string>
-    <string name="device_default_sku_node_unavailable">โหนดพิมพ์ SKU เริ่มต้นใช้งานไม่ได้ โปรดเลือกใหม่ในการตั้งค่าการพิมพ์</string>
+    <string name="device_default_sku_node_required">โปรดตั้งค่าโหนดและเทมเพลตพิมพ์ SKU เริ่มต้นก่อน</string>
+    <string name="device_default_sku_node_unavailable">โหนดหรือเทมเพลตพิมพ์ SKU เริ่มต้นใช้งานไม่ได้ โปรดเลือกใหม่ในการตั้งค่าการพิมพ์</string>
     <string name="device_local_print_submitted">ส่งงานพิมพ์โดยตรงไปยัง %1$s แล้ว</string>
     <string name="device_remote_print_submitted">ส่งงานพิมพ์ระยะไกลไปยัง %1$s แล้ว</string>
     <string name="device_sku_print_failed">พิมพ์ฉลาก SKU ไม่สำเร็จ</string>
@@ -38,5 +38,49 @@
     <string name="device_box_mark_print_failed">พิมพ์เครื่องหมายกล่องไม่สำเร็จ โปรดตรวจสอบงานก่อนลองอีกครั้ง</string>
     <string name="device_box_mark_quick_print">พิมพ์เครื่องหมายกล่องด่วน</string>
     <string name="device_box_mark_quick_print_description">ใช้พิมพ์ผ่าน LAN หรือส่งเข้าคิวส่วนกลางจากหน้าจัดการกล่อง</string>
-    <string name="device_box_mark_default_node">โหนดเครื่องหมายกล่องเริ่มต้น</string>
-</resources>
+    <string name="device_box_mark_default_node">โหนดและเทมเพลตเครื่องหมายกล่องเริ่มต้น</string>
+    <string name="device_label_layout_stacked">แนวตั้ง: QR ด้านบน ข้อความด้านล่าง</string>
+    <string name="device_label_layout_horizontal">แนวนอน: QR ด้านซ้าย ข้อความด้านขวา</string>
+    <string name="device_label_template_changed">เทมเพลตการพิมพ์เปลี่ยนแล้ว โปรดรีเฟรชและเลือกใหม่</string>
+    <string name="device_label_layout_location">รหัสตำแหน่ง: QR สี่จุดและข้อความตรงกลาง</string>
+    <string name="device_confirm_label_print">ยืนยันการพิมพ์ฉลาก</string>
+    <string name="receiving_local">ในเครื่อง</string>
+    <string name="receiving_pending_sync">รอซิงค์: %1$d</string>
+    <string name="receiving_sync_now">ซิงค์ตอนนี้</string>
+    <string name="receiving_syncing">กำลังซิงค์</string>
+    <string name="receiving_last_synced">ซิงค์ไว้ในเครื่องแล้ว</string>
+    <string name="device_audio_feedback">เสียงตอบรับ</string>
+    <string name="device_audio_media_volume">ระดับเสียงสื่อ</string>
+    <string name="device_audio_notification_volume">ระดับเสียงแจ้งเตือน</string>
+    <string name="device_audio_volume_value">%1$d / %2$d</string>
+    <string name="device_audio_ringer_mode">โหมดเสียงเรียกเข้า</string>
+    <string name="device_audio_ringer_silent">เงียบ</string>
+    <string name="device_audio_ringer_vibrate">สั่น</string>
+    <string name="device_audio_ringer_normal">ปกติ</string>
+    <string name="device_audio_ready">เสียงพร้อมแล้ว</string>
+    <string name="device_audio_loading">กำลังโหลดเสียง</string>
+    <string name="device_audio_last_playback">การเล่นล่าสุด</string>
+    <string name="device_audio_playing">กำลังเล่น</string>
+    <string name="device_audio_playback_failed">เล่นเสียงไม่สำเร็จ</string>
+    <string name="device_audio_test_success">ทดสอบเสียงสำเร็จ</string>
+    <string name="device_audio_test_failure">ทดสอบเสียงล้มเหลว</string>
+    <string name="terminal_find_title">ค้นหาเครื่องนี้</string>
+    <string name="terminal_find_status_online">เชื่อมต่อกับ %1$s แล้ว</string>
+    <string name="terminal_find_status_ringing">กำลังส่งเสียง</string>
+    <string name="terminal_find_status_connecting">กำลังเชื่อมต่อโหนดขอบ</string>
+    <string name="terminal_find_status_reconnecting">กำลังเชื่อมต่อโหนดขอบใหม่</string>
+    <string name="terminal_find_status_stopped">หยุดการเชื่อมต่อเบื้องหลังแล้ว</string>
+    <string name="terminal_find_ready">พร้อม</string>
+    <string name="terminal_find_not_ready">ยังไม่พร้อม</string>
+    <string name="terminal_find_test">ทดสอบเสียง</string>
+    <string name="terminal_find_allow_background">อนุญาตทำงานเบื้องหลัง</string>
+    <string name="terminal_find_complete_permissions">ตั้งค่าสิทธิ์ระบบให้เสร็จ</string>
+    <string name="terminal_find_channel_name">การเชื่อมต่อเครื่อง</string>
+    <string name="terminal_find_channel_description">รักษาการเชื่อมต่อกับโหนดขอบในเครือข่าย</string>
+    <string name="terminal_find_notification_title">เครื่อง FSCM ออนไลน์</string>
+    <string name="terminal_find_notification_online">เชื่อมต่อกับ %1$s แล้ว</string>
+    <string name="terminal_find_notification_ringing">กำลังค้นหาเครื่องนี้</string>
+    <string name="terminal_find_notification_connecting">กำลังเชื่อมต่อโหนดขอบ</string>
+    <string name="terminal_find_notification_stopped">หยุดการเชื่อมต่อเครื่องแล้ว</string>
+    <string name="terminal_find_stop">หยุด</string>
+<string name="device_default_node">โหนดเริ่มต้น</string><string name="device_set_default_node">ตั้งเป็นโหนดเริ่มต้น</string><string name="device_node_detail_default_hint">ตั้งโหนดนี้เป็นค่าเริ่มต้นก่อนกำหนดค่าเทมเพลตการพิมพ์</string></resources>

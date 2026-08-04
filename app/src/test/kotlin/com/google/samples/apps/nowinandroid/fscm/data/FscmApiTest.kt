@@ -26,8 +26,10 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Test
 import retrofit2.Response
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class FscmApiTest {
     @Test
@@ -66,7 +68,7 @@ class FscmApiTest {
             },
             refreshSession = {
                 refreshes += 1
-                true
+                SessionRefreshResult.Refreshed
             },
         )
 
@@ -95,7 +97,7 @@ class FscmApiTest {
             },
             refreshSession = {
                 refreshes += 1
-                true
+                SessionRefreshResult.Refreshed
             },
         )
 
@@ -105,24 +107,26 @@ class FscmApiTest {
     }
 
     @Test
-    fun retryAuthenticatedRequest_keepsInitialResponseWhenRefreshFails() = runBlocking {
+    fun retryAuthenticatedRequest_throwsTransientErrorWhenRefreshIsUnavailable() = runBlocking {
         var requests = 0
         var refreshes = 0
         val unauthorized = httpUnauthorizedResponse()
 
-        val response = retryAuthenticatedRequest(
-            auth = true,
-            request = {
-                requests += 1
-                unauthorized
-            },
-            refreshSession = {
-                refreshes += 1
-                false
-            },
-        )
+        val error = runCatching {
+            retryAuthenticatedRequest(
+                auth = true,
+                request = {
+                    requests += 1
+                    unauthorized
+                },
+                refreshSession = {
+                    refreshes += 1
+                    SessionRefreshResult.Unavailable
+                },
+            )
+        }.exceptionOrNull()
 
-        assertSame(unauthorized, response)
+        assertTrue(error is SessionRefreshUnavailableException)
         assertEquals(1, requests)
         assertEquals(1, refreshes)
     }
@@ -134,19 +138,21 @@ class FscmApiTest {
         val firstUnauthorized = httpUnauthorizedResponse()
         val retryUnauthorized = httpUnauthorizedResponse()
 
-        val response = retryAuthenticatedRequest(
-            auth = true,
-            request = {
-                requests += 1
-                if (requests == 1) firstUnauthorized else retryUnauthorized
-            },
-            refreshSession = {
-                refreshes += 1
-                true
-            },
-        )
+        val error = runCatching {
+            retryAuthenticatedRequest(
+                auth = true,
+                request = {
+                    requests += 1
+                    if (requests == 1) firstUnauthorized else retryUnauthorized
+                },
+                refreshSession = {
+                    refreshes += 1
+                    SessionRefreshResult.Refreshed
+                },
+            )
+        }.exceptionOrNull()
 
-        assertSame(retryUnauthorized, response)
+        assertTrue(error is SessionExpiredException)
         assertEquals(2, requests)
         assertEquals(1, refreshes)
     }
@@ -170,13 +176,28 @@ class FscmApiTest {
             },
             refreshSession = {
                 refreshes += 1
-                true
+                SessionRefreshResult.Refreshed
             },
         )
 
         assertSame(forbidden, response)
         assertEquals(1, requests)
         assertEquals(0, refreshes)
+    }
+
+    @Test
+    fun proactiveRefresh_usesExpiryMarginAndSingleFlightTokenIdentity() {
+        val now = 1_000_000L
+        val session = SessionState(
+            token = "access-1",
+            refreshToken = "refresh-1",
+            accessExpiresAt = now + 4 * 60 * 1_000L,
+        )
+
+        assertTrue(session.shouldProactivelyRefresh(now))
+        assertFalse(session.copy(accessExpiresAt = now + 6 * 60 * 1_000L).shouldProactivelyRefresh(now))
+        assertTrue(shouldReuseCurrentAccessToken("access-1", "access-2"))
+        assertFalse(shouldReuseCurrentAccessToken("access-2", "access-2"))
     }
 
     private fun httpUnauthorizedResponse(): Response<JsonElement> =
