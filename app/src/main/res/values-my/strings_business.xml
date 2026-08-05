@@ -52,4 +52,6 @@
     <string name="business_status_transition_summary">Order %1$s: %2$s to %3$s</string>
     <string name="business_status_remark">Remark (optional)</string>
     <string name="business_supplier_review_required">This order is awaiting price review. Continue in Purchase Approvals.</string>
-    <string name="business_warehouse_options_failed">Unable to load warehouse options</string></resources>
+    <string name="business_warehouse_options_failed">Unable to load warehouse options</string>    <string name="business_supplier_sku_count">SKUs</string>
+    <string name="business_supplier_item_summary">Boxes %1$d &#xB7; %2$d/carton &#xB7; Quantity %3$d</string>
+    <string name="business_supplier_item_amount">%1$s %2$.2f &#xB7; Subtotal %1$s %3$.2f</string></resources>

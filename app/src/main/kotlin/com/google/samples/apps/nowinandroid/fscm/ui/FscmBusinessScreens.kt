@@ -99,9 +99,11 @@ import com.google.samples.apps.nowinandroid.fscm.data.PurchaseApproval
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingQuickScanResponse
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingSession
 import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrder
+import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrderItem
 import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrderCategory
 import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrderFilters
 import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrderWarehouse
+import com.google.samples.apps.nowinandroid.fscm.data.detailSummary
 import com.google.samples.apps.nowinandroid.fscm.data.allowedSupplierOrderStatuses
 import com.google.samples.apps.nowinandroid.fscm.data.isLikelyBoxLabelQr
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerInputMode
@@ -584,22 +586,32 @@ fun SupplierOrderDetailScreen(
         if (state.loading) item { LoadingRow() }
         state.error?.let { error -> item { Notice(error, null, null) } }
         state.order?.let { order ->
+            val summary = order.detailSummary()
             item {
                 BusinessCard {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(order.code.ifBlank { "SO-${order.id}" }, fontWeight = FontWeight.Bold, color = BusinessInk)
                         StatusPill(supplierStatusText(order.status), statusColor(order.status))
                     }
-                    Text(
-                        order.manufacturer?.shortName.orEmpty().ifBlank { order.manufacturer?.name ?: stringResource(R.string.business_unbound_manufacturer) },
-                        color = BusinessInk,
-                    )
+                    Text(order.manufacturer?.shortName.orEmpty().ifBlank { order.manufacturer?.name ?: stringResource(R.string.business_unbound_manufacturer) }, color = BusinessInk)
                     Text(order.purchaseOrder?.code.orEmpty().ifBlank { stringResource(R.string.business_unbound_purchase_order) }, color = BusinessMuted)
-                    Text(stringResource(R.string.business_amount_boxes_quantity, order.totalAmount, order.totalBoxCount, order.totalQty), color = BusinessDeep)
+                    Text(stringResource(R.string.business_amount_boxes_quantity, order.totalAmount, summary.totalBoxCount, summary.totalQty), color = BusinessDeep)
                     if (order.remark.isNotBlank()) Text(order.remark, color = BusinessMuted)
                 }
             }
-            if (order.productRefs.isNotEmpty()) {
+            item {
+                MetricRow(
+                    listOf(
+                        stringResource(R.string.business_metric_orders) to summary.productCount.toString(),
+                        stringResource(R.string.business_supplier_sku_count) to summary.skuCount.toString(),
+                        stringResource(R.string.business_metric_boxes) to summary.totalBoxCount.toString(),
+                    ),
+                )
+            }
+            if (order.items.isNotEmpty()) {
+                item { SectionTitle(stringResource(R.string.business_related_products)) }
+                items(order.items, key = { it.id }) { item -> SupplierOrderItemCard(item) }
+            } else if (order.productRefs.isNotEmpty()) {
                 item { SectionTitle(stringResource(R.string.business_related_products)) }
                 items(order.productRefs, key = { it.id }) { product ->
                     BusinessCard { Text(product.code.ifBlank { stringResource(R.string.business_product_number, product.id) }, color = BusinessInk) }
@@ -608,7 +620,35 @@ fun SupplierOrderDetailScreen(
         }
     }
 }
-
+@Composable
+private fun SupplierOrderItemCard(item: SupplierOrderItem) = BusinessCard {
+    val sku = item.sku
+    val product = sku.product
+    Text(
+        product?.name.orEmpty().ifBlank {
+            product?.code.orEmpty().ifBlank {
+                stringResource(R.string.business_product_number, product?.id ?: 0)
+            }
+        },
+        color = BusinessInk,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+    Text(
+        listOf(product?.code.orEmpty(), sku.code)
+            .filter(String::isNotBlank)
+            .joinToString(" \u00b7 ")
+            .ifBlank { stringResource(R.string.business_no_product_code) },
+        color = BusinessMuted,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+    if (sku.name.isNotBlank()) Text(sku.name, color = BusinessMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    val boxCount = item.displayBoxCount.takeIf { it > 0 } ?: item.boxCount
+    Text(stringResource(R.string.business_supplier_item_summary, boxCount, item.qtyPerCarton, item.totalQty), color = BusinessDeep)
+    Text(stringResource(R.string.business_supplier_item_amount, item.currency, item.unitPrice, item.totalAmount), color = BusinessMuted)
+}
 @Composable
 fun PurchaseApprovalsScreen(
     onOpenDetail: (Long) -> Unit,

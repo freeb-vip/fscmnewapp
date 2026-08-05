@@ -115,6 +115,18 @@ class FscmBusinessTest {
     }
 
     @Test
+    fun supplierOrderDetailSummary_usesItemProductsAndDistinctSkus() {
+        val order = SupplierOrder(
+            productCount = 99,
+            items = listOf(
+                SupplierOrderItem(id = 1, boxCount = 2, totalQty = 24, sku = Sku(id = 10, code = "SKU-1", product = Product(id = 1, code = "P-1"))),
+                SupplierOrderItem(id = 2, displayBoxCount = 3, totalQty = 30, sku = Sku(id = 11, code = "SKU-2", product = Product(id = 1, code = "P-1"))),
+            ),
+        )
+
+        assertEquals(SupplierOrderDetailSummary(productCount = 1, skuCount = 2, totalBoxCount = 5, totalQty = 54), order.detailSummary())
+    }
+    @Test
     fun approvalValidation_enforcesBackendRules() {
         assertNull(validateApprovalInput(ApprovalAdjustment.None, null, "", 100.0))
         assertEquals(ApprovalValidationError.AmountMustBePositive, validateApprovalInput(ApprovalAdjustment.Amount, 0.0, "原因", 100.0))

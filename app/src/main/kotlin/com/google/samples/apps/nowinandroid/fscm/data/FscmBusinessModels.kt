@@ -129,6 +129,20 @@ data class SupplierOrderProductRef(
 )
 
 @Serializable
+data class SupplierOrderItem(
+    val id: Long = 0,
+    @SerialName("sku_id") val skuId: Long = 0,
+    @SerialName("box_count") val boxCount: Int = 0,
+    @SerialName("display_box_count") val displayBoxCount: Int = 0,
+    @SerialName("qty_per_carton") val qtyPerCarton: Int = 0,
+    @SerialName("total_qty") val totalQty: Int = 0,
+    @SerialName("unit_price") val unitPrice: Double = 0.0,
+    @SerialName("total_amount") val totalAmount: Double = 0.0,
+    val currency: String = "CNY",
+    val remark: String = "",
+    val sku: Sku = Sku(),
+)
+@Serializable
 data class SupplierOrder(
     val id: Long = 0,
     val code: String = "",
@@ -140,12 +154,37 @@ data class SupplierOrder(
     @SerialName("total_volume") val totalVolume: Double = 0.0,
     @SerialName("product_count") val productCount: Int = 0,
     @SerialName("product_refs") val productRefs: List<SupplierOrderProductRef> = emptyList(),
+    val items: List<SupplierOrderItem> = emptyList(),
     @SerialName("warning_type") val warningType: String = "",
     @SerialName("created_at") val createdAt: String = "",
     val manufacturer: ManufacturerRef? = null,
     @SerialName("purchase_order") val purchaseOrder: PurchaseOrderRef? = null,
 )
 
+data class SupplierOrderDetailSummary(
+    val productCount: Int = 0,
+    val skuCount: Int = 0,
+    val totalBoxCount: Int = 0,
+    val totalQty: Int = 0,
+)
+
+fun SupplierOrder.detailSummary(): SupplierOrderDetailSummary {
+    if (items.isEmpty()) return SupplierOrderDetailSummary(productCount, totalBoxCount = totalBoxCount, totalQty = totalQty)
+    val productKeys = items.map { item ->
+        val product = item.sku.product
+        product?.id?.takeIf { it > 0 }?.toString()
+            ?: product?.code?.takeIf(String::isNotBlank)
+            ?: item.sku.productId.takeIf { it > 0 }?.toString()
+            ?: item.sku.code
+    }.filter(String::isNotBlank).toSet()
+    val skuKeys = items.map { item -> item.sku.id.takeIf { it > 0 }?.toString() ?: item.sku.code }.filter(String::isNotBlank).toSet()
+    return SupplierOrderDetailSummary(
+        productCount = productKeys.size.takeIf { it > 0 } ?: productCount,
+        skuCount = skuKeys.size,
+        totalBoxCount = items.sumOf { it.displayBoxCount.takeIf { count -> count > 0 } ?: it.boxCount },
+        totalQty = items.sumOf(SupplierOrderItem::totalQty),
+    )
+}
 @Serializable
 data class SupplierOrderWarehouse(
     val id: Long = 0,
