@@ -58,6 +58,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -111,6 +112,7 @@ import com.google.samples.apps.nowinandroid.fscm.data.LocalInboundItemEntity
 import com.google.samples.apps.nowinandroid.fscm.data.LocalInboundProductSummaryEntity
 import com.google.samples.apps.nowinandroid.fscm.data.LocalInboundSnapshotEntity
 import com.google.samples.apps.nowinandroid.fscm.data.calculateInboundDraftMetrics
+import com.google.samples.apps.nowinandroid.fscm.data.canStartInboundBatch
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerInputMode
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -158,8 +160,8 @@ fun InboundSessionListScreen(
         item {
             InboundSessionFilters(
                 selected = state.filter,
-                activeCount = state.sessions.count { it.status != InboundSessionStatus.Complete.value },
-                completeCount = state.sessions.count { it.status == InboundSessionStatus.Complete.value },
+                activeCount = state.sessions.count { !it.isEffectivelyComplete() },
+                completeCount = state.sessions.count(InboundSessionSummary::isEffectivelyComplete),
                 onSelected = viewModel::setFilter,
             )
         }
@@ -282,22 +284,27 @@ fun InboundSessionScreen(
             if (state.loading && workspace == null) item { InboundLoading() }
             summary?.let { current ->
                 when {
-                    current.status == InboundSessionStatus.Complete.value -> item { InboundCompleteBand() }
-                    current.remainingCount <= 0 -> item { InboundWaitingBand() }
-                    else -> item {
-                        InboundScanInput(
-                            title = stringResource(R.string.inbound_scan_location),
-                            value = input,
-                            loading = state.submitting,
-                            broadcastMode = scannerState.effectiveMode == ScannerInputMode.IntentBroadcast,
-                            onValueChange = { value ->
-                                input = value
-                                if (value.hasScanTerminator()) viewModel.scan(value.cleanScanInput())
-                            },
-                            onSubmit = { viewModel.scan(input.cleanScanInput()) },
-                            onCamera = openCamera,
-                        )
+                    current.canStartInboundBatch() -> {
+                        if (current.rebindableCount > 0) {
+                            item { InboundVirtualRebindBand(current.rebindableCount) }
+                        }
+                        item {
+                            InboundScanInput(
+                                title = stringResource(R.string.inbound_scan_location),
+                                value = input,
+                                loading = state.submitting,
+                                broadcastMode = scannerState.effectiveMode == ScannerInputMode.IntentBroadcast,
+                                onValueChange = { value ->
+                                    input = value
+                                    if (value.hasScanTerminator()) viewModel.scan(value.cleanScanInput())
+                                },
+                                onSubmit = { viewModel.scan(input.cleanScanInput()) },
+                                onCamera = openCamera,
+                            )
+                        }
                     }
+                    current.status == InboundSessionStatus.Complete.value -> item { InboundCompleteBand() }
+                    else -> item { InboundWaitingBand() }
                 }
                 item {
                     FscmProgressOverview(
@@ -331,15 +338,17 @@ fun InboundSessionScreen(
             onDismissRequest = viewModel::dismissFinish,
             title = { Text(stringResource(R.string.inbound_finish_location)) },
             text = {
-                Text(
-                    stringResource(
-                        R.string.inbound_finish_confirmation,
-                        workspace?.draftBatch?.locationCode.orEmpty(),
-                        workspace?.draftItems?.size ?: 0,
-                    ),
-                )
+                Column {
+                    Text(stringResource(R.string.inbound_finish_confirmation, workspace?.draftBatch?.locationCode.orEmpty(), workspace?.draftItems?.size ?: 0))
+                    if ((workspace?.summary?.exceptionCount ?: 0) > 0) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = state.confirmExceptions, onCheckedChange = viewModel::setConfirmExceptions)
+                            Text("已知存在异常，确认继续完成入库")
+                        }
+                    }
+                }
             },
-            confirmButton = { Button(onClick = viewModel::finishBatch) { Text(stringResource(R.string.common_confirm)) } },
+            confirmButton = { Button(onClick = viewModel::finishBatch, enabled = (workspace?.summary?.exceptionCount ?: 0) == 0 || state.confirmExceptions) { Text(stringResource(R.string.common_confirm)) } },
             dismissButton = { TextButton(onClick = viewModel::dismissFinish) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
@@ -756,9 +765,39 @@ private fun InboundSessionCard(session: InboundSessionSummary, onClick: () -> Un
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.Warehouse, contentDescription = null, tint = InboundBrand)
                 Spacer(Modifier.size(8.dp))
-                Text(session.sessionCode, color = InboundInk, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        session.consolidationOrderCode.ifBlank { session.consolidationOrderName }.ifBlank { "集运订单" },
+                        color = InboundInk,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (session.consolidationOrderCode.isNotBlank() && session.consolidationOrderName.isNotBlank()) {
+                        Text(
+                            session.consolidationOrderName,
+                            color = InboundDeep,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Text(
+                        "入库单：${session.sessionCode}",
+                        color = InboundMuted,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    InboundStatusPill(session.status)
+                    InboundStatusPill(
+                        if (session.isEffectivelyComplete()) {
+                            InboundSessionStatus.Complete.value
+                        } else {
+                            session.status
+                        },
+                    )
                     if (session.snapshotComplete && session.locationCacheComplete) {
                         Text(
                             stringResource(R.string.inbound_offline_ready),
@@ -1363,6 +1402,26 @@ private fun InboundCompleteBand() = InboundCard {
         Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = InboundSuccess)
         Spacer(Modifier.size(8.dp))
         Text(stringResource(R.string.inbound_session_complete), color = InboundSuccess, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun InboundVirtualRebindBand(rebindableCount: Int) = InboundCard {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Rounded.QrCodeScanner, contentDescription = null, tint = InboundBrand)
+        Spacer(Modifier.size(8.dp))
+        Column {
+            Text(
+                stringResource(R.string.inbound_virtual_rebind_available, rebindableCount),
+                color = InboundBrand,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                stringResource(R.string.inbound_virtual_rebind_hint),
+                color = InboundMuted,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     }
 }
 

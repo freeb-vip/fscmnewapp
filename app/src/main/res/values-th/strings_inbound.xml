@@ -80,6 +80,8 @@
     <string name="inbound_use_remote_location">ละทิ้งในเครื่องและใช้ส่วนกลาง</string>
     <string name="inbound_resolve_later">จัดการภายหลัง</string>
     <string name="inbound_session_complete">รับเข้ากล่องทั้งหมดสำเร็จ</string>
+    <string name="inbound_virtual_rebind_available">กล่องที่มาจากการนำเข้าเสมือน %1$d กล่องยังเปลี่ยนตำแหน่งได้</string>
+    <string name="inbound_virtual_rebind_hint">สแกนตำแหน่งจริงก่อน แล้วสแกนกล่องที่มาจากการนำเข้าเสมือน กล่องปกติที่นำเข้าแล้วจะยังป้องกันการสแกนซ้ำ</string>
     <string name="inbound_local_complete_waiting">กำหนดตำแหน่งในเครื่องครบแล้ว</string>
     <string name="inbound_waiting_center_confirmation">รอซิงค์และยืนยันจากส่วนกลาง</string>
     <string name="inbound_status_active">กำลังทำ</string>

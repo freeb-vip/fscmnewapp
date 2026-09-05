@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     Copyright 2026 The Android Open Source Project
+
+     Licensed under the Apache License, Version 2.0 (the "License");
+     you may not use this file except in compliance with the License.
+     You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+     Unless required by applicable law or agreed to in writing, software
+     distributed under the License is distributed on an "AS IS" BASIS,
+     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+     See the License for the specific language governing permissions and
+     limitations under the License.
+-->
+<resources>
+    <string name="feature_manufacturer_payment_bills">ใบเรียกเก็บเงินผู้ผลิต</string>
+    <string name="feature_manufacturer_payment_bill_detail">รายละเอียดใบเรียกเก็บเงินผู้ผลิต</string>
+    <string name="local_app_manufacturer_payment_bills_title">ใบเรียกเก็บเงินผู้ผลิต</string>
+    <string name="local_app_manufacturer_payment_bills_description">ตรวจสอบใบเรียกเก็บเงินและชำระเงิน</string>
+    <string name="manufacturer_bills_load_failed">โหลดใบเรียกเก็บเงินผู้ผลิตไม่สำเร็จ</string>
+    <string name="manufacturer_bill_detail_load_failed">โหลดรายละเอียดใบเรียกเก็บเงินไม่สำเร็จ</string>
+    <string name="manufacturer_bill_attachment_failed">อัปโหลดหลักฐานการชำระเงินไม่สำเร็จ</string>
+    <string name="manufacturer_bill_action_failed">ดำเนินการใบเรียกเก็บเงินไม่สำเร็จ</string>
+    <string name="manufacturer_bill_rejected">ปฏิเสธใบเรียกเก็บเงินแล้ว</string>
+    <string name="manufacturer_bill_approved">อนุมัติใบเรียกเก็บเงินและบันทึกการชำระเงินแล้ว</string>
+    <string name="manufacturer_bill_payment_recorded">บันทึกการชำระเงินแล้ว</string>
+</resources>

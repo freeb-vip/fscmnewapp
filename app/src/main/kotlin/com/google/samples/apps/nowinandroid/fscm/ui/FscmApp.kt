@@ -719,7 +719,9 @@ private sealed interface FeatureRoute : Serializable {
     data class CentralReceivingDetail(val id: Long) : FeatureRoute
     data class ReceivingProductProgress(val business: ReceivingProductBusiness, val documentId: Long) : FeatureRoute
     data object SupplierOrders : FeatureRoute
-    data class SupplierOrderDetail(val id: Long) : FeatureRoute
+    data class SupplierOrderDetail(val id: Long, val returnToPaymentBillId: Long? = null) : FeatureRoute
+    data object ManufacturerPaymentBills : FeatureRoute
+    data class ManufacturerPaymentBillDetail(val id: Long) : FeatureRoute
     data object CameraScanner : FeatureRoute
     data object ProductManagement : FeatureRoute
     data object ProductCountingList : FeatureRoute
@@ -744,7 +746,9 @@ private fun FeatureRoute.parentRoute(): FeatureRoute = when (this) {
         ReceivingProductBusiness.Central -> FeatureRoute.CentralReceivingDetail(documentId)
         ReceivingProductBusiness.Inbound -> FeatureRoute.InboundSession(documentId)
     }
-    is FeatureRoute.SupplierOrderDetail -> FeatureRoute.SupplierOrders
+    is FeatureRoute.SupplierOrderDetail -> returnToPaymentBillId?.let { FeatureRoute.ManufacturerPaymentBillDetail(it) }
+        ?: FeatureRoute.SupplierOrders
+    is FeatureRoute.ManufacturerPaymentBillDetail -> FeatureRoute.ManufacturerPaymentBills
     is FeatureRoute.ProductCountingDetail -> FeatureRoute.ProductCountingList
     is FeatureRoute.ProductSkuList,
     is FeatureRoute.SkuDetail,
@@ -915,6 +919,22 @@ private fun FeatureScreen(
         } else {
             null
         }
+    val manufacturerPaymentBillDetailViewModel: ManufacturerPaymentBillDetailViewModel? =
+        if (route is FeatureRoute.ManufacturerPaymentBillDetail) {
+            hiltViewModel(key = "manufacturer-payment-bill-${route.id}")
+        } else {
+            null
+        }
+    val manufacturerPaymentBillDetailState = if (manufacturerPaymentBillDetailViewModel != null) {
+        val state by manufacturerPaymentBillDetailViewModel.state.collectAsStateWithLifecycle()
+        state
+    } else {
+        null
+    }
+
+    BackHandler(enabled = manufacturerPaymentBillDetailState?.hasUnsubmittedAttachments == true) {
+        manufacturerPaymentBillDetailViewModel?.requestDiscardNavigation()
+    }
 
     Scaffold(
         topBar = {
@@ -931,6 +951,8 @@ private fun FeatureScreen(
                         is FeatureRoute.ReceivingProductProgress -> stringResource(R.string.receiving_product_details_title)
                         FeatureRoute.SupplierOrders -> stringResource(R.string.feature_supplier_orders)
                         is FeatureRoute.SupplierOrderDetail -> stringResource(R.string.feature_supplier_order_detail)
+                        FeatureRoute.ManufacturerPaymentBills -> stringResource(R.string.feature_manufacturer_payment_bills)
+                        is FeatureRoute.ManufacturerPaymentBillDetail -> stringResource(R.string.feature_manufacturer_payment_bill_detail)
                         FeatureRoute.ProductManagement -> stringResource(R.string.feature_product_management)
                         FeatureRoute.ProductCountingList -> stringResource(R.string.feature_product_counting)
                         is FeatureRoute.ProductCountingDetail -> stringResource(R.string.feature_product_counting)
@@ -946,7 +968,13 @@ private fun FeatureScreen(
                         FeatureRoute.None -> ""
                         FeatureRoute.CameraScanner -> ""
                     },
-                    onBack = onBack,
+                    onBack = {
+                        if (manufacturerPaymentBillDetailState?.hasUnsubmittedAttachments == true) {
+                            manufacturerPaymentBillDetailViewModel?.requestDiscardNavigation()
+                        } else {
+                            onBack()
+                        }
+                    },
                     actions = {
                         receivingDetailViewModel?.let { viewModel ->
                             val detailState by viewModel.state.collectAsStateWithLifecycle()
@@ -1052,6 +1080,16 @@ private fun FeatureScreen(
                     viewModel = requireNotNull(supplierOrdersViewModel),
                 )
                 is FeatureRoute.SupplierOrderDetail -> SupplierOrderDetailScreen(route.id)
+                FeatureRoute.ManufacturerPaymentBills -> ManufacturerPaymentBillsScreen(
+                    onOpenBill = { onNavigate(FeatureRoute.ManufacturerPaymentBillDetail(it)) },
+                    onOpenSupplierOrder = { onNavigate(FeatureRoute.SupplierOrderDetail(it)) },
+                )
+                is FeatureRoute.ManufacturerPaymentBillDetail -> ManufacturerPaymentBillDetailScreen(
+                    id = route.id,
+                    onOpenSupplierOrder = { onNavigate(FeatureRoute.SupplierOrderDetail(it, route.id)) },
+                    onBack = onBack,
+                    viewModel = requireNotNull(manufacturerPaymentBillDetailViewModel),
+                )
                 FeatureRoute.CameraScanner -> CameraScannerScreen(onBack = onBack, onResult = onScanResult)
                 FeatureRoute.ProductManagement -> ProductManagementScreen(
                     onOpenSkuDetail = { onNavigate(FeatureRoute.SkuDetail(it)) },
@@ -1400,7 +1438,7 @@ private fun TaskSection(
     displayPolicy: FscmDisplayPolicy,
 ) {
     val todoCount = overview?.todos?.count { it.status !in listOf("done", "completed", "finished") } ?: 0
-    val taskApps = apps.filter { it.key in setOf("receiving", "central_receiving", "payment_bills", "purchase_approvals", "supplier_orders", "tickets", "todos") }
+    val taskApps = apps.filter { it.key in setOf("receiving", "central_receiving", "manufacturer_payment_bills", "purchase_approvals", "supplier_orders", "tickets", "todos") }
         .map { app -> app to if (app.key == "todos") todoCount else app.badgeCount }
         .filter { (app, count) -> count > 0 || app.key in setOf("receiving", "central_receiving") }
     if (taskApps.isEmpty()) return
@@ -2853,6 +2891,7 @@ internal fun localAppTitleResource(key: String): Int? = when (key) {
     "box_labels", "carton_management" -> R.string.local_app_box_labels_title
     "supplier_orders" -> R.string.local_app_supplier_orders_title
     "purchase_approvals" -> R.string.local_app_purchase_approvals_title
+    "manufacturer_payment_bills" -> R.string.local_app_manufacturer_payment_bills_title
     "label_print", "label_printing", "print_label", "custom_label_print" -> R.string.local_app_label_print_title
     "edge_nodes", "edge_node", "print_settings", "printer_settings", "label_print_settings", "edge_print_settings" -> R.string.local_app_edge_nodes_title
     "pda_settings", "pda_scanner_settings", "scanner_settings" -> R.string.local_app_pda_settings_title
@@ -2874,6 +2913,7 @@ private fun localAppDescriptionResource(key: String): Int? = when (key) {
     "box_labels", "carton_management" -> R.string.local_app_box_labels_description
     "supplier_orders" -> R.string.local_app_supplier_orders_description
     "purchase_approvals" -> R.string.local_app_purchase_approvals_description
+    "manufacturer_payment_bills" -> R.string.local_app_manufacturer_payment_bills_description
     "label_print", "label_printing", "print_label", "custom_label_print" -> R.string.local_app_label_print_description
     "edge_nodes", "edge_node", "print_settings", "printer_settings", "label_print_settings", "edge_print_settings" -> R.string.local_app_edge_nodes_description
     "pda_settings", "pda_scanner_settings", "scanner_settings" -> R.string.local_app_pda_settings_description
@@ -3101,6 +3141,10 @@ private fun openAppEntry(
     }
     "supplier_orders" -> {
         onOpenFeature(FeatureRoute.SupplierOrders)
+        true
+    }
+    "manufacturer_payment_bills" -> {
+        onOpenFeature(FeatureRoute.ManufacturerPaymentBills)
         true
     }
     "receiving" -> {

@@ -43,6 +43,37 @@ class FscmDataTest {
     }
 
     @Test
+    fun receivingScanResponse_readsServerItemPayload() {
+        val response = json.decodeFromString<ReceivingScanResponse>(
+            """{"item":{"box_plan_id":4107,"label_code":"BF5E53CF6A8B","status":"normal","can_scan_rebind":true,"virtual_recovery_required":true},"duplicate":false}""",
+        )
+
+        assertEquals(4107, response.resolvedData.boxPlanId)
+        assertEquals("BF5E53CF6A8B", response.resolvedData.labelCode)
+        assertTrue(response.resolvedCanScanRebind)
+        assertTrue(response.resolvedVirtualRecoveryRequired)
+    }
+
+    @Test
+    fun receivingScanResponse_readsTopLevelVirtualRebindFlags() {
+        val response = json.decodeFromString<ReceivingScanResponse>(
+            """{"item":{"box_plan_id":4107,"label_code":"BF5E53CF6A8B"},"duplicate":true,"can_scan_rebind":true,"virtual_recovery_required":true}""",
+        )
+
+        assertTrue(response.resolvedCanScanRebind)
+        assertTrue(response.resolvedVirtualRecoveryRequired)
+    }
+
+    @Test
+    fun receivingSession_readsVirtualInboundOriginFlag() {
+        val session = json.decodeFromString<ReceivingSession>(
+            """{"id":18,"code":"RS-18","inbound_status":"completed","has_virtual_inbound":true}""",
+        )
+
+        assertTrue(session.hasVirtualInbound)
+    }
+
+    @Test
     fun loginSecurityState_decodesCaptchaFromInvalidCredentialsResponse() {
         val payload = json.parseToJsonElement(
             """{"code":40101,"data":{"failed_count":3,"captcha_threshold":3,"max_failed_attempts":5,"remaining_attempts":2,"require_captcha":true,"lock_remaining_seconds":0,"captcha":{"captcha_id":"challenge-1","question":"3 + 4 = ?","expires_at":"2026-07-21T12:00:00Z"},"reason_code":"INVALID_CREDENTIALS"},"msg":"invalid credentials"}""",

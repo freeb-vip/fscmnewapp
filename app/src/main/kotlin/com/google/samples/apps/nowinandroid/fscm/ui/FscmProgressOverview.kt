@@ -227,6 +227,9 @@ private fun ProgressMetricCell(
                 maxLines = 1,
             )
         }
+        if (onClick != null) {
+            Text("查看详情 ›", color = valueColor, style = MaterialTheme.typography.labelSmall)
+        }
         Text(
             text = label,
             color = if (valueColor == ProgressDanger) ProgressDanger else ProgressMuted,

@@ -35,6 +35,7 @@ class FscmAppIconTest {
             "product_management" to AppGlyph.Products,
             "box_labels" to AppGlyph.BoxLabels,
             "supplier_orders" to AppGlyph.SupplierOrders,
+            "manufacturer_payment_bills" to AppGlyph.ManufacturerPaymentBills,
             "purchase_approvals" to AppGlyph.PurchaseApprovals,
             "label_print" to AppGlyph.LabelPrint,
             "edge_nodes" to AppGlyph.EdgeNodes,

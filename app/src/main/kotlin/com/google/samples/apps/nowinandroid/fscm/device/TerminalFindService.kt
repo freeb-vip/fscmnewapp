@@ -51,6 +51,7 @@ import com.google.samples.apps.nowinandroid.fscm.data.EdgeTerminalRepository
 import com.google.samples.apps.nowinandroid.fscm.data.EdgeTicketProvider
 import com.google.samples.apps.nowinandroid.fscm.data.FscmJson
 import com.google.samples.apps.nowinandroid.fscm.data.SessionStore
+import dagger.Lazy
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -151,7 +152,10 @@ class TerminalFindService : Service() {
     lateinit var sessionStore: SessionStore
 
     @Inject
-    lateinit var terminalRepository: EdgeTerminalRepository
+    lateinit var lazyTerminalRepository: Lazy<EdgeTerminalRepository>
+
+    private val terminalRepository: EdgeTerminalRepository
+        get() = lazyTerminalRepository.get()
 
     @Inject
     lateinit var ticketProvider: EdgeTicketProvider
@@ -167,10 +171,13 @@ class TerminalFindService : Service() {
     lateinit var json: Json
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val client = OkHttpClient.Builder()
-        .pingInterval(20, TimeUnit.SECONDS)
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .build()
+    private val client by lazy {
+        OkHttpClient.Builder()
+            .pingInterval(20, TimeUnit.SECONDS)
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .build()
+    }
+    private var sessionJob: Job? = null
     private var connectionJob: Job? = null
     private var centerPresenceJob: Job? = null
     private var expiryJob: Job? = null
@@ -194,8 +201,12 @@ class TerminalFindService : Service() {
         super.onCreate()
         createNotificationChannel()
         showNotification(TerminalFindConnectionStatus.Connecting)
+    }
+
+    private fun observeSession() {
+        if (sessionJob != null) return
         runCatching { connectivityManager.registerDefaultNetworkCallback(networkCallback) }
-        serviceScope.launch {
+        sessionJob = serviceScope.launch {
             sessionStore.session
                 .map { session -> Triple(session.isLoggedIn, session.currentNamespace?.id, session.sessionMode) }
                 .distinctUntilChanged()
@@ -211,10 +222,17 @@ class TerminalFindService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Every foreground start must be acknowledged before session callbacks can stop us.
+        // onCreate alone is insufficient when starts are queued for an existing service.
+        showNotification(TerminalFindConnectionStatus.Connecting)
+        if (intent?.action == ACTION_STOP_SERVICE) {
+            stopForLogout()
+            return START_NOT_STICKY
+        }
+        observeSession()
         when (intent?.action) {
             ACTION_STOP_RINGING -> stopRingingLocally("stopped")
             ACTION_TEST_RINGING -> startLocalTest()
-            ACTION_STOP_SERVICE -> stopForLogout()
             else -> restartConnectionIfNeeded()
         }
         return START_STICKY
@@ -519,6 +537,7 @@ class TerminalFindService : Service() {
     }
 
     private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             NOTIFICATION_CHANNEL_ID,
             getString(R.string.terminal_find_channel_name),

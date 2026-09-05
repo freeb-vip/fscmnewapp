@@ -126,6 +126,7 @@ class FscmBusinessTest {
 
         assertEquals(SupplierOrderDetailSummary(productCount = 1, skuCount = 2, totalBoxCount = 5, totalQty = 54), order.detailSummary())
     }
+
     @Test
     fun approvalValidation_enforcesBackendRules() {
         assertNull(validateApprovalInput(ApprovalAdjustment.None, null, "", 100.0))

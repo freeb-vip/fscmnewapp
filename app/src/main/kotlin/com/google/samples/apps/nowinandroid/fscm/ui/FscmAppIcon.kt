@@ -36,6 +36,7 @@ import androidx.compose.material.icons.rounded.NoteAlt
 import androidx.compose.material.icons.rounded.Print
 import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.QrCodeScanner
+import androidx.compose.material.icons.rounded.ReceiptLong
 import androidx.compose.material.icons.rounded.Warehouse
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -61,6 +62,7 @@ internal enum class AppGlyph {
     ProductCounting,
     BoxLabels,
     SupplierOrders,
+    ManufacturerPaymentBills,
     PurchaseApprovals,
     LabelPrint,
     EdgeNodes,
@@ -84,6 +86,7 @@ private fun appGlyphForKey(rawKey: String): AppGlyph? = when (rawKey.normalizedI
     "product_counting" -> AppGlyph.ProductCounting
     "box_labels", "carton_management" -> AppGlyph.BoxLabels
     "supplier_orders" -> AppGlyph.SupplierOrders
+    "manufacturer_payment_bills", "payment_bills" -> AppGlyph.ManufacturerPaymentBills
     "purchase_approvals" -> AppGlyph.PurchaseApprovals
     "label_print", "label_printing", "print_label", "custom_label_print" -> AppGlyph.LabelPrint
     "edge_nodes", "edge_node", "print_settings", "printer_settings", "label_print_settings", "edge_print_settings" -> AppGlyph.EdgeNodes
@@ -104,6 +107,7 @@ private fun appGlyphForToken(rawToken: String): AppGlyph? = when (rawToken.norma
     "product_counting", "counting", "stocktake" -> AppGlyph.ProductCounting
     "box", "carton", "box_labels", "qr" -> AppGlyph.BoxLabels
     "supplier", "factory" -> AppGlyph.SupplierOrders
+    "payment", "payments", "bill", "receipt", "receipt_long" -> AppGlyph.ManufacturerPaymentBills
     "approval", "audit", "fact_check" -> AppGlyph.PurchaseApprovals
     "label", "print" -> AppGlyph.LabelPrint
     "edge", "node", "device_hub" -> AppGlyph.EdgeNodes
@@ -127,6 +131,7 @@ private fun AppGlyph.imageVector(): ImageVector = when (this) {
     AppGlyph.ProductCounting -> Icons.AutoMirrored.Rounded.FactCheck
     AppGlyph.BoxLabels -> Icons.Rounded.QrCode2
     AppGlyph.SupplierOrders -> Icons.Rounded.Factory
+    AppGlyph.ManufacturerPaymentBills -> Icons.Rounded.ReceiptLong
     AppGlyph.PurchaseApprovals -> Icons.AutoMirrored.Rounded.FactCheck
     AppGlyph.LabelPrint -> Icons.Rounded.Print
     AppGlyph.EdgeNodes -> Icons.Rounded.DeviceHub

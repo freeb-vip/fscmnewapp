@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     Copyright 2026 The Android Open Source Project
+
+     Licensed under the Apache License, Version 2.0 (the "License");
+     you may not use this file except in compliance with the License.
+     You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+     Unless required by applicable law or agreed to in writing, software
+     distributed under the License is distributed on an "AS IS" BASIS,
+     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+     See the License for the specific language governing permissions and
+     limitations under the License.
+-->
+<resources>
+    <string name="feature_manufacturer_payment_bills">ထုတ်လုပ်သူ ဘေလ်များ</string>
+    <string name="feature_manufacturer_payment_bill_detail">ထုတ်လုပ်သူ ဘေလ်အသေးစိတ်</string>
+    <string name="local_app_manufacturer_payment_bills_title">ထုတ်လုပ်သူ ဘေလ်များ</string>
+    <string name="local_app_manufacturer_payment_bills_description">ဘေလ်စစ်ဆေးခြင်းနှင့် ငွေပေးချေခြင်း</string>
+    <string name="manufacturer_bills_load_failed">ထုတ်လုပ်သူ ဘေလ်များ ရယူ၍မရပါ</string>
+    <string name="manufacturer_bill_detail_load_failed">ဘေလ်အသေးစိတ် ရယူ၍မရပါ</string>
+    <string name="manufacturer_bill_attachment_failed">ငွေပေးချေမှု အထောက်အထား တင်၍မရပါ</string>
+    <string name="manufacturer_bill_action_failed">ဘေလ်လုပ်ဆောင်ချက် မအောင်မြင်ပါ</string>
+    <string name="manufacturer_bill_rejected">ဘေလ်ကို ပယ်ချပြီးပါပြီ</string>
+    <string name="manufacturer_bill_approved">ဘေလ်ကို အတည်ပြုပြီး ငွေပေးချေမှု မှတ်တမ်းတင်ပြီးပါပြီ</string>
+    <string name="manufacturer_bill_payment_recorded">ငွေပေးချေမှု မှတ်တမ်းတင်ပြီးပါပြီ</string>
+</resources>

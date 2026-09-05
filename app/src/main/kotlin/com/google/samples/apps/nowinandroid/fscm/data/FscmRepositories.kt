@@ -1452,6 +1452,7 @@ private val localSearchAliases = mapOf(
     "carton_management" to listOf("箱唛", "箱唛管理"),
     "supplier_orders" to listOf("厂家订单", "供应商订单"),
     "purchase_approvals" to listOf("采购审核", "采购审批"),
+    "manufacturer_payment_bills" to listOf("厂家账单", "账单审核", "付款账单", "厂家付款"),
     "pda_settings" to listOf("PDA", "PDA 设置", "扫描设置"),
     "edge_nodes" to listOf("边缘节点", "边缘服务", "服务节点", "局域网探测"),
     "label_print" to listOf("标签打印", "字符打印", "条码打印", "打印标签"),
@@ -1512,10 +1513,15 @@ class ReceivingRepository @Inject constructor(
         val userId = session.user?.id ?: 0
         if (session.isOffline) return cachedSessions(userId, namespaceId)
         val rows = runCatching {
-            decodeReceivingSessionsPayload(
-                payload = api.get("receiving-sessions", mapOf("page" to "1", "pageSize" to "50")),
+            val active = decodeReceivingSessionsPayload(
+                payload = api.get("receiving-sessions", mapOf("page" to "1", "page_size" to "100", "inbound_status" to "pending")),
                 json = json,
             )
+            val completed = decodeReceivingSessionsPayload(
+                payload = api.get("receiving-sessions", mapOf("page" to "1", "page_size" to "100", "inbound_status" to "completed")),
+                json = json,
+            )
+            (active + completed).distinctBy { it.id }
         }.getOrElse { error ->
             cachedSessions(userId, namespaceId).takeIf { it.isNotEmpty() && error !is FscmApiException } ?: throw error
         }
@@ -2275,6 +2281,7 @@ fun visibleMobileApps(
 private fun normalizeMobileAppEntry(entry: MobileAppEntry): MobileAppEntry {
     val normalizedKey = when (entry.key) {
         "carton_management" -> "box_labels"
+        "payment_bills" -> "manufacturer_payment_bills"
         in legacyPdaSettingsAppKeys -> "pda_settings"
         in legacyEdgeNodeAppKeys -> "edge_nodes"
         in legacyLabelPrintAppKeys -> "label_print"
@@ -2292,6 +2299,7 @@ internal val implementedMobileAppKeys = setOf(
     "product_counting",
     "box_labels",
     "supplier_orders",
+    "manufacturer_payment_bills",
     "label_print",
     "edge_nodes",
     "pda_settings",
@@ -2377,6 +2385,17 @@ val defaultMobileApps = listOf(
         offlineRequiredPermissions = listOf("mobile-app:central-receiving", "receiving_records"),
     ),
     MobileAppEntry("supplier_orders", "", "", "/pages/supplier-orders/index", "mobile-app:supplier-orders", "supplier-orders", "", "#14b8a6", sort = 35),
+    MobileAppEntry(
+        "manufacturer_payment_bills",
+        "",
+        "",
+        "/pages/manufacturer-payment-bills/index",
+        "mobile-app:payment-bills",
+        "payment-bills",
+        "receipt_long",
+        "#1677ff",
+        sort = 37,
+    ),
     MobileAppEntry(
         key = "product_counting",
         title = "",

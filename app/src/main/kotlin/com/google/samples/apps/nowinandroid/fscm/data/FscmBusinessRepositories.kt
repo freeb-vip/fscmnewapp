@@ -16,6 +16,7 @@
 
 package com.google.samples.apps.nowinandroid.fscm.data
 
+import android.util.Log
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -104,9 +105,12 @@ class LegacyCentralReceivingRepository @Inject constructor(
         val parsed = parseBoxLabelQr(rawCode)
         if (sessionStore.current().isOffline) return enqueue(id, parsed, actualBoxQty)
         val path = if (id == null) "central-receipts/box-labels/scan" else "central-receipts/$id/box-labels/scan"
+        Log.i("FscmCentralScan", "scan path=$path inputId=$id rawCode=${parsed.originalRawCode}")
         return runCatching {
             decodeBusinessObject<CentralReceiptScanResult>(api.post(path, scanBody(parsed, actualBoxQty)), json)
-                .copy(parsedPayload = parsed)
+                .copy(parsedPayload = parsed).also { result ->
+                    Log.i("FscmCentralScan", "resolved centralReceiptId=${result.centralReceiptId} labelId=${result.item?.id}")
+                }
         }.getOrElse { error ->
             if (error is FscmApiException) throw error
             enqueue(id, parsed, actualBoxQty)

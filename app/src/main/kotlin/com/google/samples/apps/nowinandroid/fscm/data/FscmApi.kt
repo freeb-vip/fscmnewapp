@@ -35,6 +35,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.serializer
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Response
@@ -44,8 +45,10 @@ import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.HeaderMap
+import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.PUT
+import retrofit2.http.Part
 import retrofit2.http.QueryMap
 import retrofit2.http.Url
 import javax.inject.Inject
@@ -85,6 +88,13 @@ interface FscmRetrofitApi {
 
     @DELETE
     suspend fun delete(@Url url: String): Response<JsonElement>
+
+    @Multipart
+    @POST
+    suspend fun upload(
+        @Url url: String,
+        @Part file: MultipartBody.Part,
+    ): Response<JsonElement>
 }
 
 class FscmApiException(
@@ -146,6 +156,12 @@ class FscmApiClient @Inject constructor(
         path: String,
         auth: Boolean = true,
     ): T = send(auth) { api.delete(path) }
+
+    suspend inline fun <reified T> upload(
+        path: String,
+        file: MultipartBody.Part,
+        auth: Boolean = true,
+    ): T = send(auth) { api.upload(path, file) }
 
     suspend inline fun <reified T> send(
         auth: Boolean,
@@ -315,8 +331,10 @@ class FscmAuthInterceptor @Inject constructor(
         )
         val requestBuilder = chain.request().newBuilder()
             .header("X-FSCM-Client", "mobile-app")
-            .header("Content-Type", "application/json")
             .header("Accept-Language", languageTag)
+        if (chain.request().header("Content-Type") == null && chain.request().body?.contentType() == null) {
+            requestBuilder.header("Content-Type", "application/json")
+        }
         if (session.token.isNotBlank()) {
             requestBuilder.header("Authorization", "Bearer ${session.token}")
         }

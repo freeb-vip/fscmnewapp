@@ -80,6 +80,8 @@
     <string name="inbound_use_remote_location">စက်ဒေတာပယ်ပြီး စင်တာနေရာသုံးရန်</string>
     <string name="inbound_resolve_later">နောက်မှ ဖြေရှင်းရန်</string>
     <string name="inbound_session_complete">သေတ္တာအားလုံး ကုန်သွင်းအောင်မြင်သည်</string>
+    <string name="inbound_virtual_rebind_available">အတုအဝင်ရင်းမြစ်ရှိ သေတ္တာ %1$d ခုကို နေရာပြန်ချိတ်နိုင်သေးသည်</string>
+    <string name="inbound_virtual_rebind_hint">အမှန်တကယ်သိုလှောင်နေရာကို အရင်စကင်ဖတ်ပြီး အတုအဝင်ရင်းမြစ်ရှိသေတ္တာကို စကင်ဖတ်ပါ။ ပုံမှန်အဝင်သွင်းပြီးသောသေတ္တာများကို ထပ်မံစကင်ဖတ်ခြင်းမှ ကာကွယ်ထားမည်။</string>
     <string name="inbound_local_complete_waiting">စက်တွင် နေရာအားလုံး သတ်မှတ်ပြီးပါပြီ</string>
     <string name="inbound_waiting_center_confirmation">စင့်ခ်နှင့် စင်တာအတည်ပြုချက် စောင့်နေသည်</string>
     <string name="inbound_status_active">လုပ်ဆောင်နေသည်</string>

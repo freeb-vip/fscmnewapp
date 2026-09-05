@@ -99,12 +99,12 @@ import com.google.samples.apps.nowinandroid.fscm.data.PurchaseApproval
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingQuickScanResponse
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingSession
 import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrder
-import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrderItem
 import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrderCategory
 import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrderFilters
+import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrderItem
 import com.google.samples.apps.nowinandroid.fscm.data.SupplierOrderWarehouse
-import com.google.samples.apps.nowinandroid.fscm.data.detailSummary
 import com.google.samples.apps.nowinandroid.fscm.data.allowedSupplierOrderStatuses
+import com.google.samples.apps.nowinandroid.fscm.data.detailSummary
 import com.google.samples.apps.nowinandroid.fscm.data.isLikelyBoxLabelQr
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerInputMode
 import com.google.samples.apps.nowinandroid.fscm.device.isSuccessfulScanResult
@@ -620,6 +620,7 @@ fun SupplierOrderDetailScreen(
         }
     }
 }
+
 @Composable
 private fun SupplierOrderItemCard(item: SupplierOrderItem) = BusinessCard {
     val sku = item.sku
@@ -649,6 +650,7 @@ private fun SupplierOrderItemCard(item: SupplierOrderItem) = BusinessCard {
     Text(stringResource(R.string.business_supplier_item_summary, boxCount, item.qtyPerCarton, item.totalQty), color = BusinessDeep)
     Text(stringResource(R.string.business_supplier_item_amount, item.currency, item.unitPrice, item.totalAmount), color = BusinessMuted)
 }
+
 @Composable
 fun PurchaseApprovalsScreen(
     onOpenDetail: (Long) -> Unit,

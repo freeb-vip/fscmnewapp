@@ -66,12 +66,17 @@ internal fun filterInboundSessions(
     sessions: List<InboundSessionSummary>,
     filter: InboundSessionFilter,
 ): List<InboundSessionSummary> = sessions.filter { session ->
-    val complete = session.status == InboundSessionStatus.Complete.value
+    val complete = session.isEffectivelyComplete()
     when (filter) {
         InboundSessionFilter.Active -> !complete
         InboundSessionFilter.Complete -> complete
     }
 }
+
+internal fun InboundSessionSummary.isEffectivelyComplete(): Boolean =
+    // The inbound stage status is authoritative for list classification.
+    // Local snapshots may not be downloaded yet for historical sessions.
+    status == InboundSessionStatus.Complete.value
 
 @HiltViewModel
 class InboundSessionListViewModel @Inject constructor(
@@ -82,7 +87,7 @@ class InboundSessionListViewModel @Inject constructor(
 
     fun load() = viewModelScope.launch {
         _state.update { it.copy(loading = true, error = null) }
-        runCatching { repository.sessionSummaries(refreshRemote = false) }
+        runCatching { repository.sessionSummaries(refreshRemote = true) }
             .onSuccess { sessions ->
                 _state.update {
                     it.copy(
@@ -124,6 +129,7 @@ data class InboundSessionUiState(
     val cameraOpen: Boolean = false,
     val cameraResumeToken: Long = 0,
     val finishConfirmationOpen: Boolean = false,
+    val confirmExceptions: Boolean = false,
     val cancelConfirmationOpen: Boolean = false,
     val conflictDialogOpen: Boolean = false,
     val issuesOpen: Boolean = false,
@@ -237,8 +243,7 @@ class InboundSessionViewModel @Inject constructor(
                         message = UiText.Resource(
                             if (scanningLocation) R.string.inbound_location_locked else R.string.inbound_box_saved,
                         ),
-                        cameraOpen = if (scanningLocation) false else it.cameraOpen,
-                        cameraResumeToken = if (scanningLocation) it.cameraResumeToken else it.cameraResumeToken + 1,
+                        cameraOpen = false,
                         knownLocationCodes = knownLocations.filter(String::isNotBlank).toSet(),
                     )
                 }
@@ -262,7 +267,9 @@ class InboundSessionViewModel @Inject constructor(
         runCatching { com.google.samples.apps.nowinandroid.fscm.data.normalizeInboundLocation(code) }
             .getOrNull() in _state.value.knownLocationCodes
 
-    fun requestFinish() = _state.update { it.copy(finishConfirmationOpen = true) }
+    fun requestFinish() = _state.update { it.copy(finishConfirmationOpen = true, confirmExceptions = false) }
+
+    fun setConfirmExceptions(value: Boolean) = _state.update { it.copy(confirmExceptions = value) }
 
     fun dismissFinish() = _state.update { it.copy(finishConfirmationOpen = false) }
 
@@ -325,6 +332,8 @@ class InboundSessionViewModel @Inject constructor(
                 repository.syncSessionManually(sessionId) { processed, total ->
                     _state.update { it.copy(syncProcessed = processed, syncTotal = total) }
                 }
+                repository.completeInboundIfReady(sessionId)
+                repository.workspace(sessionId)
             }
                 .onSuccess { workspace ->
                     _state.update {

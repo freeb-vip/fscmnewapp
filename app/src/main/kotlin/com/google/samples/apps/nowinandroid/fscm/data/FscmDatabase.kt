@@ -350,7 +350,7 @@ interface LocalReceivingDao {
         ProductCountEntryEntity::class,
         SkuProductIndexEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = false,
 )
 abstract class FscmDatabase : RoomDatabase() {
@@ -404,6 +404,7 @@ object FscmDatabaseModule {
                     MIGRATION_10_11,
                     MIGRATION_11_12,
                     MIGRATION_12_13,
+                    MIGRATION_13_14,
                 )
                 .build()
         } finally {
@@ -611,20 +612,48 @@ object FscmDatabaseModule {
 
     internal val MIGRATION_12_13 = object : Migration(12, 13) {
         override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("ALTER TABLE `product_count_tasks` ADD COLUMN `uploadStatus` TEXT NOT NULL DEFAULT 'local'")
-            db.execSQL("ALTER TABLE `product_count_tasks` ADD COLUMN `serverRevision` INTEGER NOT NULL DEFAULT 0")
-            db.execSQL("ALTER TABLE `product_count_tasks` ADD COLUMN `lastUploadId` TEXT NOT NULL DEFAULT ''")
-            db.execSQL("ALTER TABLE `product_count_tasks` ADD COLUMN `uploadedAt` INTEGER NOT NULL DEFAULT 0")
-            db.execSQL("ALTER TABLE `product_count_entries` ADD COLUMN `skuItemsJson` TEXT NOT NULL DEFAULT '[]'")
-            db.execSQL("ALTER TABLE `product_count_entries` ADD COLUMN `sequenceNo` INTEGER NOT NULL DEFAULT 0")
-            db.execSQL("ALTER TABLE `product_count_entries` ADD COLUMN `validationStatus` TEXT NOT NULL DEFAULT 'pending'")
-            db.execSQL("ALTER TABLE `product_count_entries` ADD COLUMN `validationMessage` TEXT NOT NULL DEFAULT ''")
+            db.addColumnIfNotExists("product_count_tasks", "uploadStatus", "TEXT NOT NULL DEFAULT 'local'")
+            db.addColumnIfNotExists("product_count_tasks", "serverRevision", "INTEGER NOT NULL DEFAULT 0")
+            db.addColumnIfNotExists("product_count_tasks", "lastUploadId", "TEXT NOT NULL DEFAULT ''")
+            db.addColumnIfNotExists("product_count_tasks", "uploadedAt", "INTEGER NOT NULL DEFAULT 0")
+            db.addColumnIfNotExists("product_count_entries", "skuItemsJson", "TEXT NOT NULL DEFAULT '[]'")
+            db.addColumnIfNotExists("product_count_entries", "sequenceNo", "INTEGER NOT NULL DEFAULT 0")
+            db.addColumnIfNotExists("product_count_entries", "validationStatus", "TEXT NOT NULL DEFAULT 'pending'")
+            db.addColumnIfNotExists("product_count_entries", "validationMessage", "TEXT NOT NULL DEFAULT ''")
             db.execSQL("UPDATE `product_count_entries` SET `skuItemsJson` = COALESCE((SELECT json_group_array(json_object('sku_code', value, 'quantity', NULL, 'quantity_source', 'unknown')) FROM json_each(`skuCodesJson`)), '[]')")
             db.execSQL("UPDATE `product_count_entries` SET `sequenceNo` = rowid WHERE `sequenceNo` = 0")
             db.execSQL("DELETE FROM `pending_sync_operations` WHERE `module` = 'product_counting'")
         }
     }
+
+    internal val MIGRATION_13_14 = object : Migration(13, 14) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.addColumnIfNotExists("local_inbound_sessions", "consolidationOrderCode", "TEXT NOT NULL DEFAULT ''")
+            db.addColumnIfNotExists("local_inbound_sessions", "consolidationOrderName", "TEXT NOT NULL DEFAULT ''")
+            db.addColumnIfNotExists("local_inbound_sessions", "hasVirtualInbound", "INTEGER NOT NULL DEFAULT 0")
+            db.addColumnIfNotExists("local_inbound_snapshots", "canScanRebind", "INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE `local_inbound_sessions` SET `snapshotAt` = 0 WHERE `snapshotComplete` = 1")
+        }
+    }
     private const val DATABASE_NAME = "fscm.db"
+}
+
+internal fun SupportSQLiteDatabase.addColumnIfNotExists(
+    tableName: String,
+    columnName: String,
+    columnDefinition: String,
+) {
+    val existingColumns = query("PRAGMA table_info(`$tableName`)").use { cursor ->
+        buildSet {
+            val nameIndex = cursor.getColumnIndex("name")
+            while (cursor.moveToNext()) {
+                if (nameIndex != -1) add(cursor.getString(nameIndex))
+            }
+        }
+    }
+    if (columnName !in existingColumns) {
+        execSQL("ALTER TABLE `$tableName` ADD COLUMN `$columnName` $columnDefinition")
+    }
 }
 
 internal enum class SqlCipherMigrationResult {

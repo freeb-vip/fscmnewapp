@@ -165,6 +165,56 @@ class LocalInboundTest {
     }
 
     @Test
+    fun virtualInboundScanPolicy_allowsCurrentAndHistoricalVirtualLocationsOnly() {
+        assertTrue(snapshot("BOX-VIRTUAL", location = "FSCM-VIRTUAL-INBOUND").canScanIntoInboundLocation())
+        assertTrue(snapshot("BOX-REBOUND", location = "A-01", canScanRebind = true).canScanIntoInboundLocation())
+        assertFalse(snapshot("BOX-ORDINARY", location = "A-01").canScanIntoInboundLocation())
+    }
+
+    @Test
+    fun virtualInboundScanPolicy_onlyReplacesTerminalLocalOperations() {
+        assertFalse(item("BOX-A", InboundItemStatus.Synced).blocksVirtualRebind())
+        assertFalse(item("BOX-A", InboundItemStatus.RemoteAccepted).blocksVirtualRebind())
+        assertFalse(item("BOX-A", InboundItemStatus.RemoteOverridden).blocksVirtualRebind())
+        assertTrue(item("BOX-A", InboundItemStatus.Draft).blocksVirtualRebind())
+        assertTrue(item("BOX-A", InboundItemStatus.Pending).blocksVirtualRebind())
+        assertTrue(item("BOX-A", InboundItemStatus.ConflictPending).blocksVirtualRebind())
+        assertTrue(item("BOX-A", InboundItemStatus.Rejected).blocksVirtualRebind())
+    }
+
+    @Test
+    fun completedSession_canStartNewBatchOnlyWhenVirtualCartonCanRebind() {
+        assertFalse(summary(status = InboundSessionStatus.Complete).canStartInboundBatch())
+        assertTrue(summary(status = InboundSessionStatus.Complete, rebindableCount = 1).canStartInboundBatch())
+        assertTrue(summary(status = InboundSessionStatus.Active, remainingCount = 1).canStartInboundBatch())
+    }
+
+    @Test
+    fun realLocationWithVirtualOrigin_isNotCountedAsPendingInbound() {
+        val progress = calculateInboundProgress(
+            snapshots = listOf(snapshot("BOX-A", location = "A-01", canScanRebind = true)),
+            items = emptyList(),
+        )
+
+        assertEquals(0, progress.remaining)
+        assertEquals(0, progress.localContribution)
+    }
+
+    @Test
+    fun virtualPendingAdjustment_preservesBackendInboundedCount() {
+        val adjusted =
+            ReceivingInboundSummary(
+                totalCount = 5,
+                inboundedCount = 2,
+                pendingCount = 0,
+                unassignedCount = 0,
+            ).withVirtualPendingCount(3)
+
+        assertEquals(2, adjusted.inboundedCount)
+        assertEquals(3, adjusted.unassignedCount)
+    }
+
+    @Test
     fun reconciliation_marksMatchingCenterLocationAsSynced() {
         val result =
             reconcileInboundItem(
@@ -186,6 +236,31 @@ class LocalInboundTest {
 
         assertEquals(InboundItemStatus.ConflictPending.value, result?.status)
         assertEquals("B-02", result?.remoteLocationCode)
+    }
+
+    @Test
+    fun reconciliation_keepsVirtualOriginRebindPendingWhenCenterStillHasOldLocation() {
+        val result =
+            reconcileInboundItem(
+                item("BOX-A", InboundItemStatus.Pending).copy(localLocationCode = "B-02"),
+                snapshot("BOX-A", location = "A-01", canScanRebind = true),
+            )
+
+        assertEquals(InboundItemStatus.Pending.value, result?.status)
+        assertEquals("A-01", result?.remoteLocationCode)
+        assertEquals(0, result?.errorCode)
+    }
+
+    @Test
+    fun reconciliation_keepsCurrentVirtualLocationPending() {
+        val result =
+            reconcileInboundItem(
+                item("BOX-A", InboundItemStatus.Pending),
+                snapshot("BOX-A", location = "FSCM-VIRTUAL-INBOUND"),
+            )
+
+        assertEquals(InboundItemStatus.Pending.value, result?.status)
+        assertEquals("FSCM-VIRTUAL-INBOUND", result?.remoteLocationCode)
     }
 
     @Test
@@ -279,6 +354,7 @@ class LocalInboundTest {
         label: String,
         location: String = "",
         eligible: Boolean = true,
+        canScanRebind: Boolean = false,
     ) = LocalInboundSnapshotEntity(
         namespaceId = 1,
         sessionId = 10,
@@ -289,8 +365,38 @@ class LocalInboundTest {
         status = "received",
         inboundStatus = if (eligible) "pending" else "exception",
         locationCode = location,
+        canScanRebind = canScanRebind,
         eligible = eligible,
         snapshotAt = 1,
+    )
+
+    private fun summary(
+        status: InboundSessionStatus,
+        remainingCount: Int = 0,
+        rebindableCount: Int = 0,
+    ) = InboundSessionSummary(
+        sessionId = 10,
+        sessionCode = "RS-10",
+        warehouseCode = "WH-1",
+        warehouseName = "Warehouse",
+        remoteStatus = status.value,
+        totalCount = 1,
+        inboundedCount = if (remainingCount == 0) 1 else 0,
+        localAssignedCount = 0,
+        remainingCount = remainingCount,
+        centerPendingCount = remainingCount,
+        pendingCount = 0,
+        conflictCount = 0,
+        rejectedCount = 0,
+        exceptionCount = 0,
+        rebindableCount = rebindableCount,
+        lastSyncAt = 0,
+        snapshotComplete = true,
+        locationCacheComplete = true,
+        locationCacheRefreshedAt = 0,
+        productCacheComplete = true,
+        productCacheAt = 0,
+        status = status.value,
     )
 
     private fun item(label: String, status: InboundItemStatus) =

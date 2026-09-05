@@ -345,7 +345,10 @@ data class ReceivingSession(
     @SerialName("scanned_box_count") val scannedBoxCount: Int = 0,
     @SerialName("exception_box_count") val exceptionBoxCount: Int = 0,
     val status: String = "",
+    @SerialName("inbound_status") val inboundStatus: String = "",
+    @SerialName("has_virtual_inbound") val hasVirtualInbound: Boolean = false,
     val remark: String = "",
+    @SerialName("consolidation_order") val consolidationOrder: BoxLabelDocumentRef? = null,
     @SerialName("tally_items") val tallyItems: List<ReceivingTallyItem> = emptyList(),
     @SerialName("scan_items") val scanItems: List<ReceivingScanItem> = emptyList(),
     @Transient val localCached: Boolean = false,
@@ -368,6 +371,7 @@ data class ReceivingTallyItem(
 @Serializable
 data class ReceivingScanItem(
     val id: Long = 0,
+    @SerialName("box_plan_id") val boxPlanId: Long = 0,
     @SerialName("consolidation_order_item_id") val consolidationOrderItemId: Long = 0,
     @SerialName("box_uid") val boxUid: String = "",
     @SerialName("label_code") val labelCode: String = "",
@@ -383,6 +387,9 @@ data class ReceivingScanItem(
     val status: String = "",
     @SerialName("exception_reason") val exceptionReason: String = "",
     @SerialName("location_code") val locationCode: String = "",
+    @SerialName("warehouse_location_id") val warehouseLocationId: Long = 0,
+    @SerialName("can_scan_rebind") val canScanRebind: Boolean = false,
+    @SerialName("virtual_recovery_required") val virtualRecoveryRequired: Boolean = false,
     @SerialName("scanned_by") val scannedBy: String = "",
     @SerialName("scanned_at") val scannedAt: String = "",
     @Transient val localFallback: Boolean = false,
@@ -391,8 +398,21 @@ data class ReceivingScanItem(
 @Serializable
 data class ReceivingScanResponse(
     val data: ReceivingScanItem = ReceivingScanItem(),
+    val item: ReceivingScanItem = ReceivingScanItem(),
     val duplicate: Boolean = false,
-)
+    @SerialName("can_scan_rebind") val canScanRebind: Boolean = false,
+    @SerialName("virtual_recovery_required") val virtualRecoveryRequired: Boolean = false,
+    @SerialName("virtual_transfer") val virtualTransfer: Boolean = false,
+) {
+    val resolvedData: ReceivingScanItem
+        get() = item.takeIf { it.boxPlanId > 0 || it.labelCode.isNotBlank() } ?: data
+
+    val resolvedCanScanRebind: Boolean
+        get() = canScanRebind || virtualTransfer || resolvedData.canScanRebind
+
+    val resolvedVirtualRecoveryRequired: Boolean
+        get() = virtualRecoveryRequired || resolvedData.virtualRecoveryRequired
+}
 
 @Serializable
 data class PagedList<T>(

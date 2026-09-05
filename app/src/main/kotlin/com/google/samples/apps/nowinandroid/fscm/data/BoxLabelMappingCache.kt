@@ -148,7 +148,15 @@ private data class BoxLabelMappingSnapshot(
     val items: List<BoxLabelMappingSnapshotItem> = emptyList(),
     @SerialName("next_after_id") val nextAfterId: Long = 0,
     @SerialName("has_more") val hasMore: Boolean = false,
+    @SerialName("next_alias_after_id") val nextAliasAfterId: Long = 0,
+    @SerialName("alias_has_more") val aliasHasMore: Boolean = false,
 )
+
+private val BoxLabelMappingSnapshot.effectiveNextAfterId: Long
+    get() = nextAfterId.takeIf { it > 0 } ?: nextAliasAfterId
+
+private val BoxLabelMappingSnapshot.effectiveHasMore: Boolean
+    get() = hasMore || aliasHasMore
 
 class BoxLabelMappingCacheMissException : IllegalStateException()
 
@@ -198,12 +206,14 @@ class BoxLabelMappingRepository @Inject constructor(
         val items = mutableListOf<BoxLabelMappingSnapshotItem>()
         var afterId = 0L
         do {
+            val previousAfterId = afterId
             val params = mutableMapOf("after_id" to afterId.toString(), "limit" to PAGE_SIZE.toString())
             sessionId?.let { params["receiving_session_id"] = it.toString() }
             val page: BoxLabelMappingSnapshot = api.get("mobile/app/box-label-mappings/snapshot", params)
             items += page.items
-            afterId = page.nextAfterId
-        } while (page.hasMore)
+            afterId = page.effectiveNextAfterId
+            if (page.effectiveHasMore && afterId == previousAfterId) break
+        } while (page.effectiveHasMore)
         return items
     }
 

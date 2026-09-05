@@ -142,6 +142,7 @@ data class SupplierOrderItem(
     val remark: String = "",
     val sku: Sku = Sku(),
 )
+
 @Serializable
 data class SupplierOrder(
     val id: Long = 0,
@@ -185,6 +186,7 @@ fun SupplierOrder.detailSummary(): SupplierOrderDetailSummary {
         totalQty = items.sumOf(SupplierOrderItem::totalQty),
     )
 }
+
 @Serializable
 data class SupplierOrderWarehouse(
     val id: Long = 0,

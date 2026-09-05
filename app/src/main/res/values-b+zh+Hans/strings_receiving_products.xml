@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="receiving_product_details_title">产品作业明细</string>
+    <string name="receiving_product_details_title">入库作业明细</string>
     <string name="receiving_product_details_action">详情</string>
     <string name="receiving_product_search">搜索产品编码或名称</string>
     <string name="receiving_product_filter_all">全部</string>

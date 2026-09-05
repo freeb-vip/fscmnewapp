@@ -50,6 +50,24 @@ class InboundSessionFilterTest {
         )
     }
 
+    @Test
+    fun completedVirtualSession_remainsInCompletedFilterWhileRebindIsAvailable() {
+        val completedVirtual =
+            session(2, InboundSessionStatus.Complete).copy(
+                hasVirtualInbound = true,
+                rebindableCount = 1,
+            )
+
+        assertEquals(
+            listOf(2L),
+            filterInboundSessions(listOf(completedVirtual), InboundSessionFilter.Complete).map { it.sessionId },
+        )
+        assertEquals(
+            emptyList(),
+            filterInboundSessions(listOf(completedVirtual), InboundSessionFilter.Active),
+        )
+    }
+
     private fun session(id: Long, status: InboundSessionStatus) = InboundSessionSummary(
         sessionId = id,
         sessionCode = "RS-$id",

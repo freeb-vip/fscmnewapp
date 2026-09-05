@@ -31,7 +31,7 @@
     <string name="inbound_batch_cancelled">已取消当前库位批次</string>
     <string name="inbound_sync_finished">同步完成</string>
     <string name="inbound_conflicts_resolved">所有库位冲突均已处理</string>
-    <string name="inbound_progress_value">已绑定 %1$d / %2$d</string>
+    <string name="inbound_progress_value">已入库 %1$d / %2$d</string>
     <string name="inbound_remaining_value">剩余 %1$d</string>
     <string name="inbound_pending_conflict_value">待同步 %1$d，冲突 %2$d</string>
     <string name="inbound_session_progress">收货单库位进度</string>
@@ -80,6 +80,8 @@
     <string name="inbound_use_remote_location">放弃本地并采用中心库位</string>
     <string name="inbound_resolve_later">稍后处理</string>
     <string name="inbound_session_complete">所有箱唛入库成功</string>
+    <string name="inbound_virtual_rebind_available">仍有 %1$d 个虚拟来源箱唛可重新绑定</string>
+    <string name="inbound_virtual_rebind_hint">请先扫描真实库位，再扫描虚拟来源箱唛；普通已入库箱唛仍受重复保护。</string>
     <string name="inbound_local_complete_waiting">本地箱唛已全部绑定库位</string>
     <string name="inbound_waiting_center_confirmation">等待同步及中心确认</string>
     <string name="inbound_status_active">进行中</string>

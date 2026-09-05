@@ -54,6 +54,8 @@ fun releaseSigningValue(name: String) = providers.gradleProperty(name)
     .orElse(localProperties.map { it.getProperty(name).orEmpty() })
     .orNull
     ?.trim()
+    ?.removeSurrounding("\"")
+    ?.removeSurrounding("'")
     ?.takeIf(String::isNotBlank)
 
 val releaseStoreFile = releaseSigningValue("FSCM_RELEASE_STORE_FILE")

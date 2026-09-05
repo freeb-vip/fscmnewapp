@@ -80,6 +80,8 @@
     <string name="inbound_use_remote_location">Discard local and use center location</string>
     <string name="inbound_resolve_later">Resolve later</string>
     <string name="inbound_session_complete">All cartons inbounded successfully</string>
+    <string name="inbound_virtual_rebind_available">%1$d virtual-origin cartons can still be rebound</string>
+    <string name="inbound_virtual_rebind_hint">Scan a real location, then scan the virtual-origin carton. Ordinary inbounded cartons remain protected.</string>
     <string name="inbound_local_complete_waiting">All cartons are assigned locally</string>
     <string name="inbound_waiting_center_confirmation">Waiting for sync and center confirmation</string>
     <string name="inbound_status_active">In progress</string>
