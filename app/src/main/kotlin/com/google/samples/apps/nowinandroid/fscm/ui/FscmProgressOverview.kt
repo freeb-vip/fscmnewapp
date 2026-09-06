@@ -120,6 +120,7 @@ internal fun FscmProgressOverview(
     modifier: Modifier = Modifier,
     onPendingClick: (() -> Unit)? = null,
     onExceptionClick: (() -> Unit)? = null,
+    onCompletedClick: (() -> Unit)? = null,
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -171,7 +172,7 @@ internal fun FscmProgressOverview(
                 }
                 HorizontalDivider(color = ProgressStroke)
                 Row(Modifier.fillMaxWidth()) {
-                    ProgressMetricCell(completedLabel, metrics.completed, ProgressSuccess, Modifier.weight(1f))
+                    ProgressMetricCell(completedLabel, metrics.completed, ProgressSuccess, Modifier.weight(1f), onClick = onCompletedClick)
                     VerticalDivider(Modifier.height(88.dp), color = ProgressStroke)
                     ProgressMetricCell(
                         exceptionLabel,

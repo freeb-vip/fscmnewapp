@@ -201,17 +201,22 @@ class LocalInboundTest {
     }
 
     @Test
-    fun virtualPendingAdjustment_preservesBackendInboundedCount() {
-        val adjusted =
-            ReceivingInboundSummary(
-                totalCount = 5,
-                inboundedCount = 2,
-                pendingCount = 0,
-                unassignedCount = 0,
-            ).withVirtualPendingCount(3)
-
-        assertEquals(2, adjusted.inboundedCount)
-        assertEquals(3, adjusted.unassignedCount)
+    fun physicalInboundDetails_excludeVirtualFromCompletedAndIncludeItInPending() {
+        val rows = listOf(
+            snapshot("REAL", location = "A-01", canScanRebind = true),
+            snapshot("VIRTUAL", location = "FSCM-VIRTUAL-INBOUND"),
+            snapshot("VIRTUAL-LOWER", location = " fscm-virtual-inbound "),
+            snapshot("UNASSIGNED"),
+            snapshot("EXCEPTION", location = "FSCM-VIRTUAL-INBOUND", eligible = false),
+        )
+        assertEquals(listOf("REAL"), rows.filter { it.isCompletedPhysicalInbound() }.map { it.labelCode })
+        assertEquals(
+            listOf("VIRTUAL", "VIRTUAL-LOWER", "UNASSIGNED"),
+            rows.filter { it.isPendingPhysicalInbound() }.map { it.labelCode },
+        )
+        val assigned = rows[1].copy(locationCode = "B-02")
+        assertTrue(assigned.isCompletedPhysicalInbound())
+        assertFalse(assigned.isPendingPhysicalInbound())
     }
 
     @Test

@@ -538,7 +538,7 @@ class CentralReceivingRepository @Inject constructor(
                             items = rows.map { row ->
                                 CentralScanBatchRequestItem(
                                     clientScanId = row.clientScanId,
-                                    rawCode = row.rawCode,
+                                    rawCode = normalizeBoxLabelLookupCode(row.rawCode),
                                     scannedAt = Instant.ofEpochMilli(row.scannedAt).toString(),
                                     snapshotGeneratedAt = row.snapshotAt.takeIf { it > 0 }?.let { Instant.ofEpochMilli(it).toString() },
                                 )

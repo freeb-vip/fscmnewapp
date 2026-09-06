@@ -25,12 +25,17 @@ import com.google.samples.apps.nowinandroid.fscm.data.FscmApiException
 import com.google.samples.apps.nowinandroid.fscm.data.InboundClientError
 import com.google.samples.apps.nowinandroid.fscm.data.InboundClientException
 import com.google.samples.apps.nowinandroid.fscm.data.InboundItemStatus
+import com.google.samples.apps.nowinandroid.fscm.data.InboundRebindConfirmation
+import com.google.samples.apps.nowinandroid.fscm.data.InboundRebindConfirmationRequired
 import com.google.samples.apps.nowinandroid.fscm.data.InboundSessionStatus
 import com.google.samples.apps.nowinandroid.fscm.data.InboundSessionSummary
 import com.google.samples.apps.nowinandroid.fscm.data.InboundWorkspace
 import com.google.samples.apps.nowinandroid.fscm.data.LocalInboundRepository
+import com.google.samples.apps.nowinandroid.fscm.data.LocalWarehouseLocationEntity
 import com.google.samples.apps.nowinandroid.fscm.data.inboundStandardCode
+import com.google.samples.apps.nowinandroid.fscm.data.isCompletedPhysicalInbound
 import com.google.samples.apps.nowinandroid.fscm.data.isKnownMappedBoxLabel
+import com.google.samples.apps.nowinandroid.fscm.data.isPendingPhysicalInbound
 import com.google.samples.apps.nowinandroid.fscm.device.ReceivingScanFeedback
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerManager
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerRuntimeState
@@ -117,6 +122,11 @@ class InboundSessionListViewModel @Inject constructor(
     fun setFilter(filter: InboundSessionFilter) = _state.update { it.copy(filter = filter) }
 }
 
+data class PendingInboundRebind(
+    val rawCode: String,
+    val confirmation: InboundRebindConfirmation,
+)
+
 data class InboundSessionUiState(
     val loading: Boolean = false,
     val submitting: Boolean = false,
@@ -126,6 +136,10 @@ data class InboundSessionUiState(
     val workspace: InboundWorkspace? = null,
     val error: UiText? = null,
     val message: UiText? = null,
+    val pendingRebind: PendingInboundRebind? = null,
+    val changingLocation: Boolean = false,
+    val locationInput: String = "",
+    val candidateLocation: LocalWarehouseLocationEntity? = null,
     val cameraOpen: Boolean = false,
     val cameraResumeToken: Long = 0,
     val finishConfirmationOpen: Boolean = false,
@@ -133,7 +147,8 @@ data class InboundSessionUiState(
     val cancelConfirmationOpen: Boolean = false,
     val conflictDialogOpen: Boolean = false,
     val issuesOpen: Boolean = false,
-    val pendingProductsOpen: Boolean = false,
+    val pendingBoxesOpen: Boolean = false,
+    val completedBoxesOpen: Boolean = false,
     val syncDetailsOpen: Boolean = false,
     val knownJifengCodes: Set<String> = emptySet(),
     val knownLocationCodes: Set<String> = emptySet(),
@@ -172,6 +187,7 @@ class InboundSessionViewModel @Inject constructor(
                     state.copy(
                         workspace = workspace.copy(
                             pendingProducts = cache.items,
+                            snapshotItems = cache.snapshotItems,
                             localSyncItems = cache.localSyncItems,
                             conflicts = conflicts,
                             syncIssues = conflicts + rejected,
@@ -179,8 +195,16 @@ class InboundSessionViewModel @Inject constructor(
                                 productCacheComplete = cache.complete,
                                 productCacheAt = cache.updatedAt,
                                 totalCount = session?.totalCount?.takeIf { it > 0 } ?: workspace.summary.totalCount,
-                                inboundedCount = session?.inboundedCount ?: workspace.summary.inboundedCount,
-                                centerPendingCount = session?.unassignedCount ?: workspace.summary.centerPendingCount,
+                                inboundedCount = if (session?.snapshotComplete == true) {
+                                    cache.snapshotItems.count { it.isCompletedPhysicalInbound() }
+                                } else {
+                                    session?.inboundedCount ?: workspace.summary.inboundedCount
+                                },
+                                centerPendingCount = if (session?.snapshotComplete == true) {
+                                    cache.snapshotItems.count { it.isPendingPhysicalInbound() }
+                                } else {
+                                    session?.unassignedCount ?: workspace.summary.centerPendingCount
+                                },
                                 exceptionCount = session?.exceptionCount?.takeIf { it >= 0 } ?: workspace.summary.exceptionCount,
                                 pendingCount = pendingCount,
                                 conflictCount = conflicts.size,
@@ -214,18 +238,39 @@ class InboundSessionViewModel @Inject constructor(
     }
 
     fun scan(rawCode: String) {
+        if (_state.value.pendingRebind != null) return
+        submitScan(rawCode)
+    }
+
+    fun dismissRebind() {
+        _state.update { it.copy(pendingRebind = null, cameraOpen = false, cameraResumeToken = it.cameraResumeToken + 1) }
+    }
+
+    fun confirmRebind() {
+        if (_state.value.submitting) return
+        val pending = _state.value.pendingRebind ?: return
+        submitScan(pending.rawCode, pending.confirmation)
+    }
+
+    private fun submitScan(rawCode: String, confirmedRebind: InboundRebindConfirmation? = null) {
         val currentState = _state.value
         if (rawCode.isBlank() || sessionId == 0L || currentState.loading || currentState.submitting) return
+        if (currentState.pendingBoxesOpen || currentState.completedBoxesOpen) return
+        if (currentState.changingLocation) {
+            previewLocation(rawCode)
+            return
+        }
+        if (currentState.finishConfirmationOpen || currentState.cancelConfirmationOpen) return
         val workspace = currentState.workspace
         val scanningLocation = workspace?.draftBatch == null
-        _state.update { it.copy(submitting = true, error = null, message = null) }
+        _state.update { it.copy(submitting = true, error = null, message = null, pendingRebind = null) }
         viewModelScope.launch {
             val result = runCatching {
                 if (scanningLocation) {
                     repository.startBatch(sessionId, rawCode)
                     repository.workspace(sessionId)
                 } else {
-                    repository.addBox(workspace.draftBatch.id, rawCode)
+                    repository.addBox(workspace.draftBatch.id, rawCode, confirmedRebind)
                     repository.workspace(sessionId)
                 }
             }
@@ -252,11 +297,71 @@ class InboundSessionViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         submitting = false,
-                        error = error.inboundUiText(),
+                        error = if (error is InboundRebindConfirmationRequired) null else error.inboundUiText(),
+                        pendingRebind = (error as? InboundRebindConfirmationRequired)?.let { required ->
+                            PendingInboundRebind(rawCode, required.confirmation)
+                        },
+                        cameraOpen = if (error is InboundRebindConfirmationRequired) false else it.cameraOpen,
                         cameraResumeToken = it.cameraResumeToken + 1,
                     )
                 }
             }
+        }
+    }
+
+    fun requestChangeLocation() {
+        if (_state.value.submitting || _state.value.pendingRebind != null || _state.value.workspace?.draftBatch == null) return
+        _state.update { it.copy(changingLocation = true, locationInput = "", candidateLocation = null, error = null, message = null, cameraOpen = false) }
+    }
+
+    fun dismissChangeLocation() {
+        if (_state.value.submitting) return
+        _state.update { it.copy(changingLocation = false, candidateLocation = null, locationInput = "", error = null, cameraOpen = false) }
+    }
+
+    fun setLocationInput(value: String) {
+        if (_state.value.submitting) return
+        _state.update { it.copy(locationInput = value, candidateLocation = null, error = null) }
+    }
+
+    private fun previewLocation(rawCode: String) {
+        val batch = _state.value.workspace?.draftBatch ?: return
+        _state.update { it.copy(submitting = true, candidateLocation = null, locationInput = rawCode.trim(), error = null) }
+        viewModelScope.launch {
+            runCatching { repository.resolveDraftLocation(batch.id, rawCode) }
+                .onSuccess { location ->
+                    scanFeedback.success()
+                    _state.update {
+                        it.copy(submitting = false, candidateLocation = location, locationInput = location.code, cameraOpen = false)
+                    }
+                }
+                .onFailure { error ->
+                    scanFeedback.failure()
+                    _state.update { it.copy(submitting = false, error = error.inboundUiText(), cameraResumeToken = it.cameraResumeToken + 1) }
+                }
+        }
+    }
+
+    fun confirmChangeLocation() {
+        val current = _state.value
+        if (current.submitting || !current.changingLocation) return
+        val batch = current.workspace?.draftBatch ?: return
+        val location = current.candidateLocation ?: return
+        _state.update { it.copy(submitting = true, error = null) }
+        viewModelScope.launch {
+            runCatching { repository.changeDraftLocation(batch.id, location.code) }
+                .onSuccess { workspace ->
+                    _state.update {
+                        it.copy(
+                            submitting = false,
+                            changingLocation = false,
+                            candidateLocation = null,
+                            workspace = workspace,
+                            message = UiText.Resource(R.string.inbound_location_changed, listOf(location.code, workspace.draftItems.size)),
+                        )
+                    }
+                }
+                .onFailure { error -> _state.update { it.copy(submitting = false, error = error.inboundUiText()) } }
         }
     }
 
@@ -267,21 +372,28 @@ class InboundSessionViewModel @Inject constructor(
         runCatching { com.google.samples.apps.nowinandroid.fscm.data.normalizeInboundLocation(code) }
             .getOrNull() in _state.value.knownLocationCodes
 
-    fun requestFinish() = _state.update { it.copy(finishConfirmationOpen = true, confirmExceptions = false) }
+    fun requestFinish() {
+        if (_state.value.submitting || _state.value.changingLocation || _state.value.pendingRebind != null) return
+        _state.update { it.copy(finishConfirmationOpen = true, confirmExceptions = false, cameraOpen = false) }
+    }
 
     fun setConfirmExceptions(value: Boolean) = _state.update { it.copy(confirmExceptions = value) }
 
     fun dismissFinish() = _state.update { it.copy(finishConfirmationOpen = false) }
 
-    fun requestCancelDraft() = _state.update { it.copy(cancelConfirmationOpen = true) }
+    fun requestCancelDraft() {
+        if (_state.value.submitting || _state.value.changingLocation || _state.value.pendingRebind != null) return
+        _state.update { it.copy(cancelConfirmationOpen = true, cameraOpen = false) }
+    }
 
     fun dismissCancelDraft() = _state.update { it.copy(cancelConfirmationOpen = false) }
 
     fun finishBatch() {
+        if (_state.value.submitting || _state.value.changingLocation || _state.value.pendingRebind != null) return
         val batch = _state.value.workspace?.draftBatch ?: return
         val count = _state.value.workspace?.draftItems?.size ?: 0
+        _state.update { it.copy(submitting = true, finishConfirmationOpen = false, error = null) }
         viewModelScope.launch {
-            _state.update { it.copy(submitting = true, finishConfirmationOpen = false, error = null) }
             runCatching { repository.finishBatch(batch.id) }
                 .onSuccess { workspace ->
                     _state.update {
@@ -296,15 +408,23 @@ class InboundSessionViewModel @Inject constructor(
         }
     }
 
-    fun deleteDraftBox(requestId: String) = viewModelScope.launch {
-        repository.deleteDraftBox(requestId)
-        reloadWorkspace()
+    fun deleteDraftBox(requestId: String) {
+        if (_state.value.submitting || _state.value.changingLocation || _state.value.pendingRebind != null) return
+        _state.update { it.copy(submitting = true) }
+        viewModelScope.launch {
+            runCatching {
+                repository.deleteDraftBox(requestId)
+                reloadWorkspace()
+            }.onFailure { error -> _state.update { it.copy(error = error.inboundUiText()) } }
+            _state.update { it.copy(submitting = false) }
+        }
     }
 
     fun cancelDraft() {
+        if (_state.value.submitting || _state.value.changingLocation || _state.value.pendingRebind != null) return
         val batch = _state.value.workspace?.draftBatch ?: return
+        _state.update { it.copy(submitting = true, cancelConfirmationOpen = false, error = null) }
         viewModelScope.launch {
-            _state.update { it.copy(submitting = true, cancelConfirmationOpen = false, error = null) }
             runCatching {
                 repository.cancelDraft(batch.id)
                 repository.workspace(sessionId)
@@ -384,9 +504,13 @@ class InboundSessionViewModel @Inject constructor(
 
     fun dismissIssues() = _state.update { it.copy(issuesOpen = false) }
 
-    fun openPendingProducts() = _state.update { it.copy(pendingProductsOpen = true) }
+    fun openPendingBoxes() = _state.update { it.copy(pendingBoxesOpen = true) }
 
-    fun dismissPendingProducts() = _state.update { it.copy(pendingProductsOpen = false) }
+    fun dismissPendingBoxes() = _state.update { it.copy(pendingBoxesOpen = false) }
+
+    fun openCompletedBoxes() = _state.update { it.copy(completedBoxesOpen = true) }
+
+    fun dismissCompletedBoxes() = _state.update { it.copy(completedBoxesOpen = false) }
 
     fun openSyncDetails() = _state.update { it.copy(syncDetailsOpen = true) }
 

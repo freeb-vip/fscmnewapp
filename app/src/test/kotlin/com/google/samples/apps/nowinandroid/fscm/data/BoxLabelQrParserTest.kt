@@ -24,6 +24,34 @@ import org.junit.Test
 
 class BoxLabelQrParserTest {
     @Test
+    fun supplierShortCodeAndCompactPayload_useSameLookupCode() {
+        listOf(
+            "9DFEB6D55820",
+            "9DFEB6D55820,TX16-17-light-blue=2000",
+            "\uFEFF9dfeb6d55820\u0000\r\n",
+            "9dfeb6d55820,TX16-17-light-blue=2000\r\n",
+        ).forEach { raw ->
+            assertTrue(isLikelyBoxLabelQr(raw))
+            assertEquals("9DFEB6D55820", normalizeBoxLabelLookupCode(raw))
+            assertEquals("9DFEB6D55820", parseCentralReceivingScanCode(raw).labelCode)
+        }
+        val compact = parseBoxLabelQr("9DFEB6D55820,TX16-17-light-blue=2000")
+        assertEquals(listOf(BoxLabelQrItem("TX16-17-light-blue", 2000)), compact.items)
+        assertTrue(parseBoxLabelQr("9DFEB6D55820").items.isEmpty())
+    }
+
+    @Test
+    fun lookupNormalization_preservesOtherFormatsAndInvalidPayloads() {
+        listOf(
+            "JF-BOX-001",
+            "FSCMBOX:v1:BOX-8-9-001-123",
+            "9DFEB6D55820,TX16-17-light-blue=invalid",
+        ).forEach { raw ->
+            assertEquals(raw, normalizeBoxLabelLookupCode("$raw\r\n"))
+        }
+    }
+
+    @Test
     fun likelyBoxLabel_matchesOnlySupportedFormats() {
         assertTrue(isLikelyBoxLabelQr("AB12CD34EF56"))
         assertTrue(isLikelyBoxLabelQr("AB12CD34EF56,SKU-A=6"))

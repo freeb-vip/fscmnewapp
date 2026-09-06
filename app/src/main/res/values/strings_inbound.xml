@@ -127,4 +127,23 @@
     <string name="inbound_no_sync_items_for_status">No items in this status</string>
     <string name="inbound_scanned_time">Scanned time</string>
     <string name="inbound_batch_id">Batch</string>
+    <string name="inbound_change_location">Change location</string>
+    <string name="inbound_new_location">Scan or enter the new location code</string>
+    <string name="inbound_change_location_current">Current location: %1$s. All %2$d scanned cartons will be retained.</string>
+    <string name="inbound_change_location_hint">All %1$d scanned cartons and subsequent scans in this batch will use the new location.</string>
+    <string name="inbound_confirm_change_location">Confirm change</string>
+    <string name="inbound_same_location">This is the current location; no change is needed.</string>
+    <string name="inbound_location_changed">Location changed to %1$s. Retained %2$d cartons.</string>
+    <string name="inbound_rebind_title">Carton already inbounded</string>
+    <string name="inbound_rebind_confirmation">Carton %1$s is already inbounded at %2$s. Inbound it again to %3$s? Confirming adds it to this batch; the location change is submitted when you finish.</string>
+    <string name="inbound_rebind_confirm">Confirm re-inbound</string>
+    <string name="inbound_completed_boxes_title">Stored box labels</string>
+    <string name="inbound_pending_boxes_title">Box labels awaiting storage</string>
+    <string name="inbound_completed_boxes_hint">Only server-confirmed physical locations are counted. Virtual storage is excluded.</string>
+    <string name="inbound_pending_boxes_hint">Includes unassigned and virtual locations. Local changes remain pending until confirmed by the server.</string>
+    <string name="inbound_box_search">Search label, box number or location</string>
+    <string name="inbound_no_matching_boxes">No matching box labels</string>
+    <string name="inbound_box_location_value">Location: %1$s</string>
+    <string name="inbound_box_unassigned">Unassigned · Awaiting storage</string>
+    <string name="inbound_box_virtual_pending">Virtual storage · Physical location required</string>
 </resources>

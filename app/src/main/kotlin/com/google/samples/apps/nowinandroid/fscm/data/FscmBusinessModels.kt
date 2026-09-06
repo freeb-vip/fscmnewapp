@@ -167,10 +167,19 @@ data class SupplierOrderDetailSummary(
     val skuCount: Int = 0,
     val totalBoxCount: Int = 0,
     val totalQty: Int = 0,
+    val totalAmount: Double = 0.0,
 )
 
+fun SupplierOrderItem.calculatedAmount(): Double = when {
+    boxCount <= 0 && totalQty <= 0 -> 0.0
+    unitPrice < 0 -> totalAmount
+    boxCount > 0 -> boxCount * unitPrice
+    qtyPerCarton > 0 -> totalQty * unitPrice / qtyPerCarton
+    else -> 0.0
+}
+
 fun SupplierOrder.detailSummary(): SupplierOrderDetailSummary {
-    if (items.isEmpty()) return SupplierOrderDetailSummary(productCount, totalBoxCount = totalBoxCount, totalQty = totalQty)
+    if (items.isEmpty()) return SupplierOrderDetailSummary(productCount, totalBoxCount = totalBoxCount, totalQty = totalQty, totalAmount = totalAmount)
     val productKeys = items.map { item ->
         val product = item.sku.product
         product?.id?.takeIf { it > 0 }?.toString()
@@ -184,6 +193,7 @@ fun SupplierOrder.detailSummary(): SupplierOrderDetailSummary {
         skuCount = skuKeys.size,
         totalBoxCount = items.sumOf { it.displayBoxCount.takeIf { count -> count > 0 } ?: it.boxCount },
         totalQty = items.sumOf(SupplierOrderItem::totalQty),
+        totalAmount = items.sumOf(SupplierOrderItem::calculatedAmount),
     )
 }
 
@@ -225,15 +235,18 @@ data class SupplierOrderQuery(
     val filters: SupplierOrderFilters = SupplierOrderFilters(),
     val page: Int = 1,
     val pageSize: Int = 20,
+    val searchByProductCode: Boolean = false,
 ) {
     fun toQueryParams(): Map<String, String> = buildMap {
         put("status_group", category.statusGroup)
         put("page", page.coerceAtLeast(1).toString())
         put("pageSize", pageSize.coerceAtLeast(1).toString())
-        keyword.trim().takeIf(String::isNotEmpty)?.let { put("keyword", it) }
+        keyword.trim().takeIf(String::isNotEmpty)?.let {
+            put(if (searchByProductCode) "product_code" else "keyword", it)
+        }
         filters.normalized().let { values ->
             values.warehouseCode.takeIf(String::isNotEmpty)?.let { put("warehouse_code", it) }
-            values.productCode.takeIf(String::isNotEmpty)?.let { put("product_code", it) }
+            values.productCode.takeIf { it.isNotEmpty() && !containsKey("product_code") }?.let { put("product_code", it) }
             values.manufacturerName.takeIf(String::isNotEmpty)?.let { put("manufacturer_name", it) }
             values.purchaseOrderCode.takeIf(String::isNotEmpty)?.let { put("purchase_order_code", it) }
         }

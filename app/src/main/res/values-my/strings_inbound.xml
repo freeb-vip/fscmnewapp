@@ -127,4 +127,23 @@
     <string name="inbound_no_sync_items_for_status">ဤအခြေအနေတွင် ဒေတာမရှိပါ</string>
     <string name="inbound_scanned_time">စကင်ဖတ်ချိန်</string>
     <string name="inbound_batch_id">အစု</string>
+    <string name="inbound_change_location">သိုလှောင်နေရာ ပြောင်းရန်</string>
+    <string name="inbound_new_location">နေရာကုဒ်အသစ်ကို စကင်ဖတ်ပါ သို့မဟုတ် ထည့်ပါ</string>
+    <string name="inbound_change_location_current">လက်ရှိနေရာ: %1$s။ စကင်ဖတ်ပြီးသော ပုံး %2$d ပုံးလုံးကို ထိန်းသိမ်းထားမည်။</string>
+    <string name="inbound_change_location_hint">ဤအစုတွင် စကင်ဖတ်ပြီးသော ပုံး %1$d ပုံးနှင့် နောက်ထပ်စကင်ဖတ်မည့်ပုံးများအားလုံးသည် နေရာအသစ်ကို အသုံးပြုမည်။</string>
+    <string name="inbound_confirm_change_location">ပြောင်းလဲမှု အတည်ပြုရန်</string>
+    <string name="inbound_same_location">လက်ရှိနေရာနှင့် တူညီနေသဖြင့် ပြောင်းရန်မလိုပါ။</string>
+    <string name="inbound_location_changed">နေရာကို %1$s သို့ ပြောင်းပြီး ပုံး %2$d ပုံးကို ထိန်းသိမ်းထားသည်။</string>
+    <string name="inbound_rebind_title">ဤပုံးကို သိုလှောင်ပြီးဖြစ်သည်</string>
+    <string name="inbound_rebind_confirmation">ပုံး %1$s ကို %2$s တွင် သိုလှောင်ပြီးဖြစ်သည်။ %3$s သို့ ပြန်လည်သိုလှောင်မည်လား။ အတည်ပြုပါက လက်ရှိအစုသို့ ထည့်မည်ဖြစ်ပြီး ပြီးဆုံးရန် နှိပ်သောအခါ နေရာပြောင်းလဲမှုကို ပေးပို့မည်။</string>
+    <string name="inbound_rebind_confirm">ပြန်လည်သိုလှောင်ရန် အတည်ပြုပါ</string>
+    <string name="inbound_completed_boxes_title">သိုလှောင်ပြီးသော ကတ်ထူပုံးအညွှန်း အသေးစိတ်</string>
+    <string name="inbound_pending_boxes_title">သိုလှောင်ရန် စောင့်ဆိုင်းနေသော ကတ်ထူပုံးအညွှန်းများ</string>
+    <string name="inbound_completed_boxes_hint">ဆာဗာမှ အတည်ပြုထားသော အမှန်တကယ် သိုလှောင်နေရာများကိုသာ ရေတွက်ပါသည်။ ယာယီသိုလှောင်မှု မပါဝင်ပါ။</string>
+    <string name="inbound_pending_boxes_hint">နေရာမသတ်မှတ်ရသေးသော ပုံးများနှင့် ယာယီသိုလှောင်မှုများ ပါဝင်ပါသည်။ စက်တွင်းပြောင်းလဲမှုများသည် ဆာဗာအတည်ပြုချက်ကို စောင့်ဆိုင်းရပါမည်။</string>
+    <string name="inbound_box_search">အညွှန်းကုဒ်၊ ပုံးနံပါတ် သို့မဟုတ် နေရာဖြင့် ရှာရန်</string>
+    <string name="inbound_no_matching_boxes">ကိုက်ညီသော ပုံးအညွှန်း မရှိပါ</string>
+    <string name="inbound_box_location_value">နေရာ: %1$s</string>
+    <string name="inbound_box_unassigned">နေရာမသတ်မှတ်ရသေး · သိုလှောင်ရန် စောင့်ဆိုင်းနေသည်</string>
+    <string name="inbound_box_virtual_pending">ယာယီသိုလှောင်မှု · အမှန်တကယ်နေရာ သတ်မှတ်ရန် လိုအပ်သည်</string>
 </resources>

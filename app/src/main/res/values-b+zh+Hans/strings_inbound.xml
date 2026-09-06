@@ -127,4 +127,23 @@
     <string name="inbound_no_sync_items_for_status">该状态下暂无数据</string>
     <string name="inbound_scanned_time">扫码时间</string>
     <string name="inbound_batch_id">批次</string>
+    <string name="inbound_change_location">更换库位</string>
+    <string name="inbound_new_location">扫描或输入新库位码</string>
+    <string name="inbound_change_location_current">当前库位：%1$s，已扫描 %2$d 箱，更换后全部保留。</string>
+    <string name="inbound_change_location_hint">本批已扫描的 %1$d 箱及后续扫描箱唛，将统一入库到新库位。</string>
+    <string name="inbound_confirm_change_location">确认更换</string>
+    <string name="inbound_same_location">与当前库位相同，无需更换</string>
+    <string name="inbound_location_changed">库位已更换为 %1$s，已保留 %2$d 箱</string>
+    <string name="inbound_rebind_title">该箱唛已被入库</string>
+    <string name="inbound_rebind_confirmation">箱唛 %1$s 已入库至 %2$s，是否重新入库到 %3$s？确认后加入当前批次，点击完成时提交库位变更。</string>
+    <string name="inbound_rebind_confirm">确认重新入库</string>
+    <string name="inbound_completed_boxes_title">已入库箱唛明细</string>
+    <string name="inbound_pending_boxes_title">待入库箱唛明细</string>
+    <string name="inbound_completed_boxes_hint">仅统计中心已确认的真实库位入库，不含虚拟入库。</string>
+    <string name="inbound_pending_boxes_hint">包含未分配库位和虚拟入库的箱唛；本地待同步记录以中心确认结果为准。</string>
+    <string name="inbound_box_search">搜索箱唛码、箱号或库位</string>
+    <string name="inbound_no_matching_boxes">暂无匹配的箱唛</string>
+    <string name="inbound_box_location_value">库位：%1$s</string>
+    <string name="inbound_box_unassigned">未分配库位 · 待入库</string>
+    <string name="inbound_box_virtual_pending">虚拟入库 · 待分配真实库位</string>
 </resources>

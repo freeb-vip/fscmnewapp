@@ -1564,7 +1564,7 @@ class ReceivingRepository @Inject constructor(
         return runCatching {
             api.post<ReceivingScanResponse>(
                 "receiving-sessions/$id/scan-preview",
-                buildJsonObject { put("raw_code", rawCode.trim()) },
+                buildJsonObject { put("raw_code", normalizeBoxLabelLookupCode(rawCode)) },
             )
         }.getOrElse { error ->
             if (error is FscmApiException) throw error
@@ -1581,7 +1581,7 @@ class ReceivingRepository @Inject constructor(
             api.post<ReceivingQuickScanResponse>(
                 "receiving-sessions/scan",
                 buildJsonObject {
-                    put("raw_code", rawCode.trim())
+                    put("raw_code", normalizeBoxLabelLookupCode(rawCode))
                     actualReceivedQty?.let { put("actual_received_qty", it) }
                 },
             )
@@ -1655,7 +1655,7 @@ class ReceivingRepository @Inject constructor(
         return runCatching {
             api.post<ReceivingQuickScanResponse>(
                 "receiving-sessions/scan-preview",
-                buildJsonObject { put("raw_code", rawCode.trim()) },
+                buildJsonObject { put("raw_code", normalizeBoxLabelLookupCode(rawCode)) },
             ).copy(parsedPayload = parsed)
         }.getOrElse { error ->
             if (error is FscmApiException) throw error
@@ -1684,7 +1684,7 @@ class ReceivingRepository @Inject constructor(
             api.post<ReceivingScanResponse>(
                 "receiving-sessions/$id/scan",
                 buildJsonObject {
-                    put("raw_code", rawCode.trim())
+                    put("raw_code", normalizeBoxLabelLookupCode(rawCode))
                     put("damaged", damaged)
                     put("tally_count", true)
                     if (actualReceivedQty != null) put("actual_received_qty", actualReceivedQty)
@@ -2063,7 +2063,7 @@ class CartonRepository @Inject constructor(
             edgeCatalogClient.post(
                 path = "box-labels/resolve",
                 body = buildJsonObject {
-                    put("raw_code", rawCode.trim())
+                    put("raw_code", normalizeBoxLabelLookupCode(rawCode))
                     parsed?.labelCode?.takeIf(String::isNotBlank)?.let { put("label_code", it) }
                 },
             )?.let { response ->
@@ -2081,7 +2081,7 @@ class CartonRepository @Inject constructor(
         return runCatching {
             val payload: JsonElement = api.post(
                 "box-labels/resolve",
-                buildJsonObject { put("raw_code", rawCode.trim()) },
+                buildJsonObject { put("raw_code", normalizeBoxLabelLookupCode(rawCode)) },
             )
             val resolved = decodeBusinessObject<BoxLabel>(payload, json)
             CatalogResult(

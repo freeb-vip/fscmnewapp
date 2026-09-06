@@ -33,21 +33,23 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.QrCodeScanner
@@ -67,7 +69,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -84,7 +85,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -98,7 +98,6 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
 import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.core.designsystem.component.NiaTab
 import com.google.samples.apps.nowinandroid.core.designsystem.component.NiaTabRow
@@ -109,10 +108,11 @@ import com.google.samples.apps.nowinandroid.fscm.data.InboundSessionStatus
 import com.google.samples.apps.nowinandroid.fscm.data.InboundSessionSummary
 import com.google.samples.apps.nowinandroid.fscm.data.InboundWorkspace
 import com.google.samples.apps.nowinandroid.fscm.data.LocalInboundItemEntity
-import com.google.samples.apps.nowinandroid.fscm.data.LocalInboundProductSummaryEntity
 import com.google.samples.apps.nowinandroid.fscm.data.LocalInboundSnapshotEntity
 import com.google.samples.apps.nowinandroid.fscm.data.calculateInboundDraftMetrics
 import com.google.samples.apps.nowinandroid.fscm.data.canStartInboundBatch
+import com.google.samples.apps.nowinandroid.fscm.data.isCompletedPhysicalInbound
+import com.google.samples.apps.nowinandroid.fscm.data.isPendingPhysicalInbound
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerInputMode
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -218,6 +218,7 @@ private fun InboundSessionFilters(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InboundSessionScreen(
     sessionId: Long,
@@ -230,7 +231,7 @@ fun InboundSessionScreen(
     var input by rememberSaveable { mutableStateOf("") }
 
     LaunchedEffect(sessionId) { viewModel.load(sessionId) }
-    LaunchedEffect(state.cameraResumeToken) { input = "" }
+    LaunchedEffect(state.cameraResumeToken, state.changingLocation) { input = "" }
     DisposableEffect(lifecycleOwner) {
         viewModel.registerScanner(lifecycleOwner)
         onDispose(viewModel::unregisterScanner)
@@ -256,10 +257,15 @@ fun InboundSessionScreen(
                     InboundNotice(error.resolve(), true, viewModel::consumeNotice)
                 }
             }
+            state.message?.let { message ->
+                Box(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                    InboundNotice(message.resolve(), false, viewModel::consumeNotice)
+                }
+            }
             InboundActiveBatchContent(
                 workspace = workspace,
                 input = input,
-                loading = state.submitting,
+                loading = state.submitting || state.changingLocation || state.pendingRebind != null,
                 broadcastMode = scannerState.effectiveMode == ScannerInputMode.IntentBroadcast,
                 onValueChange = { value ->
                     input = value
@@ -269,6 +275,7 @@ fun InboundSessionScreen(
                 onCamera = openCamera,
                 onFinish = viewModel::requestFinish,
                 onRequestCancel = viewModel::requestCancelDraft,
+                onChangeLocation = viewModel::requestChangeLocation,
                 onDelete = viewModel::deleteDraftBox,
                 modifier = Modifier.weight(1f),
             )
@@ -314,7 +321,8 @@ fun InboundSessionScreen(
                         completedLabel = stringResource(R.string.inbound_metric_completed),
                         exceptionLabel = stringResource(R.string.inbound_metric_exception),
                         metrics = inboundProgress(current),
-                        onPendingClick = viewModel::openPendingProducts,
+                        onPendingClick = viewModel::openPendingBoxes,
+                        onCompletedClick = viewModel::openCompletedBoxes,
                         onExceptionClick = viewModel::openIssues,
                     )
                 }
@@ -328,6 +336,78 @@ fun InboundSessionScreen(
                         onSync = viewModel::manualSync,
                         onOpenDetails = viewModel::openSyncDetails,
                     )
+                }
+            }
+        }
+    }
+
+    state.pendingRebind?.let { pending ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissRebind,
+            title = { Text(stringResource(R.string.inbound_rebind_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.inbound_rebind_confirmation,
+                        pending.confirmation.labelCode,
+                        pending.confirmation.sourceLocationCode,
+                        pending.confirmation.targetLocationCode,
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::confirmRebind, enabled = !state.submitting) {
+                    Text(stringResource(R.string.inbound_rebind_confirm), color = InboundDanger)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissRebind) { Text(stringResource(R.string.common_cancel)) }
+            },
+        )
+    }
+
+    if (state.changingLocation && workspace != null && draftBatch != null) {
+        ModalBottomSheet(onDismissRequest = viewModel::dismissChangeLocation) {
+            Column(
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).imePadding().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(stringResource(R.string.inbound_change_location), style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.inbound_change_location_current, draftBatch.locationCode, workspace.draftItems.size))
+                state.error?.let { Text(it.resolve(), color = InboundDanger) }
+                InboundScanInput(
+                    title = stringResource(R.string.inbound_new_location),
+                    value = state.locationInput,
+                    loading = state.submitting,
+                    broadcastMode = false,
+                    onValueChange = { value ->
+                        viewModel.setLocationInput(value)
+                        if (value.hasScanTerminator()) viewModel.scan(value.cleanScanInput())
+                    },
+                    onSubmit = { viewModel.scan(state.locationInput.cleanScanInput()) },
+                    onCamera = openCamera,
+                )
+                state.candidateLocation?.let { location ->
+                    Text(location.code, color = InboundBrand, style = MaterialTheme.typography.titleMedium)
+                    Text(listOf(location.warehouseName, location.zoneName, location.name).filter(String::isNotBlank).joinToString(" · "))
+                    Text(
+                        stringResource(
+                            if (location.locationId == draftBatch.warehouseLocationId) R.string.inbound_same_location else R.string.inbound_change_location_hint,
+                            workspace.draftItems.size,
+                        ),
+                    )
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TextButton(onClick = viewModel::dismissChangeLocation, enabled = !state.submitting, modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.common_cancel))
+                    }
+                    Button(
+                        onClick = viewModel::confirmChangeLocation,
+                        enabled = !state.submitting && state.candidateLocation != null && state.candidateLocation?.locationId != draftBatch.warehouseLocationId,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(stringResource(R.string.inbound_confirm_change_location))
+                    }
                 }
             }
         }
@@ -394,10 +474,19 @@ fun InboundSessionScreen(
         )
     }
 
-    if (state.pendingProductsOpen && workspace != null) {
-        InboundPendingProductsSheet(
+    if (state.pendingBoxesOpen && workspace != null) {
+        InboundBoxDetailsSheet(
             workspace = workspace,
-            onDismiss = viewModel::dismissPendingProducts,
+            completed = false,
+            onDismiss = viewModel::dismissPendingBoxes,
+        )
+    }
+
+    if (state.completedBoxesOpen && workspace != null) {
+        InboundBoxDetailsSheet(
+            workspace = workspace,
+            completed = true,
+            onDismiss = viewModel::dismissCompletedBoxes,
         )
     }
 
@@ -428,24 +517,24 @@ fun InboundSessionScreen(
                     modifier = Modifier.fillMaxSize(),
                     showSelectionDialogForMultiple = true,
                     resumeToken = state.cameraResumeToken,
-                    selectionTitle = stringResource(if (workspace?.draftBatch == null) R.string.inbound_choose_location else R.string.inbound_choose_box),
+                    selectionTitle = stringResource(if (workspace?.draftBatch == null || state.changingLocation) R.string.inbound_choose_location else R.string.inbound_choose_box),
                     selectionPrompt = stringResource(R.string.inbound_multiple_codes),
-                    preferredBarcodeMatcher = if (workspace?.draftBatch != null) {
+                    preferredBarcodeMatcher = if (workspace?.draftBatch != null && !state.changingLocation) {
                         viewModel::isKnownBoxLabelCode
                     } else {
                         viewModel::isKnownLocationCode
                     },
                     preferredBarcodeWaitMillis = 800L,
-                    allowNonPreferredBarcodeFallback = workspace?.draftBatch == null,
+                    allowNonPreferredBarcodeFallback = workspace?.draftBatch == null || state.changingLocation,
                     noPreferredBarcodeTitle = stringResource(
-                        if (workspace?.draftBatch == null) {
+                        if (workspace?.draftBatch == null || state.changingLocation) {
                             R.string.inbound_location_scan_not_detected
                         } else {
                             R.string.box_label_scan_not_detected
                         },
                     ),
                     noPreferredBarcodePrompt = stringResource(
-                        if (workspace?.draftBatch == null) {
+                        if (workspace?.draftBatch == null || state.changingLocation) {
                             R.string.inbound_location_scan_retry_prompt
                         } else {
                             R.string.box_label_scan_retry_prompt
@@ -475,6 +564,7 @@ private fun InboundActiveBatchContent(
     onCamera: () -> Unit,
     onFinish: () -> Unit,
     onRequestCancel: () -> Unit,
+    onChangeLocation: () -> Unit,
     onDelete: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -501,6 +591,7 @@ private fun InboundActiveBatchContent(
             loading = loading,
             onFinish = onFinish,
             onRequestCancel = onRequestCancel,
+            onChangeLocation = onChangeLocation,
         )
         Spacer(Modifier.height(8.dp))
         InboundCompactScanInput(
@@ -558,6 +649,7 @@ private fun InboundActiveLocationHeader(
     loading: Boolean,
     onFinish: () -> Unit,
     onRequestCancel: () -> Unit,
+    onChangeLocation: () -> Unit,
 ) {
     var menuExpanded by rememberSaveable { mutableStateOf(false) }
     Surface(
@@ -603,6 +695,11 @@ private fun InboundActiveLocationHeader(
                             },
                         )
                     }
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onChangeLocation, enabled = !loading) {
+                    Text(stringResource(R.string.inbound_change_location))
                 }
                 Button(onClick = onFinish, enabled = finishEnabled, modifier = Modifier.height(40.dp)) {
                     if (loading) {
@@ -971,153 +1068,80 @@ private fun InboundExceptionsSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun InboundPendingProductsSheet(
+private fun InboundBoxDetailsSheet(
     workspace: InboundWorkspace,
+    completed: Boolean,
     onDismiss: () -> Unit,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
-    val products = com.google.samples.apps.nowinandroid.fscm.data.pendingInboundProducts(
-        workspace.pendingProducts,
-        query,
-    )
+    val boxes = workspace.snapshotItems.filter { item ->
+        (if (completed) item.isCompletedPhysicalInbound() else item.isPendingPhysicalInbound()) &&
+            listOf(item.labelCode, item.boxNo, item.boxUid, item.locationCode).any {
+                it.contains(query.trim(), ignoreCase = true)
+            }
+    }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                stringResource(R.string.inbound_pending_products_title),
+                stringResource(if (completed) R.string.inbound_completed_boxes_title else R.string.inbound_pending_boxes_title),
                 color = InboundInk,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
+            )
+            Text(
+                stringResource(if (completed) R.string.inbound_completed_boxes_hint else R.string.inbound_pending_boxes_hint),
+                color = InboundMuted,
+                style = MaterialTheme.typography.bodySmall,
             )
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                label = { Text(stringResource(R.string.inbound_product_search)) },
+                label = { Text(stringResource(R.string.inbound_box_search)) },
             )
-            if (!workspace.summary.productCacheComplete) {
-                InboundNotice(
-                    text = stringResource(
-                        if (workspace.pendingProducts.isEmpty()) {
-                            R.string.inbound_product_cache_unavailable
-                        } else {
-                            R.string.inbound_products_updating
-                        },
-                    ),
-                    error = false,
-                )
-            } else if (workspace.summary.productCacheAt > 0) {
-                Text(
-                    stringResource(
-                        R.string.inbound_product_cache_updated,
-                        formatInboundTime(workspace.summary.productCacheAt),
-                    ),
-                    color = InboundMuted,
-                    style = MaterialTheme.typography.bodySmall,
-                )
+            Text(stringResource(R.string.inbound_box_count_short, boxes.size), color = InboundMuted)
+            if (!workspace.summary.snapshotComplete) {
+                InboundNotice(stringResource(R.string.inbound_snapshot_not_ready), error = false)
             }
         }
         LazyColumn(
-            modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
             contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp),
         ) {
-            if (products.isEmpty()) {
-                item {
-                    InboundIssueEmpty(
-                        stringResource(
-                            if (query.isBlank()) R.string.inbound_no_pending_products else R.string.inbound_no_product_search_results,
-                        ),
-                    )
-                }
-            } else {
-                items(products, key = { it.productId }) { product ->
-                    InboundPendingProductRow(product)
-                }
+            if (boxes.isEmpty()) {
+                item { InboundIssueEmpty(stringResource(R.string.inbound_no_matching_boxes)) }
             }
-        }
-    }
-}
-
-@Composable
-private fun InboundPendingProductRow(product: LocalInboundProductSummaryEntity) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Box(
-            modifier = Modifier.size(58.dp).clip(RoundedCornerShape(6.dp)).background(InboundBackground),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (product.productImage.isNotBlank()) {
-                AsyncImage(
-                    model = product.productImage,
-                    contentDescription = product.productName,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                )
-            } else {
-                Icon(Icons.Rounded.Inventory2, contentDescription = null, tint = InboundMuted)
-            }
-        }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(
-                product.productCode,
-                color = InboundDeep,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                product.productName,
-                color = InboundInk,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(
-                        R.string.inbound_product_progress,
-                        product.inboundedBoxCount,
-                        product.totalBoxCount,
-                    ),
-                    color = InboundSuccess,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    stringResource(R.string.inbound_product_pending_count, product.pendingBoxCount),
-                    color = InboundWarning,
-                    style = MaterialTheme.typography.labelMedium,
-                )
-            }
-            LinearProgressIndicator(
-                progress = {
-                    if (product.totalBoxCount <= 0) {
-                        0f
-                    } else {
-                        product.inboundedBoxCount.toFloat().div(product.totalBoxCount).coerceIn(0f, 1f)
+            items(boxes, key = { it.boxPlanId }) { box ->
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(box.labelCode, color = InboundInk, fontWeight = FontWeight.SemiBold)
+                    if (box.boxNo.isNotBlank() && box.boxNo != box.labelCode) {
+                        Text(box.boxNo, color = InboundMuted, style = MaterialTheme.typography.bodySmall)
                     }
-                },
-                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                color = InboundBrand,
-                trackColor = Color(0xFFE6F0FF),
-            )
-            if (product.exceptionBoxCount > 0) {
-                Text(
-                    stringResource(R.string.inbound_product_exception_count, product.exceptionBoxCount),
-                    color = InboundDanger,
-                    style = MaterialTheme.typography.labelMedium,
-                )
+                    Text(
+                        if (completed) {
+                            stringResource(R.string.inbound_box_location_value, box.locationCode)
+                        } else {
+                            stringResource(if (box.locationCode.isBlank()) R.string.inbound_box_unassigned else R.string.inbound_box_virtual_pending)
+                        },
+                        color = if (completed) InboundSuccess else InboundWarning,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    if (box.remoteScannedAt > 0) {
+                        Text(formatInboundTime(box.remoteScannedAt), color = InboundMuted, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                HorizontalDivider(color = InboundStroke)
             }
         }
     }
-    HorizontalDivider(color = InboundStroke)
 }
-
 internal enum class InboundSyncDetailsTab {
     Pending,
     Conflict,

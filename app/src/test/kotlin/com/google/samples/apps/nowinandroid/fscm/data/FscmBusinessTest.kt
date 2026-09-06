@@ -115,6 +115,43 @@ class FscmBusinessTest {
     }
 
     @Test
+    fun supplierOrderProductSearch_usesProductFilterWithoutKeyword() {
+        val params = SupplierOrderQuery(
+            keyword = " P-100 ",
+            searchByProductCode = true,
+            filters = SupplierOrderFilters(warehouseCode = "WH-1", productCode = "OLD"),
+            page = 2,
+        ).toQueryParams()
+
+        assertEquals("P-100", params["product_code"])
+        assertFalse(params.containsKey("keyword"))
+        assertEquals("WH-1", params["warehouse_code"])
+        assertEquals("2", params["page"])
+    }
+
+    @Test
+    fun supplierOrderDetailAmount_matchesListCalculationWithoutHeaderTotal() {
+        val payload = json.parseToJsonElement(
+            """{"data":{"id":1,"items":[
+                {"id":1,"box_count":2,"total_qty":24,"qty_per_carton":12,"unit_price":60,"total_amount":0},
+                {"id":2,"box_count":0,"total_qty":6,"qty_per_carton":12,"unit_price":60,"total_amount":0}
+            ]}}""",
+        )
+        val order = decodeBusinessObject<SupplierOrder>(payload, json)
+
+        assertEquals(150.0, order.detailSummary().totalAmount)
+        assertEquals(120.0, order.items.first().calculatedAmount())
+        assertEquals(45.0, SupplierOrder(totalAmount = 45.0).detailSummary().totalAmount)
+    }
+
+    @Test
+    fun supplierOrderItemAmount_handlesZeroAndLegacyNegativePrice() {
+        assertEquals(0.0, SupplierOrderItem(boxCount = 2, unitPrice = 0.0, totalAmount = 100.0).calculatedAmount())
+        assertEquals(0.0, SupplierOrderItem(unitPrice = 60.0, totalAmount = 100.0).calculatedAmount())
+        assertEquals(75.0, SupplierOrderItem(boxCount = 2, unitPrice = -1.0, totalAmount = 75.0).calculatedAmount())
+    }
+
+    @Test
     fun supplierOrderDetailSummary_usesItemProductsAndDistinctSkus() {
         val order = SupplierOrder(
             productCount = 99,

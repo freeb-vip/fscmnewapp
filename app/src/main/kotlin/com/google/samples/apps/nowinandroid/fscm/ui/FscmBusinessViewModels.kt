@@ -322,6 +322,7 @@ data class SupplierOrdersUiState(
     val loadingMore: Boolean = false,
     val category: SupplierOrderCategory = SupplierOrderCategory.InProgress,
     val query: String = "",
+    val searchByProductCode: Boolean = false,
     val appliedFilters: SupplierOrderFilters = SupplierOrderFilters(),
     val draftFilters: SupplierOrderFilters = SupplierOrderFilters(),
     val filterSheetVisible: Boolean = false,
@@ -351,6 +352,12 @@ class SupplierOrdersViewModel @Inject constructor(private val repository: Suppli
 
     fun setQuery(value: String) = _state.update { it.copy(query = value) }
 
+    fun setSearchByProductCode(value: Boolean) {
+        if (_state.value.loading || _state.value.loadingMore) return
+        _state.update { it.copy(searchByProductCode = value) }
+        load(reset = true)
+    }
+
     fun setCategory(category: SupplierOrderCategory) {
         if (_state.value.category == category) return
         _state.update { it.copy(category = category) }
@@ -372,6 +379,7 @@ class SupplierOrdersViewModel @Inject constructor(private val repository: Suppli
             val query = SupplierOrderQuery(
                 category = current.category,
                 keyword = current.query,
+                searchByProductCode = current.searchByProductCode,
                 filters = current.appliedFilters,
                 page = requestedPage,
             )

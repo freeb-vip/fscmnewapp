@@ -127,4 +127,23 @@
     <string name="inbound_no_sync_items_for_status">ไม่มีข้อมูลในสถานะนี้</string>
     <string name="inbound_scanned_time">เวลาสแกน</string>
     <string name="inbound_batch_id">ชุดงาน</string>
+    <string name="inbound_change_location">เปลี่ยนตำแหน่งจัดเก็บ</string>
+    <string name="inbound_new_location">สแกนหรือป้อนรหัสตำแหน่งใหม่</string>
+    <string name="inbound_change_location_current">ตำแหน่งปัจจุบัน: %1$s จะเก็บข้อมูลกล่องที่สแกนแล้วทั้งหมด %2$d กล่องไว้</string>
+    <string name="inbound_change_location_hint">กล่องที่สแกนแล้ว %1$d กล่องและกล่องที่จะสแกนเพิ่มเติมในชุดนี้จะใช้ตำแหน่งใหม่</string>
+    <string name="inbound_confirm_change_location">ยืนยันการเปลี่ยน</string>
+    <string name="inbound_same_location">เป็นตำแหน่งปัจจุบันอยู่แล้ว ไม่ต้องเปลี่ยน</string>
+    <string name="inbound_location_changed">เปลี่ยนตำแหน่งเป็น %1$s แล้ว เก็บข้อมูลไว้ %2$d กล่อง</string>
+    <string name="inbound_rebind_title">กล่องนี้เข้าคลังแล้ว</string>
+    <string name="inbound_rebind_confirmation">กล่อง %1$s เข้าคลังที่ %2$s แล้ว ต้องการนำเข้าคลังอีกครั้งที่ %3$s หรือไม่? เมื่อยืนยันจะเพิ่มลงในชุดปัจจุบัน และส่งการเปลี่ยนตำแหน่งเมื่อกดเสร็จสิ้น</string>
+    <string name="inbound_rebind_confirm">ยืนยันนำเข้าคลังอีกครั้ง</string>
+    <string name="inbound_completed_boxes_title">รายละเอียดฉลากกล่องที่จัดเก็บแล้ว</string>
+    <string name="inbound_pending_boxes_title">รายละเอียดฉลากกล่องที่รอจัดเก็บ</string>
+    <string name="inbound_completed_boxes_hint">นับเฉพาะตำแหน่งจัดเก็บจริงที่เซิร์ฟเวอร์ยืนยัน ไม่รวมการจัดเก็บเสมือน</string>
+    <string name="inbound_pending_boxes_hint">รวมกล่องที่ยังไม่มีตำแหน่งและตำแหน่งเสมือน รายการในเครื่องจะรอจนกว่าเซิร์ฟเวอร์ยืนยัน</string>
+    <string name="inbound_box_search">ค้นหารหัสฉลาก หมายเลขกล่อง หรือตำแหน่ง</string>
+    <string name="inbound_no_matching_boxes">ไม่พบฉลากกล่องที่ตรงกัน</string>
+    <string name="inbound_box_location_value">ตำแหน่ง: %1$s</string>
+    <string name="inbound_box_unassigned">ยังไม่กำหนดตำแหน่ง · รอจัดเก็บ</string>
+    <string name="inbound_box_virtual_pending">จัดเก็บเสมือน · รอกำหนดตำแหน่งจริง</string>
 </resources>

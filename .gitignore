@@ -50,3 +50,5 @@ captures/
 
 /fscm/
 /fscmapp/
+*.log
+local.properties

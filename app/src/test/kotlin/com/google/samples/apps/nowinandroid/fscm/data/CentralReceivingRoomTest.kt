@@ -44,6 +44,19 @@ class CentralReceivingRoomTest {
     fun tearDown() = database.close()
 
     @Test
+    fun supplierShortCodeAndCompactPayload_findSameCachedLabel() = runBlocking {
+        val cachedLabel = label("active", "shipped").copy(labelCode = "9DFEB6D55820")
+        dao.upsertReceipts(listOf(receipt("active", "pending")))
+        dao.upsertLabels(listOf(cachedLabel))
+        dao.activateSnapshot(meta("active"))
+
+        listOf("9DFEB6D55820", "9DFEB6D55820,TX16-17-light-blue=2000").forEach { raw ->
+            val parsed = parseCentralReceivingScanCode(raw)
+            assertEquals(cachedLabel, dao.findLabel(USER_ID, NAMESPACE_ID, parsed.labelCode))
+        }
+    }
+
+    @Test
     fun stagedGenerationDoesNotReplaceActiveSnapshotUntilActivation() = runBlocking {
         dao.upsertReceipts(listOf(receipt("old", "pending")))
         dao.upsertLabels(listOf(label("old", "shipped")))

@@ -52,6 +52,15 @@ class BoxLabelQrFormatException(message: String) : IllegalArgumentException(mess
 
 fun isLikelyBoxLabelQr(rawCode: String): Boolean = runCatching { parseBoxLabelQr(rawCode) }.isSuccess
 
+internal fun normalizeBoxLabelLookupCode(rawCode: String): String {
+    val raw = rawCode.trimScannerCharacters()
+    val parsed = runCatching { parseBoxLabelQr(raw) }.getOrNull()
+    return when (parsed?.format) {
+        BoxLabelQrFormat.ShortCode, BoxLabelQrFormat.Compact -> parsed.labelCode
+        else -> raw
+    }
+}
+
 fun parseBoxLabelQr(rawCode: String): BoxLabelQrPayload {
     val raw = rawCode.trimScannerCharacters()
     if (raw.isBlank()) throw BoxLabelQrFormatException("箱唛二维码内容为空")
