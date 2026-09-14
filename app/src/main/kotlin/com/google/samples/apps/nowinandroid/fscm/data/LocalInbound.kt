@@ -25,10 +25,17 @@ import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Transaction
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -99,6 +106,12 @@ data class LocalInboundSnapshotEntity(
     val remoteScannedAt: Long = 0,
     val eligible: Boolean,
     val snapshotAt: Long,
+    val firstSkuCode: String = "",
+    val firstSkuName: String = "",
+    val firstProductCode: String = "",
+    val firstProductName: String = "",
+    val firstProductId: Long = 0,
+    val isMixed: Boolean = false,
 )
 
 @Entity(
@@ -128,6 +141,7 @@ data class LocalInboundBatchEntity(
         Index(value = ["userId", "namespaceId", "status", "scannedAt"]),
     ],
 )
+@Serializable
 data class LocalInboundItemEntity(
     @PrimaryKey val requestId: String,
     val batchId: String,
@@ -203,16 +217,16 @@ enum class InboundItemStatus(val value: String) {
 
 @Dao
 interface LocalInboundDao {
-    @Query("DELETE FROM local_inbound_product_summaries WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId NOT IN (SELECT DISTINCT sessionId FROM local_inbound_items WHERE userId = :userId AND namespaceId = :namespaceId AND status IN ('pending','syncing','conflict_pending','rejected'))")
+    @Query("DELETE FROM local_inbound_product_summaries WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId NOT IN (SELECT DISTINCT sessionId FROM local_inbound_items WHERE userId = :userId AND namespaceId = :namespaceId AND status IN ('pending','syncing','conflict_pending','rejected','accept_remote_pending'))")
     suspend fun purgeProductCaches(userId: Long, namespaceId: Long)
 
-    @Query("DELETE FROM local_inbound_snapshots WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId NOT IN (SELECT DISTINCT sessionId FROM local_inbound_items WHERE userId = :userId AND namespaceId = :namespaceId AND status IN ('pending','syncing','conflict_pending','rejected'))")
+    @Query("DELETE FROM local_inbound_snapshots WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId NOT IN (SELECT DISTINCT sessionId FROM local_inbound_items WHERE userId = :userId AND namespaceId = :namespaceId AND status IN ('pending','syncing','conflict_pending','rejected','accept_remote_pending'))")
     suspend fun purgeSnapshots(userId: Long, namespaceId: Long)
 
-    @Query("DELETE FROM local_inbound_batches WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId NOT IN (SELECT DISTINCT sessionId FROM local_inbound_items WHERE userId = :userId AND namespaceId = :namespaceId AND status IN ('pending','syncing','conflict_pending','rejected'))")
+    @Query("DELETE FROM local_inbound_batches WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId NOT IN (SELECT DISTINCT sessionId FROM local_inbound_items WHERE userId = :userId AND namespaceId = :namespaceId AND status IN ('pending','syncing','conflict_pending','rejected','accept_remote_pending'))")
     suspend fun purgeBatches(userId: Long, namespaceId: Long)
 
-    @Query("DELETE FROM local_inbound_sessions WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId NOT IN (SELECT DISTINCT sessionId FROM local_inbound_items WHERE userId = :userId AND namespaceId = :namespaceId AND status IN ('pending','syncing','conflict_pending','rejected'))")
+    @Query("DELETE FROM local_inbound_sessions WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId NOT IN (SELECT DISTINCT sessionId FROM local_inbound_items WHERE userId = :userId AND namespaceId = :namespaceId AND status IN ('pending','syncing','conflict_pending','rejected','accept_remote_pending'))")
     suspend fun purgeSessions(userId: Long, namespaceId: Long)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -245,6 +259,9 @@ interface LocalInboundDao {
         "SELECT * FROM local_inbound_snapshots WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId = :sessionId ORDER BY boxNo, labelCode",
     )
     suspend fun snapshots(userId: Long, namespaceId: Long, sessionId: Long): List<LocalInboundSnapshotEntity>
+
+    @Query("SELECT * FROM local_inbound_snapshots WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId = :sessionId AND (labelCode COLLATE NOCASE IN (:codes) OR boxNo COLLATE NOCASE IN (:codes) OR boxUid COLLATE NOCASE IN (:codes)) LIMIT 2")
+    suspend fun scanCandidates(userId: Long, namespaceId: Long, sessionId: Long, codes: List<String>): List<LocalInboundSnapshotEntity>
 
     @Query(
         "SELECT * FROM local_inbound_snapshots WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId = :sessionId ORDER BY boxNo, labelCode",
@@ -353,7 +370,7 @@ interface LocalInboundDao {
     suspend fun item(userId: Long, namespaceId: Long, requestId: String): LocalInboundItemEntity?
 
     @Query(
-        "SELECT * FROM local_inbound_items WHERE userId = :userId AND namespaceId = :namespaceId AND status IN ('pending', 'syncing') ORDER BY scannedAt ASC",
+        "SELECT * FROM local_inbound_items WHERE userId = :userId AND namespaceId = :namespaceId AND status IN ('pending', 'syncing', 'accept_remote_pending') ORDER BY scannedAt ASC",
     )
     suspend fun pendingItems(userId: Long, namespaceId: Long): List<LocalInboundItemEntity>
 
@@ -378,24 +395,27 @@ interface LocalInboundDao {
     suspend fun syncIssues(userId: Long, namespaceId: Long, sessionId: Long): List<LocalInboundItemEntity>
 
     @Query(
-        "SELECT * FROM local_inbound_items WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId = :sessionId AND status IN ('pending', 'syncing', 'conflict_pending', 'rejected') ORDER BY scannedAt DESC",
+        "SELECT * FROM local_inbound_items WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId = :sessionId AND status IN ('pending', 'syncing', 'conflict_pending', 'rejected', 'accept_remote_pending') ORDER BY scannedAt DESC",
     )
     suspend fun localSyncItems(userId: Long, namespaceId: Long, sessionId: Long): List<LocalInboundItemEntity>
 
     @Query(
-        "SELECT * FROM local_inbound_items WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId = :sessionId AND status IN ('pending', 'syncing', 'conflict_pending', 'rejected') ORDER BY scannedAt DESC",
+        "SELECT * FROM local_inbound_items WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId = :sessionId AND status IN ('pending', 'syncing', 'conflict_pending', 'rejected', 'accept_remote_pending') ORDER BY scannedAt DESC",
     )
     fun observeLocalSyncItems(userId: Long, namespaceId: Long, sessionId: Long): Flow<List<LocalInboundItemEntity>>
 
+    @Query("SELECT * FROM local_inbound_items WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId = :sessionId ORDER BY scannedAt DESC")
+    fun observeCollectionItems(userId: Long, namespaceId: Long, sessionId: Long): Flow<List<LocalInboundItemEntity>>
+
     @Query(
-        "SELECT * FROM local_inbound_items WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId = :sessionId AND status IN ('pending', 'syncing', 'conflict_pending', 'rejected') ORDER BY scannedAt ASC",
+        "SELECT * FROM local_inbound_items WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId = :sessionId AND status IN ('pending', 'syncing', 'conflict_pending', 'rejected', 'accept_remote_pending') ORDER BY scannedAt ASC",
     )
     suspend fun reconcilableItems(userId: Long, namespaceId: Long, sessionId: Long): List<LocalInboundItemEntity>
 
     @Query(
         "UPDATE local_inbound_items SET status = :status, remoteLocationCode = :remoteLocationCode, remoteWarehouseLocationId = :remoteWarehouseLocationId, boxPlanId = :boxPlanId, errorCode = :errorCode, errorMessage = :errorMessage, syncedAt = :syncedAt, updatedAt = :updatedAt WHERE requestId = :requestId",
     )
-    suspend fun updateItemResult(
+    suspend fun updateItemResultRow(
         requestId: String,
         status: String,
         remoteLocationCode: String,
@@ -406,6 +426,27 @@ interface LocalInboundDao {
         syncedAt: Long,
         updatedAt: Long = System.currentTimeMillis(),
     )
+
+    @Query("SELECT * FROM local_inbound_items WHERE requestId=:requestId")
+    suspend fun findItemById(requestId: String): LocalInboundItemEntity?
+
+    @Query("UPDATE auto_receipt_scan_items SET scanJson=:payload, ackJson=CASE WHEN :ack='' THEN ackJson ELSE :ack END, errorMessage='' WHERE requestId=:requestId AND crossOrder=0")
+    suspend fun updateFrozenItem(requestId: String, payload: String, ack: String)
+
+    @Transaction
+    suspend fun updateItemResult(requestId: String, status: String, remoteLocationCode: String, remoteWarehouseLocationId: Long, boxPlanId: Long, errorCode: Int, errorMessage: String, syncedAt: Long, updatedAt: Long = System.currentTimeMillis(), ackJson: String = "") {
+        updateItemResultRow(requestId, status, remoteLocationCode, remoteWarehouseLocationId, boxPlanId, errorCode, errorMessage, syncedAt, updatedAt)
+        findItemById(requestId)?.let { updateFrozenItem(requestId, Json.encodeToString(it), ackJson) }
+    }
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun freezeReceiptScan(row: AutoReceiptScanSnapshot)
+
+    @Transaction
+    suspend fun saveAcceptedLocation(item: LocalInboundItemEntity, ack: InboundScanAck) {
+        updateItemResult(item.requestId, InboundItemStatus.RemoteAccepted.value, ack.locationCode, ack.locationId, item.boxPlanId, 0, "", System.currentTimeMillis(), ackJson = Json.encodeToString(ack))
+        updateSnapshotLocation(item.userId, item.namespaceId, item.sessionId, item.boxPlanId, ack.locationCode, ack.locationId)
+    }
 
     @Query(
         "UPDATE local_inbound_items SET localWarehouseLocationId = :warehouseLocationId, localLocationCode = :locationCode, updatedAt = :updatedAt WHERE requestId = :requestId",
@@ -448,8 +489,29 @@ interface LocalInboundDao {
 
     @Transaction
     suspend fun finishBatch(batchId: String, completedAt: Long = System.currentTimeMillis()) {
+        saveAutoReceiptIntent(batchId)
         queueDraftItems(batchId, completedAt)
         updateBatchStatus(batchId, InboundBatchStatus.Pending.value, completedAt, completedAt)
+    }
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAutoReceiptIntent(intent: AutoReceiptIntentEntity)
+
+    @Query("SELECT * FROM cross_order_scans WHERE userId=:user AND namespaceId=:namespace AND batchId=:batchId AND operation='inbound'")
+    suspend fun crossOrderBatchItems(user: Long, namespace: Long, batchId: String): List<CrossOrderScanEntity>
+
+    @Transaction
+    suspend fun saveAutoReceiptIntent(batchId: String) {
+        val batch = requireNotNull(batch(batchId))
+        val refs = itemsForBatch(batchId).map { AutoReceiptScanRef(it.requestId) } +
+            crossOrderBatchItems(batch.userId, batch.namespaceId, batchId).map { AutoReceiptScanRef(it.id, crossOrder = true) }
+        insertAutoReceiptIntent(AutoReceiptIntentEntity(batchId, batch.userId, batch.namespaceId, batch.sessionId, Json.encodeToString(refs), System.currentTimeMillis()))
+        itemsForBatch(batchId).forEach { item ->
+            freezeReceiptScan(AutoReceiptScanSnapshot("$batchId:false:${item.requestId}", batchId, batch.userId, batch.namespaceId, batch.sessionId, item.requestId, false, Json.encodeToString(if (item.status == "draft") item.copy(status = "pending") else item)))
+        }
+        crossOrderBatchItems(batch.userId, batch.namespaceId, batchId).forEach { item ->
+            freezeReceiptScan(AutoReceiptScanSnapshot("$batchId:true:${item.id}", batchId, batch.userId, batch.namespaceId, batch.sessionId, item.id, true, Json.encodeToString(item)))
+        }
     }
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -507,6 +569,12 @@ interface LocalInboundDao {
 
 @Serializable
 data class ReceivingInboundItem(
+    @SerialName("first_sku_code") val firstSkuCode: String = "",
+    @SerialName("first_sku_name") val firstSkuName: String = "",
+    @SerialName("first_product_code") val firstProductCode: String = "",
+    @SerialName("first_product_name") val firstProductName: String = "",
+    @SerialName("first_product_id") val firstProductId: Long = 0,
+    @SerialName("is_mixed") val isMixed: Boolean = false,
     val id: Long = 0,
     @SerialName("box_plan_id") val boxPlanId: Long = id,
     @SerialName("box_no") val boxNo: String = "",
@@ -516,6 +584,8 @@ data class ReceivingInboundItem(
     @SerialName("warehouse_location_id") val warehouseLocationId: Long = 0,
     @SerialName("can_scan_rebind") val canScanRebind: Boolean = false,
     @SerialName("virtual_recovery_required") val virtualRecoveryRequired: Boolean = false,
+    @SerialName("recoverable_void") val recoverableVoid: Boolean = false,
+    @SerialName("manual_received") val manualReceived: Boolean = false,
     val status: String = "",
     @SerialName("inbound_status") val inboundStatus: String = "",
     @SerialName("receipt_scan_status") val receiptScanStatus: String = "",
@@ -549,24 +619,18 @@ private data class ReceivingInboundProductSummary(
 )
 
 @Serializable
-private data class ReceivingInboundProductPage(
-    val items: List<ReceivingInboundProductSummary> = emptyList(),
-    val total: Int = 0,
-    val page: Int = 1,
-    @SerialName("page_size") val pageSize: Int = 200,
-)
-
-@Serializable
 private data class ReceivingInboundPage(
     val data: List<ReceivingInboundItem> = emptyList(),
     val total: Int = 0,
     val page: Int = 1,
     val pageSize: Int = 200,
     val summary: ReceivingInboundSummary = ReceivingInboundSummary(),
+    @SerialName("has_more") val hasMore: Boolean? = null,
 )
 
 @Serializable
 private data class ReceivingInboundMutationResponse(
+    @SerialName("scan_ack") val scanAck: InboundScanAck? = null,
     val result: String = "",
     val item: ReceivingInboundItem = ReceivingInboundItem(),
     val duplicate: Boolean = false,
@@ -575,6 +639,7 @@ private data class ReceivingInboundMutationResponse(
 
 @Serializable
 private data class ReceivingInboundBatchItemResult(
+    @SerialName("scan_ack") val scanAck: InboundScanAck? = null,
     @SerialName("request_id") val requestId: String = "",
     val status: String = "",
     val code: Int = 0,
@@ -626,6 +691,7 @@ data class InboundWorkspace(
     val syncIssues: List<LocalInboundItemEntity> = emptyList(),
     val localSyncItems: List<LocalInboundItemEntity> = emptyList(),
     val pendingProducts: List<LocalInboundProductSummaryEntity> = emptyList(),
+    val collectionItems: List<LocalInboundItemEntity> = emptyList(),
     val locationCache: WarehouseLocationCacheState = WarehouseLocationCacheState(),
     val snapshotItems: List<LocalInboundSnapshotEntity> = emptyList(),
 )
@@ -667,12 +733,16 @@ data class InboundProductCache(
     val updatedAt: Long,
     val session: LocalInboundSessionEntity? = null,
     val localSyncItems: List<LocalInboundItemEntity> = emptyList(),
+    val collectionItems: List<LocalInboundItemEntity> = emptyList(),
     val snapshotItems: List<LocalInboundSnapshotEntity> = emptyList(),
 )
 
 data class InboundSkuQuantity(
     val skuCode: String,
     val quantity: Int?,
+    val skuName: String = "",
+    val spec: String = "",
+    val productName: String = "",
 )
 
 data class InboundDraftBoxDetail(
@@ -824,7 +894,81 @@ internal fun requireInboundRebindConfirmation(
 }
 
 internal fun LocalInboundSnapshotEntity.canScanIntoInboundLocation(): Boolean =
-    eligible && (locationCode.isBlankOrVirtualInboundLocation() || canScanRebind)
+    eligible && (canScanRebind || locationCode.isVirtualInboundLocation() || (locationCode.isBlank() && warehouseLocationId == 0L))
+
+internal suspend fun resolveInboundPreviewAssignment(
+    preview: ReceivingScanResponse,
+    loadPersistedAssignment: suspend () -> ReceivingCurrentAssignment,
+): ReceivingCurrentAssignment = preview.currentAssignment ?: loadPersistedAssignment()
+
+internal fun inboundSnapshotFromPreview(
+    batch: LocalInboundBatchEntity,
+    cached: LocalInboundSnapshotEntity?,
+    preview: ReceivingScanResponse,
+    assignment: ReceivingCurrentAssignment,
+): LocalInboundSnapshotEntity {
+    val item = preview.resolvedData
+    val canScanRebind = preview.resolvedCanScanRebind || assignment.locationCode.isVirtualInboundLocation()
+    return LocalInboundSnapshotEntity(
+        userId = batch.userId,
+        namespaceId = batch.namespaceId,
+        sessionId = batch.sessionId,
+        boxPlanId = item.boxPlanId,
+        labelCode = item.labelCode,
+        boxNo = item.boxNo,
+        boxUid = item.boxUid,
+        status = item.status.ifBlank { cached?.status.orEmpty() },
+        inboundStatus = cached?.inboundStatus.orEmpty(),
+        locationCode = assignment.locationCode,
+        warehouseLocationId = assignment.warehouseLocationId ?: 0,
+        canScanRebind = canScanRebind,
+        receiptScanStatus = cached?.receiptScanStatus.orEmpty(),
+        exceptionReason = item.exceptionReason,
+        remoteScannedBy = item.scannedBy,
+        remoteScannedAt = item.scannedAt.toInboundEpochMillis(),
+        eligible = canScanRebind || (!preview.duplicate && item.status.equals("normal", true)),
+        snapshotAt = System.currentTimeMillis(),
+        firstSkuCode = cached?.firstSkuCode.orEmpty(),
+        firstSkuName = cached?.firstSkuName.orEmpty(),
+        firstProductCode = cached?.firstProductCode.orEmpty(),
+        firstProductName = cached?.firstProductName.orEmpty(),
+        firstProductId = cached?.firstProductId ?: 0,
+        isMixed = cached?.isMixed ?: false,
+    )
+}
+
+/** Explains a rejection without changing the existing admission or rebind rules. */
+internal fun inboundScanRejection(
+    batch: LocalInboundBatchEntity,
+    snapshot: LocalInboundSnapshotEntity,
+    existing: LocalInboundItemEntity?,
+    previewDuplicate: Boolean = false,
+): InboundClientException? {
+    val manualReceived = snapshot.receiptScanStatus == "manual_received"
+    val rebindable = snapshot.canScanRebind || snapshot.locationCode.isVirtualInboundLocation()
+    val existingBlocks = existing != null && (!rebindable || existing.blocksVirtualRebind())
+    if (!manualReceived && snapshot.eligible && snapshot.canScanIntoInboundLocation() && !existingBlocks) return null
+
+    val reason = when {
+        manualReceived -> InboundClientError.BoxManualReceived
+        !rebindable && (snapshot.locationCode.isNotBlank() || snapshot.warehouseLocationId != 0L) ->
+            return InboundClientException(InboundClientError.BoxAlreadyAssigned, snapshot.locationCode)
+        existing != null && existing.blocksVirtualRebind() ->
+            return InboundClientException(
+                if (existing.batchId == batch.id) InboundClientError.BoxScannedInCurrentBatch else InboundClientError.BoxAlreadyScanned,
+                existing.localLocationCode,
+            )
+        snapshot.status.lowercase() == "voided" -> InboundClientError.BoxVoided
+        snapshot.status.lowercase() in setOf("cancelled", "canceled") -> InboundClientError.BoxCancelled
+        snapshot.status.lowercase() in setOf("shortage_marked", "shorted") -> InboundClientError.BoxShorted
+        snapshot.status.lowercase() == "adjusted_out" -> InboundClientError.BoxAdjustedOut
+        snapshot.exceptionReason.isNotBlank() || snapshot.status.equals("exception", true) ||
+            snapshot.inboundStatus.lowercase() in setOf("exception", "invalid") -> InboundClientError.BoxException
+        previewDuplicate || existingBlocks -> InboundClientError.BoxDuplicateRecord
+        else -> InboundClientError.BoxNotEligible
+    }
+    return InboundClientException(reason, snapshot.exceptionReason)
+}
 
 internal fun LocalInboundItemEntity.blocksVirtualRebind(): Boolean =
     status !in TERMINAL_INBOUND_ITEM_STATUSES
@@ -868,7 +1012,10 @@ internal fun mergeInboundSessionIds(
     local: List<LocalInboundSessionEntity>,
 ): Set<Long> = remote.mapTo(linkedSetOf()) { it.id }.apply { addAll(local.map { it.sessionId }) }
 
-class InboundClientException(val reason: InboundClientError) : IllegalStateException()
+class InboundClientException(
+    val reason: InboundClientError,
+    val detail: String = "",
+) : IllegalStateException()
 
 enum class InboundClientError {
     SnapshotUnavailable,
@@ -877,6 +1024,7 @@ enum class InboundClientError {
     LocationNotFound,
     LocationInactive,
     LocationWarehouseMismatch,
+    SkuCacheMiss,
     TargetWarehouseMissing,
     SessionComplete,
     BatchNotFound,
@@ -885,6 +1033,15 @@ enum class InboundClientError {
     MappingCacheMiss,
     BoxNotInSession,
     BoxNotEligible,
+    BoxOfflineNotFound,
+    BoxScannedInCurrentBatch,
+    BoxDuplicateRecord,
+    BoxManualReceived,
+    BoxVoided,
+    BoxCancelled,
+    BoxShorted,
+    BoxAdjustedOut,
+    BoxException,
     BoxAlreadyAssigned,
     BoxAlreadyScanned,
     ConflictNotFound,
@@ -906,16 +1063,29 @@ fun normalizeInboundLocation(value: String): String {
 class LocalInboundRepository
 @Inject
 constructor(
+    private val crossOrderRepository: CrossOrderReceivingRepository,
     private val api: FscmApiClient,
     private val receivingRepository: ReceivingRepository,
     private val sessionStore: SessionStore,
     private val dao: LocalInboundDao,
     private val boxLabelMappingRepository: BoxLabelMappingRepository,
     private val warehouseLocationRepository: WarehouseLocationRepository,
+    private val skuCatalogRepository: LocalSkuCatalogRepository,
     private val syncScheduler: LocalInboundSyncScheduler,
 ) {
     private val syncMutex = Mutex()
+    val downloadProgress = kotlinx.coroutines.flow.MutableStateFlow<InboundDownloadProgress?>(null)
+    private val manualSyncs = InboundRefreshCoordinator<Triple<Long, Long, Long>, InboundWorkspace>()
+    private val snapshotRefreshes = InboundRefreshCoordinator<Triple<Long, Long, Long>, InboundWorkspace>()
+    private val syncActivity = kotlinx.coroutines.flow.MutableStateFlow<Triple<Long, Long, Long>?>(null)
+    suspend fun observeSyncActivity(sessionId: Long): Flow<Boolean> {
+        val current = scope()
+        return syncActivity.map { it == Triple(current.userId, current.namespaceId, sessionId) }
+    }
     private val draftMutex = Mutex()
+
+    val referenceSyncReport = kotlinx.coroutines.flow.MutableStateFlow(ReferenceSyncReport())
+    private val cacheRefreshMutex = kotlinx.coroutines.sync.Mutex()
 
     @Volatile private var batchEndpointSupported: Boolean? = null
 
@@ -957,30 +1127,25 @@ constructor(
 
     suspend fun prepareOfflineData(): List<InboundSessionSummary> {
         if (sessionStore.current().isOffline) return sessionSummaries()
-        syncScheduler.enqueueCacheRefresh()
+        enqueueReferenceRefresh()
         return sessionSummaries(refreshRemote = true)
     }
 
     suspend fun prepareSession(sessionId: Long): InboundWorkspace {
         val scope = scope()
         val localSession = dao.session(scope.userId, scope.namespaceId, sessionId)
-        val locationCache = warehouseLocationRepository.cacheState()
         if (
             localSession?.snapshotComplete == true &&
-            locationCache.complete &&
             localSession.warehouseCode.isNotBlank()
         ) {
             dao.touchSession(scope.userId, scope.namespaceId, sessionId)
-            if (!sessionStore.current().isOffline) syncScheduler.enqueueCacheRefresh(sessionId)
             return workspace(sessionId)
         }
         if (sessionStore.current().isOffline) {
             throw InboundClientException(InboundClientError.SnapshotUnavailable)
         }
-        warehouseLocationRepository.refreshIfStale()
         val workspace = refreshSessionSnapshot(sessionId)
         dao.touchSession(scope.userId, scope.namespaceId, sessionId)
-        syncScheduler.enqueueCacheRefresh(sessionId)
         return workspace
     }
 
@@ -998,16 +1163,28 @@ constructor(
         return refreshSessionSnapshot(sessionId, localSession.sessionCode)
     }
 
-    suspend fun workspace(sessionId: Long, remoteStatus: String = ""): InboundWorkspace {
+    suspend fun cachedSession(sessionId: Long): LocalInboundSessionEntity? {
+        val actor = scope()
+        return dao.session(actor.userId, actor.namespaceId, sessionId)
+    }
+
+    suspend fun workspace(sessionId: Long, remoteStatus: String = ""): InboundWorkspace = withContext(Dispatchers.Default) {
         val scope = scope()
         val localSession =
             dao.session(scope.userId, scope.namespaceId, sessionId)
                 ?: throw InboundClientException(InboundClientError.SnapshotUnavailable)
-        recomputeSession(scope.userId, scope.namespaceId, sessionId, remoteStatus)
-        val refreshed = dao.session(scope.userId, scope.namespaceId, sessionId) ?: localSession
+        val refreshed = localSession
         val draft = dao.draftBatch(scope.userId, scope.namespaceId, sessionId)
         val draftItems = draft?.let { dao.itemsForBatch(it.id) }.orEmpty()
-        return InboundWorkspace(
+        val mappings = boxLabelMappingRepository.cachedMappings(draftItems.map { it.rawCode })
+        val quantitiesByRequest = draftItems.associate { item ->
+            val mapping = mappings[item.rawCode]
+            item.requestId to resolveInboundSkuQuantities(item.rawCode, mapping?.skuCode.orEmpty(), mapping?.qtyPerCarton ?: 0)
+        }
+        val skus = skuCatalogRepository.find(quantitiesByRequest.values.flatten().map { it.skuCode }.distinct())
+        val snapshots = dao.snapshots(scope.userId, scope.namespaceId, sessionId)
+        val locationCache = warehouseLocationRepository.cacheState()
+        InboundWorkspace(
             summary =
             buildSummary(
                 userId = scope.userId,
@@ -1016,53 +1193,56 @@ constructor(
                 sessionCode = refreshed.sessionCode,
                 remoteStatus = remoteStatus,
                 localSession = refreshed,
-                locationCache = warehouseLocationRepository.cacheState(),
+                locationCache = locationCache,
             ),
             draftBatch = draft,
             draftItems = draftItems,
             draftBoxDetails =
             sortInboundDraftBoxDetails(
                 draftItems.map { item ->
-                    val mapping = boxLabelMappingRepository.cachedMapping(item.rawCode)
+                    val mapping = mappings[item.rawCode]
+                    val quantities = quantitiesByRequest[item.requestId].orEmpty()
                     InboundDraftBoxDetail(
                         item = item,
                         skuItems =
-                        resolveInboundSkuQuantities(
-                            rawCode = item.rawCode,
-                            fallbackSkuCode = mapping?.skuCode.orEmpty(),
-                            fallbackQuantity = mapping?.qtyPerCarton ?: 0,
-                        ),
+                        quantities.map { quantity ->
+                            val sku = skus[normalizeCatalogCode(quantity.skuCode)]
+                            quantity.copy(skuName = sku?.name.orEmpty(), spec = sku?.spec.orEmpty(), productName = sku?.productName ?: mapping?.productName.orEmpty())
+                        },
                     )
                 },
             ),
             conflicts = dao.conflicts(scope.userId, scope.namespaceId, sessionId),
             centerExceptions =
-            dao.snapshots(scope.userId, scope.namespaceId, sessionId)
-                .filterNot(LocalInboundSnapshotEntity::eligible),
+            snapshots.filterNot(LocalInboundSnapshotEntity::eligible),
             syncIssues = dao.syncIssues(scope.userId, scope.namespaceId, sessionId),
             localSyncItems = dao.localSyncItems(scope.userId, scope.namespaceId, sessionId),
-            pendingProducts = pendingInboundProducts(dao.productSummaries(scope.userId, scope.namespaceId, sessionId)),
-            locationCache = warehouseLocationRepository.cacheState(),
-            snapshotItems = dao.snapshots(scope.userId, scope.namespaceId, sessionId),
+            pendingProducts = dao.productSummaries(scope.userId, scope.namespaceId, sessionId),
+            collectionItems = dao.itemsForSession(scope.userId, scope.namespaceId, sessionId),
+            locationCache = locationCache,
+            snapshotItems = snapshots,
         )
     }
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     suspend fun observeProductCache(sessionId: Long): Flow<InboundProductCache> {
-        val scope = scope()
-        return combine(
-            dao.observeSession(scope.userId, scope.namespaceId, sessionId),
-            dao.observeProductSummaries(scope.userId, scope.namespaceId, sessionId),
-            dao.observeLocalSyncItems(scope.userId, scope.namespaceId, sessionId),
-            dao.observeSnapshots(scope.userId, scope.namespaceId, sessionId),
-        ) { session, products, localSyncItems, snapshots ->
-            InboundProductCache(
-                items = pendingInboundProducts(products),
-                complete = session?.productCacheComplete == true,
-                updatedAt = session?.productCacheAt ?: 0,
-                session = session,
-                snapshotItems = snapshots,
-                localSyncItems = localSyncItems,
-            )
+        return sessionStore.session.map { (it.user?.id ?: 0L) to (it.currentNamespace?.id ?: 0L) }.distinctUntilChanged().flatMapLatest { (userId, namespaceId) ->
+            combine(
+                dao.observeSession(userId, namespaceId, sessionId),
+                dao.observeProductSummaries(userId, namespaceId, sessionId),
+                dao.observeCollectionItems(userId, namespaceId, sessionId),
+                dao.observeSnapshots(userId, namespaceId, sessionId),
+            ) { session, products, localSyncItems, snapshots ->
+                InboundProductCache(
+                    items = products,
+                    complete = session?.snapshotComplete == true,
+                    updatedAt = session?.snapshotAt ?: 0,
+                    session = session,
+                    snapshotItems = snapshots,
+                    localSyncItems = localSyncItems.filter { it.status in setOf("pending", "syncing", "conflict_pending", "rejected", "accept_remote_pending") },
+                    collectionItems = localSyncItems,
+                )
+            }
         }
     }
 
@@ -1086,7 +1266,7 @@ constructor(
                 locationCache = warehouseLocationRepository.cacheState(),
             )
         if (!summary.canStartInboundBatch()) throw InboundClientException(InboundClientError.SessionComplete)
-        val resolved = warehouseLocationRepository.resolve(rawLocation, localSession.warehouseCode).location
+        val resolved = warehouseLocationRepository.resolveForCapture(rawLocation, localSession.warehouseCode).location
         val batch =
             LocalInboundBatchEntity(
                 id = UUID.randomUUID().toString(),
@@ -1098,6 +1278,7 @@ constructor(
                 locationName = resolved.name,
                 zoneName = resolved.zoneName,
             )
+        check(scope == scope()) { "工作空间已切换，请重新扫描" }
         dao.insertBatch(batch)
         return batch
     }
@@ -1110,7 +1291,7 @@ constructor(
             ?: throw InboundClientException(InboundClientError.BatchNotFound)
         val session = dao.session(scope.userId, scope.namespaceId, batch.sessionId)
             ?: throw InboundClientException(InboundClientError.SnapshotUnavailable)
-        return warehouseLocationRepository.resolve(rawLocation, session.warehouseCode).location
+        return warehouseLocationRepository.resolveForCapture(rawLocation, session.warehouseCode).location
     }
 
     suspend fun changeDraftLocation(batchId: String, rawLocation: String): InboundWorkspace =
@@ -1137,74 +1318,21 @@ constructor(
         val currentSession = sessionStore.current()
         currentSession.requireOfflineOperationPermission("receiving")
         val storedBatch =
-            dao.batch(batchId)?.takeIf { it.status == InboundBatchStatus.Draft.value }
+            dao.batch(batchId)?.takeIf { it.status == InboundBatchStatus.Draft.value && it.userId == currentSession.user?.id && it.namespaceId == currentSession.currentNamespace?.id }
                 ?: throw InboundClientException(InboundClientError.BatchNotFound)
-        val batch = validateBatchLocation(storedBatch)
-        val parsed = boxLabelMappingRepository.resolve(rawCode)
-        if (currentSession.isOffline && parsed == null) {
-            throw InboundClientException(InboundClientError.MappingCacheMiss)
-        }
+        val batch = storedBatch
+        if (batch.warehouseLocationId <= 0) throw InboundClientException(InboundClientError.LocationCacheUnavailable)
+        val parsed = boxLabelMappingRepository.resolveForCapture(rawCode)
         val candidates =
             buildSet {
                 parsed?.labelCode?.let(::add)
                 parsed?.originalRawCode?.trimScannerSuffix()?.let(::add)
                 add(rawCode.trimScannerSuffix())
             }
-        val cachedSnapshot =
-            dao.snapshots(batch.userId, batch.namespaceId, batch.sessionId).firstOrNull { row ->
-                candidates.any { candidate ->
-                    candidate.equals(row.labelCode, true) ||
-                        candidate.equals(row.boxNo, true) ||
-                        candidate.equals(row.boxUid, true)
-                }
-            }
-        var snapshot = cachedSnapshot
-        if (!currentSession.isOffline) {
-            val preview =
-                try {
-                    receivingRepository.preview(batch.sessionId, rawCode)
-                } catch (_: BoxLabelMappingCacheMissException) {
-                    throw InboundClientException(InboundClientError.MappingCacheMiss)
-                }
-            val item = preview.resolvedData
-            if (!item.localFallback && item.boxPlanId > 0 && item.labelCode.isNotBlank()) {
-                val canScanRebind = preview.resolvedCanScanRebind || item.locationCode.isVirtualInboundLocation()
-                snapshot = LocalInboundSnapshotEntity(
-                    userId = batch.userId,
-                    namespaceId = batch.namespaceId,
-                    sessionId = batch.sessionId,
-                    boxPlanId = item.boxPlanId,
-                    labelCode = item.labelCode,
-                    boxNo = item.boxNo,
-                    boxUid = item.boxUid,
-                    status = item.status.ifBlank { cachedSnapshot?.status.orEmpty() },
-                    inboundStatus = cachedSnapshot?.inboundStatus.orEmpty(),
-                    locationCode = item.locationCode,
-                    warehouseLocationId = item.warehouseLocationId,
-                    canScanRebind = canScanRebind,
-                    receiptScanStatus = cachedSnapshot?.receiptScanStatus.orEmpty(),
-                    exceptionReason = item.exceptionReason,
-                    remoteScannedBy = item.scannedBy,
-                    remoteScannedAt = item.scannedAt.toInboundEpochMillis(),
-                    eligible = canScanRebind || (!preview.duplicate && item.status.equals("normal", true)),
-                    snapshotAt = System.currentTimeMillis(),
-                ).also { dao.insertSnapshot(it) }
-            }
-        }
-        val resolvedSnapshot = snapshot ?: throw InboundClientException(InboundClientError.BoxNotInSession)
-        if (!resolvedSnapshot.eligible) throw InboundClientException(InboundClientError.BoxNotEligible)
-        if (!resolvedSnapshot.canScanIntoInboundLocation()) {
-            throw InboundClientException(InboundClientError.BoxAlreadyAssigned)
-        }
+        val cachedSnapshot = dao.scanCandidates(batch.userId, batch.namespaceId, batch.sessionId, candidates.toList()).singleOrNull()
+        val resolvedSnapshot = cachedSnapshot ?: throw InboundClientException(InboundClientError.BoxOfflineNotFound)
         val existing = dao.itemForLabel(batch.userId, batch.namespaceId, resolvedSnapshot.labelCode)
-        existing?.let { previous ->
-            if (!resolvedSnapshot.canScanRebind && !resolvedSnapshot.locationCode.isVirtualInboundLocation()) {
-                throw InboundClientException(InboundClientError.BoxAlreadyScanned)
-            }
-            if (previous.blocksVirtualRebind()) {
-                throw InboundClientException(InboundClientError.BoxAlreadyScanned)
-            }
-        }
+        inboundScanRejection(batch, resolvedSnapshot, existing, false)?.let { throw it }
         // Do not remove the previous operation or create a new draft before explicit confirmation.
         requireInboundRebindConfirmation(batch, resolvedSnapshot, confirmedRebind, existing)
         if (existing != null) {
@@ -1223,6 +1351,7 @@ constructor(
                 localLocationCode = batch.locationCode,
                 localWarehouseLocationId = batch.warehouseLocationId,
             )
+        check(currentScopeKey() == (batch.userId to batch.namespaceId)) { "工作空间已切换，请重新扫描" }
         dao.insertItem(item)
         return item
     }
@@ -1241,14 +1370,10 @@ constructor(
         sessionStore.current().requireOfflineOperationPermission("receiving")
         val batch = dao.batch(batchId) ?: throw InboundClientException(InboundClientError.BatchNotFound)
         if (batch.status != InboundBatchStatus.Draft.value) throw InboundClientException(InboundClientError.BatchNotFound)
-        if (dao.batchItemCount(batchId) == 0) throw InboundClientException(InboundClientError.EmptyBatch)
+        if (dao.batchItemCount(batchId) == 0 && crossOrderRepository.batchCount(batchId) == 0) throw InboundClientException(InboundClientError.EmptyBatch)
         dao.finishBatch(batchId)
         syncScheduler.enqueueSoon()
-        // When online, close the server-side inbound stage after all scans are synced.
-        // Offline completion remains local and is retried by the next foreground sync.
-        if (!sessionStore.current().isOffline) {
-            completeInboundIfReady(batch.sessionId)
-        }
+        requestBackgroundSync(batch.sessionId)
         recomputeSession(batch.userId, batch.namespaceId, batch.sessionId, "")
         return workspace(batch.sessionId)
     }
@@ -1271,22 +1396,32 @@ constructor(
         if (sessionStore.current().isOffline) return false
         // Inbound completion must never close an order while the receiving
         // stage is still in progress. The receiving stage is authoritative.
+        val actor = currentScopeKey()
+        val local = dao.session(actor.first, actor.second, sessionId) ?: return false
+        if (!local.snapshotComplete || local.unassignedCount > 0 || dao.pendingItems(actor.first, actor.second).any { it.sessionId == sessionId }) return false
         val receivingSession = receivingRepository.session(sessionId, forceRefresh = true)
+        if (currentScopeKey() != actor) return false
         if (receivingSession.status.trim().lowercase() != "completed") return false
         return runCatching { completeInboundStage(sessionId) }.isSuccess
     }
 
     private suspend fun completeInboundStage(sessionId: Long) {
+        val originalScope = scope()
         syncPendingItems(sessionId = sessionId, refreshTouchedSessions = false)
         val preview = api.get<InboundCompletionPreview>(
             "receiving-sessions/$sessionId/inbound/completion-preview",
+            headers = inboundScopeHeaders(originalScope.userId, originalScope.namespaceId),
         )
+        check(scope() == originalScope) { "Session changed" }
         if (preview.snapshotHash.isBlank()) return
         api.post<JsonObject>(
             "receiving-sessions/$sessionId/inbound/complete",
-            inboundCompletionRequest(preview.snapshotHash, UUID.randomUUID().toString(), preview.requiresConfirmation),
+            body = inboundCompletionRequest(preview.snapshotHash, UUID.randomUUID().toString(), preview.requiresConfirmation),
+            headers = inboundScopeHeaders(originalScope.userId, originalScope.namespaceId),
         )
-        refreshSessionSnapshot(sessionId)
+        check(scope() == originalScope) { "Session changed" }
+        val session = dao.session(originalScope.userId, originalScope.namespaceId, sessionId)
+        if (session != null) dao.upsertSession(session.copy(status = InboundSessionStatus.Complete.value, updatedAt = System.currentTimeMillis()))
     }
 
     suspend fun knownLocationCodes(sessionId: Long): Set<String> {
@@ -1315,7 +1450,19 @@ constructor(
         val attemptAt = System.currentTimeMillis()
         var processed = 0
         onProgress(processed, pending.size)
-        groupInboundSyncItems(pending).forEach { group ->
+        pending.filter { it.status == "accept_remote_pending" }.forEach { item ->
+            val result = runCatching { syncAcceptedLocation(item) }
+            if (result.isFailure) {
+                allTransientSucceeded = false
+                val error = result.exceptionOrNull()
+                val needsReview = (error as? FscmApiException)?.statusCode?.let { it in 400..499 && it != 429 } == true
+                dao.updateItemResult(item.requestId, if (needsReview) InboundItemStatus.ConflictPending.value else "accept_remote_pending", item.remoteLocationCode, item.remoteWarehouseLocationId, item.boxPlanId, 0, error?.message ?: "后台库位确认失败，请联网重试", 0)
+            }
+            processed++
+            onProgress(processed, pending.size)
+        }
+        groupInboundSyncItems(pending.filter { it.status != "accept_remote_pending" }).forEach { group ->
+            if (scope() != scope) return false
             val result = runCatching { syncItemGroup(group) }
             if (!result.getOrDefault(false)) allTransientSucceeded = false
             processed += group.size
@@ -1323,18 +1470,11 @@ constructor(
         }
         if (!refreshTouchedSessions) return allTransientSucceeded
         touchedSessions.forEach { sessionId ->
+            if (scope() != scope) return false
             val session = dao.session(scope.userId, scope.namespaceId, sessionId) ?: return@forEach
             val refreshed =
                 runCatching {
-                    refreshSnapshot(
-                        sessionId,
-                        session.sessionCode,
-                        session.consolidationOrderCode,
-                        session.consolidationOrderName,
-                        session.warehouseCode,
-                        session.warehouseName,
-                        session.hasVirtualInbound,
-                    )
+                    refreshSessionSnapshot(sessionId, session.sessionCode, minimumStartedAt = System.nanoTime())
                 }.isSuccess
             dao.upsertSession(
                 (dao.session(scope.userId, scope.namespaceId, sessionId) ?: session).copy(
@@ -1352,66 +1492,74 @@ constructor(
 
     suspend fun syncSessionManually(
         sessionId: Long,
+        onPhase: (String) -> Unit = {},
         onProgress: (processed: Int, total: Int) -> Unit = { _, _ -> },
     ): InboundWorkspace {
+        val actor = currentScopeKey()
+        return manualSyncs.run(Triple(actor.first, actor.second, sessionId)) {
+            syncSessionNow(sessionId, onPhase, onProgress)
+        }
+    }
+
+    private suspend fun syncSessionNow(sessionId: Long, onPhase: (String) -> Unit, onProgress: (Int, Int) -> Unit): InboundWorkspace = syncMutex.withLock {
         if (sessionStore.current().isOffline) throw InboundClientException(InboundClientError.OfflineSyncUnavailable)
         val scope = scope()
-        val attemptAt = System.currentTimeMillis()
-        val session =
-            dao.session(scope.userId, scope.namespaceId, sessionId)
-                ?: throw InboundClientException(InboundClientError.SnapshotUnavailable)
-        syncMutex.withLock {
-            syncPendingItems(sessionId, refreshTouchedSessions = false, onProgress = onProgress)
+        syncActivity.value = Triple(scope.userId, scope.namespaceId, sessionId)
+        try {
+            val attemptAt = System.currentTimeMillis()
+            val session =
+                dao.session(scope.userId, scope.namespaceId, sessionId)
+                    ?: throw InboundClientException(InboundClientError.SnapshotUnavailable)
+            dao.draftBatch(scope.userId, scope.namespaceId, sessionId)?.takeIf { it.warehouseLocationId <= 0 }?.let { legacy ->
+                draftMutex.withLock { validateBatchLocation(legacy) }
+            }
+            onPhase("upload")
+            val hadCrossPending = crossOrderRepository.hasPendingInbound(sessionId)
+            check(crossOrderRepository.sync(sessionId, "inbound")) { "跨单记录尚未同步，请重试" }
+            val hadPending = hadCrossPending || dao.pendingItems(scope.userId, scope.namespaceId).any { it.sessionId == sessionId }
+            check(syncPendingItems(sessionId, refreshTouchedSessions = false, onProgress = onProgress)) { "Inbound sync incomplete; retry when connected" }
+            check(scope() == scope) { "Session changed" }
+            onPhase("download")
+            refreshSessionSnapshot(sessionId, session.sessionCode, minimumStartedAt = if (hadPending) System.nanoTime() else Long.MIN_VALUE)
+            val refreshed = dao.session(scope.userId, scope.namespaceId, sessionId) ?: session
+            dao.upsertSession(
+                refreshed.copy(
+                    lastSyncAttemptAt = attemptAt,
+                    lastSyncSuccessAt = System.currentTimeMillis(),
+                    lastSyncError = "",
+                    updatedAt = System.currentTimeMillis(),
+                ),
+            )
+            recomputeSession(scope.userId, scope.namespaceId, sessionId, "")
+            recomputeBatches(scope.userId, scope.namespaceId, sessionId)
+            check(scope() == scope) { "Session changed" }
+            completeInboundIfReady(sessionId)
+            workspace(sessionId)
+        } finally {
+            syncActivity.value = null
         }
-        val boxPlanIds = refreshSnapshot(
-            sessionId,
-            session.sessionCode,
-            session.consolidationOrderCode,
-            session.consolidationOrderName,
-            session.warehouseCode,
-            session.warehouseName,
-            session.hasVirtualInbound,
-        )
-        boxLabelMappingRepository.refreshSession(sessionId, boxPlanIds)
-        val refreshed = dao.session(scope.userId, scope.namespaceId, sessionId) ?: session
-        dao.upsertSession(
-            refreshed.copy(
-                lastSyncAttemptAt = attemptAt,
-                lastSyncSuccessAt = System.currentTimeMillis(),
-                lastSyncError = "",
-                updatedAt = System.currentTimeMillis(),
-            ),
-        )
-        recomputeSession(scope.userId, scope.namespaceId, sessionId, "")
-        recomputeBatches(scope.userId, scope.namespaceId, sessionId)
-        syncScheduler.enqueueCacheRefresh(sessionId)
-        return workspace(sessionId)
     }
 
     suspend fun acceptRemote(requestId: String): InboundWorkspace {
         val scope = scope()
         val item = findConflict(scope.userId, scope.namespaceId, requestId)
-        dao.updateItemResult(
-            requestId = item.requestId,
-            status = InboundItemStatus.RemoteAccepted.value,
-            remoteLocationCode = item.remoteLocationCode,
-            remoteWarehouseLocationId = item.remoteWarehouseLocationId,
-            boxPlanId = item.boxPlanId,
-            errorCode = 0,
-            errorMessage = "",
-            syncedAt = System.currentTimeMillis(),
-        )
-        dao.updateSnapshotLocation(
-            scope.userId,
-            scope.namespaceId,
-            item.sessionId,
-            item.boxPlanId,
-            item.remoteLocationCode,
-            item.remoteWarehouseLocationId,
-        )
+        dao.updateItemResult(item.requestId, "accept_remote_pending", item.remoteLocationCode, item.remoteWarehouseLocationId, item.boxPlanId, 0, "采用后台库位待联网确认", 0)
+        syncScheduler.enqueueSoon()
         recomputeSession(scope.userId, scope.namespaceId, item.sessionId, "")
-        recomputeBatches(scope.userId, scope.namespaceId, item.sessionId)
         return workspace(item.sessionId)
+    }
+
+    private suspend fun syncAcceptedLocation(item: LocalInboundItemEntity) {
+        val ack: InboundScanAck = api.post(
+            "receiving-sessions/${item.sessionId}/inbound-items/${item.boxPlanId}/accept-location",
+            headers = inboundScopeHeaders(item.userId, item.namespaceId),
+            body = buildJsonObject {
+                put("request_id", "accept-${item.requestId}")
+                put("warehouse_location_id", item.remoteWarehouseLocationId)
+                put("location_code", item.remoteLocationCode)
+            },
+        )
+        dao.saveAcceptedLocation(item, ack)
     }
 
     suspend fun overrideRemote(requestId: String): InboundWorkspace {
@@ -1428,6 +1576,7 @@ constructor(
                 api.put<ReceivingInboundMutationResponse>(
                     "receiving-sessions/${item.sessionId}/inbound-items/${item.boxPlanId}/location",
                     inboundCorrectionRequest(item, correctionRequestId),
+                    headers = inboundScopeHeaders(item.userId, item.namespaceId),
                 )
             } catch (error: FscmApiException) {
                 if (error.inboundStandardCode() == INBOUND_CONCURRENT_CHANGE_CODE) {
@@ -1461,6 +1610,7 @@ constructor(
             errorCode = 0,
             errorMessage = "",
             syncedAt = System.currentTimeMillis(),
+            ackJson = response.scanAck?.let { Json.encodeToString(it) }.orEmpty(),
         )
         dao.updateSnapshotLocation(
             scope.userId,
@@ -1492,11 +1642,13 @@ constructor(
             Log.i("FscmInboundScan", "scan path=receiving-sessions/${item.sessionId}/inbound-scan sessionId=${item.sessionId} boxPlanId=${item.boxPlanId} rawCode=${item.rawCode}")
             val response = api.post<ReceivingInboundMutationResponse>(
                 "receiving-sessions/${item.sessionId}/inbound-scan",
-                inboundScanRequest(item),
+                body = inboundScanRequest(item),
+                headers = inboundScopeHeaders(item.userId, item.namespaceId),
             )
             dao.updateItemResult(
                 requestId = item.requestId,
                 status = InboundItemStatus.Synced.value,
+                ackJson = response.scanAck?.let { Json.encodeToString(it) }.orEmpty(),
                 remoteLocationCode = response.item.locationCode.ifBlank { item.localLocationCode },
                 remoteWarehouseLocationId =
                 response.item.warehouseLocationId.takeIf { it > 0 }
@@ -1622,7 +1774,8 @@ constructor(
         val response =
             api.post<ReceivingInboundBatchResponse>(
                 "receiving-sessions/${first.sessionId}/inbound-scan/batch",
-                inboundBatchScanRequest(first.batchId, items),
+                body = inboundBatchScanRequest(first.batchId, items),
+                headers = inboundScopeHeaders(first.userId, first.namespaceId),
             )
         batchEndpointSupported = true
         val results = response.items.associateBy { it.requestId }
@@ -1634,7 +1787,7 @@ constructor(
                 updateBatchItemResult(item, "retryable", 0, "Batch response omitted item", ReceivingInboundItem())
             } else {
                 if (result.status == "retryable") succeeded = false
-                updateBatchItemResult(item, result.status, result.code, result.message, result.item)
+                updateBatchItemResult(item, result.status, result.code, result.message, result.item, result.scanAck)
             }
         }
         return succeeded
@@ -1646,6 +1799,7 @@ constructor(
         code: Int,
         message: String,
         remote: ReceivingInboundItem,
+        ack: InboundScanAck? = null,
     ) {
         val status =
             when (resultStatus) {
@@ -1656,6 +1810,7 @@ constructor(
             }
         dao.updateItemResult(
             requestId = item.requestId,
+            ackJson = ack?.let { Json.encodeToString(it) }.orEmpty(),
             status = status,
             remoteLocationCode =
             remote.locationCode.ifBlank {
@@ -1765,10 +1920,13 @@ constructor(
         hasVirtualInbound: Boolean = false,
     ): List<Long> {
         val scope = scope()
+        val snapshotStartedAt = System.currentTimeMillis()
+        val startedNanos = System.nanoTime()
         val rows = mutableListOf<ReceivingInboundItem>()
         var page = 1
         var total = Int.MAX_VALUE
         var summary = ReceivingInboundSummary()
+        downloadProgress.value = InboundDownloadProgress(scope.userId, scope.namespaceId, sessionId, 0, 0)
         while (rows.size < total) {
             val response =
                 api.get<ReceivingInboundPage>(
@@ -1777,14 +1935,25 @@ constructor(
                         "page" to page.toString(),
                         "pageSize" to SNAPSHOT_PAGE_SIZE.toString(),
                         "include_summary" to (page == 1).toString(),
+                        "include_total" to (page == 1).toString(),
                     ),
+                    headers = inboundScopeHeaders(scope.userId, scope.namespaceId),
                 )
             rows += response.data
-            total = response.total
-            if (page == 1) summary = response.summary
+            if (page == 1) {
+                total = response.total
+                summary = response.summary
+            }
+            check(response.hasMore != true || rows.size < total) { "箱资料数量发生变化，请重试" }
+            check(response.hasMore != false || rows.size == total) { "箱资料分页不完整，请重试" }
+            downloadProgress.value = InboundDownloadProgress(scope.userId, scope.namespaceId, sessionId, rows.size, total)
             if (response.data.isEmpty() || rows.size >= total) break
             page++
         }
+        if (rows.map { it.boxPlanId.takeIf { id -> id > 0 } ?: it.id }.distinct().size != total) {
+            throw InboundClientException(InboundClientError.SnapshotUnavailable)
+        }
+        check(scope() == scope) { "Session changed" }
         val now = System.currentTimeMillis()
         val snapshotRows =
             rows.map { row ->
@@ -1796,17 +1965,23 @@ constructor(
                     labelCode = row.labelCode.ifBlank { row.boxNo.ifBlank { row.boxUid } },
                     boxNo = row.boxNo,
                     boxUid = row.boxUid,
-                    status = row.status,
+                    status = if (row.recoverableVoid) "local_void" else row.status,
                     inboundStatus = row.inboundStatus,
                     locationCode = row.locationCode,
                     warehouseLocationId = row.warehouseLocationId,
                     canScanRebind = row.canScanRebind,
-                    receiptScanStatus = row.receiptScanStatus,
+                    receiptScanStatus = if (row.manualReceived) "manual_received" else row.receiptScanStatus,
                     exceptionReason = row.exceptionReason,
                     remoteScannedBy = row.scannedBy,
                     remoteScannedAt = row.scannedAt.toInboundEpochMillis(),
                     eligible = row.isInboundEligible(),
-                    snapshotAt = now,
+                    snapshotAt = snapshotStartedAt,
+                    firstSkuCode = row.firstSkuCode,
+                    firstSkuName = row.firstSkuName,
+                    firstProductCode = row.firstProductCode,
+                    firstProductName = row.firstProductName,
+                    firstProductId = row.firstProductId,
+                    isMixed = row.isMixed,
                 )
             }
         val localSummary = summary.copy(
@@ -1838,8 +2013,10 @@ constructor(
             ),
             rows = snapshotRows,
         )
+        val snapshotsById = snapshotRows.associateBy { it.boxPlanId }
+        val snapshotsByLabel = snapshotRows.associateBy { it.labelCode }
         dao.reconcilableItems(scope.userId, scope.namespaceId, sessionId).forEach { item ->
-            val remote = snapshotRows.firstOrNull { it.boxPlanId == item.boxPlanId || it.labelCode == item.labelCode }
+            val remote = snapshotsById[item.boxPlanId] ?: snapshotsByLabel[item.labelCode]
             val reconciliation = reconcileInboundItem(item, remote) ?: return@forEach
             dao.updateItemResult(
                 requestId = item.requestId,
@@ -1852,6 +2029,7 @@ constructor(
                 syncedAt = if (reconciliation.status == InboundItemStatus.Synced.value) now else 0,
             )
         }
+        Log.i("FscmInboundSync", "snapshot session=$sessionId rows=${snapshotRows.size} pages=$page elapsedMs=${(System.nanoTime() - startedNanos) / 1_000_000}")
         return snapshotRows.map(LocalInboundSnapshotEntity::boxPlanId)
     }
 
@@ -1859,10 +2037,25 @@ constructor(
         sessionId: Long,
         cachedSessionCode: String = "",
         prefetchedSession: ReceivingSession? = null,
+        minimumStartedAt: Long = Long.MIN_VALUE,
     ): InboundWorkspace {
+        val actor = currentScopeKey()
+        return snapshotRefreshes.run(Triple(actor.first, actor.second, sessionId), minimumStartedAt) {
+            check(currentScopeKey() == actor) { "Session changed" }
+            downloadSessionSnapshot(sessionId, cachedSessionCode, prefetchedSession)
+        }
+    }
+
+    private suspend fun downloadSessionSnapshot(
+        sessionId: Long,
+        cachedSessionCode: String,
+        prefetchedSession: ReceivingSession?,
+    ): InboundWorkspace {
+        val actor = currentScopeKey()
         val session =
             prefetchedSession
                 ?: receivingRepository.session(sessionId, forceRefresh = cachedSessionCode.isBlank())
+        check(currentScopeKey() == actor) { "Session changed" }
         val sessionCode = cachedSessionCode.ifBlank { session.code.ifBlank { "RS-$sessionId" } }
         val boxPlanIds = refreshSnapshot(
             sessionId,
@@ -1873,81 +2066,94 @@ constructor(
             session.warehouseName,
             session.hasVirtualInbound,
         )
+        check(currentScopeKey() == actor) { "Session changed" }
+        downloadProgress.value = InboundDownloadProgress(actor.first, actor.second, sessionId, 0, 0, "recognition")
         boxLabelMappingRepository.refreshSession(sessionId, boxPlanIds)
+        check(currentScopeKey() == actor) { "Session changed" }
+        crossOrderRepository.prepare(sessionId)
+        recomputeSession(actor.first, actor.second, sessionId, session.inboundStatus.ifBlank { session.status })
         return workspace(sessionId, session.inboundStatus.ifBlank { session.status })
     }
 
-    suspend fun refreshCachesInBackground(preferredSessionId: Long? = null): Boolean {
-        if (sessionStore.current().isOffline) return false
-        return runCatching {
-            warehouseLocationRepository.refreshIfStale()
-            val scope = scope()
-            val remote = receivingRepository.sessions()
-                .filter(ReceivingSession::isInboundCacheCandidate)
-            val localById = dao.sessions(scope.userId, scope.namespaceId).associateBy { it.sessionId }
-            val ordered = remote.sortedWith(
-                compareByDescending<ReceivingSession> { it.id == preferredSessionId }
-                    .thenByDescending { localById[it.id]?.lastOpenedAt ?: 0 },
-            )
-            ordered.forEach { session ->
-                val local = localById[session.id]
-                if (local == null || local.isSnapshotStale() || local.warehouseCode.isBlank()) {
-                    refreshSessionSnapshot(session.id, session.code, session)
-                } else {
-                    val planIds = dao.snapshots(scope.userId, scope.namespaceId, session.id).map { it.boxPlanId }
-                    boxLabelMappingRepository.refreshSession(session.id, planIds)
-                }
-                refreshProductSummaries(session.id)
+    suspend fun refreshCachesInBackground(preferredSessionId: Long? = null, force: Boolean = false): Boolean = cacheRefreshMutex.withLock {
+        val actor = currentScopeKey()
+        val session = sessionStore.current()
+        if (session.isOffline || actor.first == 0L || actor.second == 0L) return false
+        val canReceive = "receiving_records" in session.permissions
+        val canLocation = canReceive || "warehouse_locations" in session.permissions
+        val canSku = canReceive || session.permissions.any { it in setOf("mobile-app:receiving", "mobile-app:product-counting", "skus", "products") }
+        val canMapping = canReceive || session.permissions.any { it in setOf("mobile-app:box-labels", "mobile-app:receiving") }
+        referenceSyncReport.value = ReferenceSyncReport(actor.first, actor.second, true)
+        try {
+            val (locationResult, skuResult) = coroutineScope {
+                val locations = async { cacheSyncResult { if (canLocation) warehouseLocationRepository.refreshIfStale(force) } }
+                val skus = async { cacheSyncResult { if (canSku) skuCatalogRepository.refreshIfStale(force) } }
+                locations.await() to skus.await()
             }
-            boxLabelMappingRepository.refreshIfStale()
-        }.isSuccess
+            if (currentScopeKey() != actor) return false
+            val mappingResult = cacheSyncResult { if (canMapping) boxLabelMappingRepository.refreshIfStale(force) }
+            if (currentScopeKey() != actor) return false
+            val businessResult = cacheSyncResult {
+                if (!canReceive) return@cacheSyncResult
+                preferredSessionId?.let { id -> crossOrderRepository.prepare(id, force) }
+            }
+            check(currentScopeKey() == actor) { "工作空间已切换" }
+            referenceSyncReport.value = ReferenceSyncReport(
+                actor.first,
+                actor.second,
+                false,
+                listOf("库位" to locationResult, "SKU" to skuResult, "箱码" to mappingResult, "单据" to businessResult)
+                    .filter { it.second.isFailure }.map { "${it.first}资料同步失败" },
+                System.currentTimeMillis(),
+            )
+            return locationResult.isSuccess && skuResult.isSuccess && mappingResult.isSuccess && businessResult.isSuccess
+        } finally {
+            val report = referenceSyncReport.value
+            if (report.userId == actor.first && report.namespaceId == actor.second) referenceSyncReport.value = report.copy(running = false)
+        }
     }
 
     suspend fun refreshProductCache(sessionId: Long) {
-        refreshProductSummaries(sessionId)
+        if (sessionStore.current().isOffline) throw InboundClientException(InboundClientError.OfflineSyncUnavailable)
+        refreshSessionSnapshot(sessionId)
     }
 
-    private suspend fun refreshProductSummaries(sessionId: Long) {
-        val scope = scope()
-        val rows = mutableListOf<ReceivingInboundProductSummary>()
-        var page = 1
-        var total = Int.MAX_VALUE
-        while (rows.size < total) {
-            val response = api.get<ReceivingInboundProductPage>(
-                "receiving-sessions/$sessionId/inbound-products",
-                mapOf("page" to page.toString(), "page_size" to PRODUCT_PAGE_SIZE.toString()),
-            )
-            rows += response.items
-            total = response.total
-            if (response.items.isEmpty() || rows.size >= total) break
-            page++
+    suspend fun requestBackgroundSync(sessionId: Long) {
+        val current = scope()
+        if (dao.pendingItems(current.userId, current.namespaceId).none { it.sessionId == sessionId }) return
+        withContext(Dispatchers.IO) {
+            syncScheduler.enqueueSession(sessionId, current.userId, current.namespaceId)
         }
-        val now = System.currentTimeMillis()
-        dao.replaceProductSummaries(
-            userId = scope.userId,
-            namespaceId = scope.namespaceId,
-            sessionId = sessionId,
-            rows = rows.map { row ->
-                LocalInboundProductSummaryEntity(
-                    userId = scope.userId,
-                    namespaceId = scope.namespaceId,
-                    sessionId = sessionId,
-                    productId = row.productId,
-                    productCode = row.productCode,
-                    productName = row.productName,
-                    productImage = row.productImage,
-                    skuCount = row.skuCount,
-                    skuCodesJson = Json.encodeToString(row.skuCodes),
-                    boxPlanIdsJson = Json.encodeToString(row.boxPlanIds),
-                    totalBoxCount = row.totalBoxCount,
-                    inboundedBoxCount = row.inboundedBoxCount,
-                    pendingBoxCount = row.pendingBoxCount,
-                    exceptionBoxCount = row.exceptionBoxCount,
-                    snapshotAt = now,
-                )
-            },
-            snapshotAt = now,
-        )
+    }
+
+    suspend fun syncSessionInBackground(sessionId: Long) = syncMutex.withLock {
+        val actor = scope()
+        if (dao.pendingItems(actor.userId, actor.namespaceId).none { it.sessionId == sessionId }) return@withLock
+        check(syncPendingItems(sessionId, refreshTouchedSessions = false)) { "Inbound sync incomplete" }
+        check(scope() == actor) { "Session changed" }
+        refreshSessionSnapshot(sessionId, minimumStartedAt = System.nanoTime())
+        recomputeSession(actor.userId, actor.namespaceId, sessionId, "")
+        recomputeBatches(actor.userId, actor.namespaceId, sessionId)
+        completeInboundIfReady(sessionId)
+    }
+
+    suspend fun updateOfflineReferences(sessionId: Long) {
+        enqueueReferenceRefresh(sessionId, force = true)
+    }
+
+    private suspend fun enqueueReferenceRefresh(sessionId: Long? = null, force: Boolean = false) {
+        val actor = currentScopeKey()
+        syncScheduler.enqueueCacheRefresh(sessionId, force, actor.first, actor.second)
+    }
+
+    suspend fun currentScopeKey(): Pair<Long, Long> {
+        val current = sessionStore.current()
+        return (current.user?.id ?: 0L) to (current.currentNamespace?.id ?: 0L)
+    }
+
+    suspend fun matchesScope(userId: Long, namespaceId: Long): Boolean {
+        val current = sessionStore.current()
+        return current.user?.id == userId && current.currentNamespace?.id == namespaceId
     }
 
     private suspend fun buildSummary(
@@ -2001,7 +2207,7 @@ constructor(
                 snapshots.any { it.canScanRebind || it.locationCode.isVirtualInboundLocation() },
             rebindableCount =
             snapshots.count {
-                it.eligible && (it.canScanRebind || it.locationCode.isVirtualInboundLocation())
+                it.eligible && (it.canScanRebind || it.locationCode.isVirtualInboundLocation() || it.status == "local_void")
             },
             lastSyncAt = localSession?.lastSyncSuccessAt ?: 0,
             snapshotComplete = localSession?.snapshotComplete == true,
@@ -2073,6 +2279,8 @@ constructor(
 internal fun LocalInboundSessionEntity.isSnapshotStale(now: Long = System.currentTimeMillis()): Boolean =
     !snapshotComplete || snapshotAt <= 0 || now - snapshotAt >= INBOUND_SNAPSHOT_MAX_AGE_MILLIS
 
+data class InboundDownloadProgress(val userId: Long, val namespaceId: Long, val sessionId: Long, val processed: Int, val total: Int, val phase: String = "download")
+
 private data class LocalInboundScope(val userId: Long, val namespaceId: Long)
 
 private data class AuthoritativeInboundLocation(
@@ -2106,6 +2314,7 @@ private fun InboundClientError.inboundLocationErrorCode(): Int =
 
 internal fun inboundScanRequest(item: LocalInboundItemEntity): JsonObject =
     buildJsonObject {
+        put("scanned_at", java.time.Instant.ofEpochMilli(item.scannedAt).toString())
         put("raw_code", item.rawCode)
         put("warehouse_location_id", item.localWarehouseLocationId)
         put("location_code", item.localLocationCode)
@@ -2128,6 +2337,7 @@ internal fun inboundBatchScanRequest(batchId: String, items: List<LocalInboundIt
                     add(
                         buildJsonObject {
                             put("request_id", item.requestId)
+                            put("scanned_at", java.time.Instant.ofEpochMilli(item.scannedAt).toString())
                             put("box_plan_id", item.boxPlanId)
                             put("raw_code", item.rawCode)
                             put("box_no", item.labelCode)
@@ -2143,7 +2353,7 @@ internal fun groupInboundSyncItems(
     batchSize: Int = INBOUND_BATCH_SIZE,
 ): List<List<LocalInboundItemEntity>> =
     items
-        .groupBy { Triple(it.sessionId, it.localWarehouseLocationId, it.localLocationCode) }
+        .groupBy { listOf(it.userId, it.namespaceId, it.batchId, it.sessionId, it.localWarehouseLocationId, it.localLocationCode) }
         .values
         .flatMap { it.chunked(batchSize) }
 
@@ -2177,11 +2387,11 @@ internal fun inboundCorrectionRequest(
     }
 
 private fun ReceivingInboundItem.isInboundEligible(): Boolean =
-    status.lowercase() !in INELIGIBLE_INBOUND_STATUSES && inboundStatus.lowercase() !in setOf("exception", "invalid")
+    !manualReceived && (recoverableVoid || (status.lowercase() !in INELIGIBLE_INBOUND_STATUSES && inboundStatus.lowercase() !in setOf("exception", "invalid")))
 
 private fun ReceivingSession.isInboundCacheCandidate(): Boolean =
     status.trim().lowercase() !in CANCELLED_RECEIVING_SESSION_STATUSES &&
-        (normalizeRemoteInboundStatus(inboundStatus) != InboundSessionStatus.Complete.value || hasVirtualInbound)
+        (normalizeRemoteInboundStatus(inboundStatus) != InboundSessionStatus.Complete.value || hasVirtualInbound || hasLocalVoidRecovery)
 
 private fun String.trimScannerSuffix(): String = trim { it.isWhitespace() || it == '\u0000' || it == '\uFEFF' }
 
@@ -2209,7 +2419,6 @@ private val TERMINAL_INBOUND_ITEM_STATUSES =
     )
 private const val VIRTUAL_INBOUND_LOCATION_CODE = "FSCM-VIRTUAL-INBOUND"
 private const val SNAPSHOT_PAGE_SIZE = 200
-private const val PRODUCT_PAGE_SIZE = 200
 private const val INBOUND_BATCH_SIZE = 100
 private const val INBOUND_SNAPSHOT_MAX_AGE_MILLIS = 12 * 60 * 60 * 1000L
 private const val INBOUND_LOCATION_CONFLICT_CODE = 40942
@@ -2217,3 +2426,11 @@ private const val INBOUND_CONCURRENT_CHANGE_CODE = 40943
 private const val INBOUND_LOCATION_NOT_FOUND_CODE = 42244
 private const val INBOUND_LOCATION_INACTIVE_CODE = 42245
 private const val INBOUND_LOCATION_WAREHOUSE_MISMATCH_CODE = 42246
+
+data class ReferenceSyncReport(
+    val userId: Long = 0,
+    val namespaceId: Long = 0,
+    val running: Boolean = false,
+    val errors: List<String> = emptyList(),
+    val completedAt: Long = 0,
+)

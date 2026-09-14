@@ -27,6 +27,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.encodeToJsonElement
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -72,8 +74,8 @@ interface WarehouseLocationDao {
         """
         SELECT * FROM local_warehouse_locations
         WHERE userId = :userId AND namespaceId = :namespaceId
-          AND warehouseCode = :warehouseCode COLLATE NOCASE
-          AND code = :code COLLATE NOCASE AND isActive = 1
+          AND warehouseCode = :warehouseCode
+          AND code = :code AND isActive = 1
         LIMIT 1
         """,
     )
@@ -227,6 +229,7 @@ class WarehouseLocationRepository @Inject constructor(
         var page = 1
         var total = Int.MAX_VALUE
         while (options.size < total) {
+            check(scope == scope()) { "工作空间已切换" }
             val response: WarehouseLocationPage = api.get(
                 "warehouse-location-options",
                 mapOf(
@@ -234,10 +237,14 @@ class WarehouseLocationRepository @Inject constructor(
                     "page" to page.toString(),
                     "page_size" to WAREHOUSE_LOCATION_PAGE_SIZE.toString(),
                 ),
+                headers = inboundScopeHeaders(scope.userId, scope.namespaceId),
             )
-            options += response.items
+            check(response.page == page && response.total >= 0) { "库位分页异常" }
+            if (page > 1) check(response.total == total) { "库位数据已变化，请重试同步" }
             total = response.total
-            if (response.items.isEmpty() || options.size >= total) break
+            check(response.items.isNotEmpty() || options.size == total) { "库位快照未下载完整" }
+            options += response.items
+            if (options.size >= total) break
             page++
         }
         val now = System.currentTimeMillis()
@@ -247,6 +254,8 @@ class WarehouseLocationRepository @Inject constructor(
             .distinctBy { it.id }
             .map { it.toEntity(scope, now) }
             .toList()
+        check(rows.size == total) { "库位快照不完整或包含重复记录" }
+        check(scope == scope()) { "工作空间已切换" }
         val meta = WarehouseLocationCacheMetaEntity(
             userId = scope.userId,
             namespaceId = scope.namespaceId,
@@ -256,6 +265,16 @@ class WarehouseLocationRepository @Inject constructor(
         )
         dao.replaceScope(scope.userId, scope.namespaceId, rows, meta)
         return meta.toState()
+    }
+
+    // Capture is deliberately independent of connectivity; only sync may contact the server.
+    suspend fun resolveForCapture(rawCode: String, warehouseCode: String): ResolvedWarehouseLocation {
+        val actor = scope()
+        val warehouse = warehouseCode.trim().uppercase(Locale.ROOT)
+        if (warehouse.isBlank()) throw InboundClientException(InboundClientError.TargetWarehouseMissing)
+        val location = requireCached(actor, warehouse, normalizeInboundLocation(rawCode))
+        check(actor == scope()) { "工作空间已切换，请重新扫描" }
+        return ResolvedWarehouseLocation(location, fromCache = true)
     }
 
     suspend fun resolve(rawCode: String, warehouseCode: String): ResolvedWarehouseLocation {
@@ -272,7 +291,18 @@ class WarehouseLocationRepository @Inject constructor(
 
         return try {
             val warehouseId = dao.warehouseId(scope.userId, scope.namespaceId, normalizedWarehouse)
-            val remote = queryExact(normalizedCode, normalizedWarehouse, warehouseId)
+            var remote = queryExact(normalizedCode, normalizedWarehouse, warehouseId)
+            if (remote == null) {
+                var job: PurchaseReceiptJob? = api.post("warehouse-source-sync", Json { encodeDefaults = true }.encodeToJsonElement(StorageSyncRequest(warehouseCode = normalizedWarehouse)))
+                var attempts = 0
+                while (job != null && job.status in setOf("queued", "running") && attempts++ < 30) {
+                    kotlinx.coroutines.delay(1000)
+                    job = api.get("receiving-purchases/jobs/${job.id}")
+                }
+                check(scope == scope()) { "工作空间已切换，请重新扫描" }
+                if (job != null && job.status != "succeeded") throw java.io.IOException(job.errorMessage.ifBlank { "库位正在同步，请稍后上传" })
+                remote = queryExact(normalizedCode, normalizedWarehouse, warehouseId)
+            }
             if (remote == null) {
                 dao.deleteCode(scope.userId, scope.namespaceId, normalizedWarehouse, normalizedCode)
                 val otherWarehouses = dao.findActiveByCode(scope.userId, scope.namespaceId, normalizedCode)
@@ -282,6 +312,7 @@ class WarehouseLocationRepository @Inject constructor(
                 throw InboundClientException(InboundClientError.LocationNotFound)
             }
             val entity = remote.toEntity(scope, System.currentTimeMillis())
+            check(scope == scope()) { "工作空间已切换，请重新扫描" }
             dao.upsertAll(listOf(entity))
             ResolvedWarehouseLocation(entity, fromCache = false)
         } catch (error: Throwable) {
@@ -354,16 +385,7 @@ class WarehouseLocationRepository @Inject constructor(
         warehouseCode: String,
         code: String,
     ): LocalWarehouseLocationEntity {
-        val meta = dao.meta(scope.userId, scope.namespaceId)
-        if (meta?.complete != true) throw InboundClientException(InboundClientError.LocationCacheUnavailable)
-        dao.findActive(scope.userId, scope.namespaceId, warehouseCode, code)?.let { return it }
-        if (
-            dao.findActiveByCode(scope.userId, scope.namespaceId, code)
-                .any { !it.warehouseCode.equals(warehouseCode, true) }
-        ) {
-            throw InboundClientException(InboundClientError.LocationWarehouseMismatch)
-        }
-        throw InboundClientException(InboundClientError.LocationNotFound)
+        return resolveLocalWarehouseLocation(dao, scope.userId, scope.namespaceId, warehouseCode, code)
     }
 
     private suspend fun scope(): WarehouseLocationScope {
@@ -395,9 +417,17 @@ class WarehouseLocationRepository @Inject constructor(
     private data class WarehouseLocationScope(val userId: Long, val namespaceId: Long)
 
     private companion object {
-        const val CACHE_REFRESH_INTERVAL_MS = 5 * 60 * 1000L
+        const val CACHE_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000L
     }
 }
+
+@Serializable
+private data class StorageSyncRequest(
+    @SerialName("warehouse_code") val warehouseCode: String,
+    val kind: String = "locations",
+    val mode: String = "missing",
+    @SerialName("request_id") val requestId: String = java.util.UUID.randomUUID().toString(),
+)
 
 private fun WarehouseLocationCacheMetaEntity?.toState() = WarehouseLocationCacheState(
     complete = this?.complete == true,
@@ -418,4 +448,21 @@ internal fun selectWarehouseLocation(
     it.isActive &&
         it.code.equals(code, ignoreCase = true) &&
         it.warehouse.code.equals(warehouseCode, ignoreCase = true)
+}
+
+internal suspend fun resolveLocalWarehouseLocation(
+    dao: WarehouseLocationDao,
+    user: Long,
+    namespace: Long,
+    warehouse: String,
+    code: String,
+): LocalWarehouseLocationEntity {
+    dao.findActive(user, namespace, warehouse, code)?.let { return it }
+    if (dao.findActiveByCode(user, namespace, code).any { !it.warehouseCode.equals(warehouse, true) }) {
+        throw InboundClientException(InboundClientError.LocationWarehouseMismatch)
+    }
+    if (dao.meta(user, namespace)?.complete != true) {
+        throw InboundClientException(InboundClientError.LocationCacheUnavailable)
+    }
+    throw InboundClientException(InboundClientError.LocationNotFound)
 }

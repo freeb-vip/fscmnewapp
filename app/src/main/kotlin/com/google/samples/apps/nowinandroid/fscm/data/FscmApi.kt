@@ -65,6 +65,7 @@ interface FscmRetrofitApi {
     suspend fun get(
         @Url url: String,
         @QueryMap params: Map<String, String> = emptyMap(),
+        @HeaderMap headers: Map<String, String> = emptyMap(),
     ): Response<JsonElement>
 
     @POST
@@ -84,6 +85,7 @@ interface FscmRetrofitApi {
     suspend fun put(
         @Url url: String,
         @Body body: JsonElement = JsonObject(emptyMap()),
+        @HeaderMap headers: Map<String, String> = emptyMap(),
     ): Response<JsonElement>
 
     @DELETE
@@ -131,7 +133,8 @@ class FscmApiClient @Inject constructor(
         path: String,
         params: Map<String, String> = emptyMap(),
         auth: Boolean = true,
-    ): T = send(auth) { api.get(path, params) }
+        headers: Map<String, String> = emptyMap(),
+    ): T = send(auth) { api.get(path, params, headers) }
 
     suspend inline fun <reified T> post(
         path: String,
@@ -150,7 +153,8 @@ class FscmApiClient @Inject constructor(
         path: String,
         body: JsonElement = JsonObject(emptyMap()),
         auth: Boolean = true,
-    ): T = send(auth) { api.put(path, body) }
+        headers: Map<String, String> = emptyMap(),
+    ): T = send(auth) { api.put(path, body, headers) }
 
     suspend inline fun <reified T> delete(
         path: String,
@@ -324,12 +328,21 @@ class FscmAuthInterceptor @Inject constructor(
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): OkHttpResponse {
         val session = runBlocking { sessionStore.session.first() }
+        val expectedUser = chain.request().header("X-FSCM-Expected-User-ID")
+        val expectedNamespace = chain.request().header("X-FSCM-Expected-Namespace-ID")
+        if ((expectedUser != null && expectedUser != session.user?.id?.toString()) ||
+            (expectedNamespace != null && expectedNamespace != session.currentNamespace?.id?.toString())
+        ) {
+            throw java.io.IOException("账号或工作空间已切换，原批次未发送，请返回原账号继续")
+        }
         val applicationLocales = AppCompatDelegate.getApplicationLocales()
         val languageTag = effectiveLanguageTag(
             applicationTag = applicationLocales.get(0)?.toLanguageTag(),
             systemTag = java.util.Locale.getDefault().toLanguageTag(),
         )
         val requestBuilder = chain.request().newBuilder()
+            .removeHeader("X-FSCM-Expected-User-ID")
+            .removeHeader("X-FSCM-Expected-Namespace-ID")
             .header("X-FSCM-Client", "mobile-app")
             .header("Accept-Language", languageTag)
         if (chain.request().header("Content-Type") == null && chain.request().body?.contentType() == null) {

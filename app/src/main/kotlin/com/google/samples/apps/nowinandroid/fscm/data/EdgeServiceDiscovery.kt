@@ -47,8 +47,7 @@ class EdgeServiceDiscovery @Inject constructor(
                 if (stopped) return
                 stopped = true
                 runCatching { manager.stopServiceDiscovery(discoveryListener) }
-                val merged = (discovered + cachedBaseUrls()).distinct()
-                if (discovered.isNotEmpty()) cacheBaseUrls(discovered)
+                val merged = discovered.toList()
                 if (continuation.isActive) continuation.resume(merged)
             }
 
@@ -66,21 +65,22 @@ class EdgeServiceDiscovery @Inject constructor(
                         }
 
                         override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
+                            if (stopped) return
                             val advertisedBaseUrl = serviceInfo.attributes["lan_base_url"]
                                 ?.decodeToString()
                                 ?.trim()
                                 ?.trimEnd('/')
                                 ?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
                             val address = serviceInfo.host?.hostAddress
-                            if (advertisedBaseUrl != null) {
-                                discovered += advertisedBaseUrl
-                            } else if (!address.isNullOrBlank() && serviceInfo.port in 1..65535) {
+                            if (!address.isNullOrBlank() && serviceInfo.port in 1..65535) {
                                 val scheme = serviceInfo.attributes["scheme"]
                                     ?.decodeToString()
                                     ?.takeIf { it == "http" || it == "https" }
                                     ?: "http"
                                 val host = if (address.contains(':')) "[$address]" else address
                                 discovered += "$scheme://$host:${serviceInfo.port}"
+                            } else if (advertisedBaseUrl != null) {
+                                discovered += advertisedBaseUrl
                             }
                             resolving = false
                             resolveNext()
@@ -111,6 +111,7 @@ class EdgeServiceDiscovery @Inject constructor(
             continuation.invokeOnCancellation {
                 handler.removeCallbacksAndMessages(null)
                 if (!stopped) runCatching { manager.stopServiceDiscovery(discoveryListener) }
+                stopped = true
             }
             handler.postDelayed(::finish, timeoutMillis)
             runCatching {
@@ -118,24 +119,8 @@ class EdgeServiceDiscovery @Inject constructor(
             }.onFailure { finish() }
         }
 
-    fun cachedBaseUrls(): List<String> =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getStringSet(KEY_BASE_URLS, emptySet())
-            .orEmpty()
-            .toList()
-
-    private fun cacheBaseUrls(urls: Set<String>) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putStringSet(KEY_BASE_URLS, urls.take(MAX_CACHED_NODES).toSet())
-            .apply()
-    }
-
     private companion object {
         const val SERVICE_TYPE = "_fscm-edge._tcp."
         const val DEFAULT_TIMEOUT_MS = 1_800L
-        const val MAX_CACHED_NODES = 20
-        const val PREFS_NAME = "fscm_edge_discovery"
-        const val KEY_BASE_URLS = "base_urls"
     }
 }

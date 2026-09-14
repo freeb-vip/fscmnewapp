@@ -23,12 +23,14 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -69,12 +71,15 @@ data class ReceivingProductProgress(
     val exceptionBoxCount: Int,
     val workStatus: String,
     val lastOperatedAt: Long,
+    val draftBoxCount: Int = 0,
+    val pendingSyncBoxCount: Int = 0,
 )
 
 data class ReceivingProductProgressSnapshot(
     val items: List<ReceivingProductProgress> = emptyList(),
     val complete: Boolean = false,
     val updatedAt: Long = 0,
+    val inboundBoxes: List<ReceivingProductBoxDetail> = emptyList(),
 )
 
 data class ReceivingProductDocumentHeader(
@@ -86,6 +91,7 @@ data class ReceivingProductDocumentHeader(
     val pendingBoxCount: Int = 0,
     val exceptionBoxCount: Int = 0,
     val localPendingCount: Int = 0,
+    val draftBoxCount: Int = 0,
 )
 
 data class ReceivingProductBoxDetail(
@@ -98,6 +104,11 @@ data class ReceivingProductBoxDetail(
     val operatedAt: Long = 0,
     val exceptionReason: String = "",
     val localPending: Boolean = false,
+    val skuName: String = "",
+    val boxNo: String = "",
+    val isMixed: Boolean = false,
+    val collected: Boolean = false,
+    val eligible: Boolean = true,
 )
 
 @Entity(
@@ -237,12 +248,14 @@ class ReceivingProductProgressRepository @Inject constructor(
             flow {
                 emitAll(
                     localInboundRepository.observeProductCache(documentId).map { cache ->
+                        val boxes = inboundCollectionBoxes(cache.snapshotItems, cache.collectionItems)
                         ReceivingProductProgressSnapshot(
-                            items = cache.items.map { item -> item.toProgress(documentId) },
+                            items = collectionProducts(documentId, boxes),
+                            inboundBoxes = boxes.map { it.toProductBox() },
                             complete = cache.complete,
                             updatedAt = cache.updatedAt,
                         )
-                    },
+                    }.flowOn(Dispatchers.Default),
                 )
             }
         } else {
@@ -259,9 +272,12 @@ class ReceivingProductProgressRepository @Inject constructor(
         }
     }
 
-    suspend fun refresh(business: ReceivingProductBusiness, documentId: Long): Boolean {
+    suspend fun currentScopeKey(): Pair<Long, Long> = localInboundRepository.currentScopeKey()
+
+    suspend fun refresh(business: ReceivingProductBusiness, documentId: Long, onlyIfStale: Boolean = false): Boolean {
         if (business == ReceivingProductBusiness.Inbound) {
-            return runCatching { localInboundRepository.refreshProductCache(documentId) }.isSuccess
+            if (onlyIfStale) localInboundRepository.refreshSessionIfStale(documentId) else localInboundRepository.refreshProductCache(documentId)
+            return true
         }
         val session = sessionStore.current()
         val userId = session.user?.id ?: return false
@@ -332,16 +348,11 @@ class ReceivingProductProgressRepository @Inject constructor(
             )
         }
         ReceivingProductBusiness.Inbound -> {
-            val workspace = localInboundRepository.workspace(documentId)
+            val session = localInboundRepository.cachedSession(documentId)
             ReceivingProductDocumentHeader(
-                code = workspace.summary.sessionCode,
-                warehouse = listOf(workspace.summary.warehouseCode, workspace.summary.warehouseName).filter(String::isNotBlank).joinToString(" / "),
-                status = workspace.summary.status,
-                completedBoxCount = workspace.summary.inboundedCount,
-                totalBoxCount = workspace.summary.totalCount,
-                pendingBoxCount = workspace.summary.centerPendingCount,
-                exceptionBoxCount = workspace.summary.exceptionCount,
-                localPendingCount = workspace.summary.pendingCount + workspace.summary.conflictCount + workspace.summary.rejectedCount,
+                code = session?.sessionCode.orEmpty(),
+                warehouse = listOfNotNull(session?.warehouseCode, session?.warehouseName).filter(String::isNotBlank).joinToString(" / "),
+                status = session?.status.orEmpty(),
             )
         }
     }
@@ -377,35 +388,8 @@ class ReceivingProductProgressRepository @Inject constructor(
                     )
                 }
         }
-        ReceivingProductBusiness.Inbound -> {
-            val workspace = localInboundRepository.workspace(product.documentId)
-            val boxPlanIds = product.boxPlanIds.toSet()
-            val center = workspace.centerExceptions.filter { it.boxPlanId in boxPlanIds }.map { item ->
-                ReceivingProductBoxDetail(
-                    id = "inbound-center-${item.boxPlanId}",
-                    labelCode = item.labelCode.ifBlank { item.boxNo.ifBlank { item.boxUid } },
-                    skuCode = product.skuCodes.joinToString(", "),
-                    status = item.inboundStatus.ifBlank { item.status },
-                    locationCode = item.locationCode,
-                    operator = item.remoteScannedBy,
-                    operatedAt = item.remoteScannedAt,
-                    exceptionReason = item.exceptionReason,
-                )
-            }
-            val local = workspace.localSyncItems.filter { it.boxPlanId in boxPlanIds }.map { item ->
-                ReceivingProductBoxDetail(
-                    id = "inbound-local-${item.requestId}",
-                    labelCode = item.labelCode,
-                    skuCode = product.skuCodes.joinToString(", "),
-                    status = item.status,
-                    locationCode = item.localLocationCode,
-                    operatedAt = item.scannedAt,
-                    exceptionReason = item.errorMessage,
-                    localPending = true,
-                )
-            }
-            (center + local).distinctBy { it.id }.sortedByDescending { it.operatedAt }
-        }
+        ReceivingProductBusiness.Inbound -> localInboundRepository.workspace(product.documentId).collectionBoxes
+            .filter { it.snapshot.boxPlanId in product.boxPlanIds }.map { it.toProductBox() }
     }
 
     private suspend fun cacheFallback(
@@ -475,30 +459,6 @@ private fun ReceivingProductProgressEntity.toDomain(json: Json) = ReceivingProdu
     exceptionBoxCount = exceptionBoxCount,
     workStatus = workStatus,
     lastOperatedAt = lastOperatedAt,
-)
-
-private fun LocalInboundProductSummaryEntity.toProgress(documentId: Long) = ReceivingProductProgress(
-    business = ReceivingProductBusiness.Inbound,
-    documentId = documentId,
-    productKey = "id:$productId",
-    productId = productId,
-    productCode = productCode,
-    productName = productName,
-    productImage = productImage,
-    skuCount = skuCount,
-    skuCodes = runCatching { Json.decodeFromString<List<String>>(skuCodesJson) }.getOrDefault(emptyList()),
-    sourceItemIds = emptyList(),
-    boxPlanIds = runCatching { Json.decodeFromString<List<Long>>(boxPlanIdsJson) }.getOrDefault(emptyList()),
-    totalBoxCount = totalBoxCount,
-    completedBoxCount = inboundedBoxCount,
-    pendingBoxCount = pendingBoxCount,
-    exceptionBoxCount = exceptionBoxCount,
-    workStatus = when {
-        pendingBoxCount > 0 -> ReceivingProductWorkStatus.Pending.value
-        exceptionBoxCount > 0 && inboundedBoxCount < totalBoxCount -> ReceivingProductWorkStatus.ClosedWithException.value
-        else -> ReceivingProductWorkStatus.Completed.value
-    },
-    lastOperatedAt = snapshotAt,
 )
 
 private fun ReceivingProductProgress.toEntity(userId: Long, namespaceId: Long, json: Json) =

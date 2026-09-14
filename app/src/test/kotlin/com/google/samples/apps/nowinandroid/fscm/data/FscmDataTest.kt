@@ -694,7 +694,7 @@ class FscmDataTest {
     }
 
     @Test
-    fun visibleMobileApps_normalizesLegacyPrintSettingsEntry() {
+    fun visibleMobileApps_hidesLegacyPrintSettingsEntry() {
         val apps = visibleMobileApps(
             overview = MobileWorkbenchOverview(
                 apps = listOf(MobileAppEntry(key = "print_settings", title = "打印配置")),
@@ -702,10 +702,7 @@ class FscmDataTest {
             permissions = emptyList(),
         )
 
-        assertEquals(1, apps.count { it.key == "edge_nodes" })
-        assertEquals("打印配置", apps.single { it.key == "edge_nodes" }.title)
-        assertTrue(!apps.single { it.key == "edge_nodes" }.localFallback)
-        assertTrue(apps.none { it.key == "print_settings" })
+        assertTrue(apps.isEmpty())
     }
 
     @Test
@@ -722,7 +719,7 @@ class FscmDataTest {
         )
 
         assertEquals("装箱管理", apps.single { it.key == "box_labels" }.title)
-        assertEquals("扫描设置", apps.single { it.key == "pda_settings" }.title)
+        assertTrue(apps.none { it.key == "pda_settings" })
         assertEquals("打印标签", apps.single { it.key == "label_print" }.title)
         assertTrue(apps.none { it.key in setOf("carton_management", "scanner_settings", "print_label") })
     }

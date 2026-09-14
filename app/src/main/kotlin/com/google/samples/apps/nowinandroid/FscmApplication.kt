@@ -33,7 +33,10 @@ import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -62,6 +65,9 @@ class FscmApplication : Application(), ImageLoaderFactory, Configuration.Provide
     @Inject
     lateinit var centralReceivingSyncScheduler: CentralReceivingSyncScheduler
 
+    @Inject
+    lateinit var sessionStore: com.google.samples.apps.nowinandroid.fscm.data.SessionStore
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onCreate() {
@@ -70,6 +76,15 @@ class FscmApplication : Application(), ImageLoaderFactory, Configuration.Provide
         localInboundSyncScheduler.schedulePeriodic()
         offlineSyncScheduler.schedulePeriodic()
         centralReceivingSyncScheduler.schedulePeriodic()
+        applicationScope.launch {
+            sessionStore.session.map { session ->
+                Triple(session.user?.id ?: 0L, session.currentNamespace?.id ?: 0L, session.isOffline)
+            }.distinctUntilChanged().collect { (user, namespace, offline) ->
+                if (user > 0 && namespace > 0 && !offline) {
+                    localInboundSyncScheduler.enqueueCacheRefresh(userId = user, namespaceId = namespace)
+                }
+            }
+        }
         val legacyTag = runBlocking {
             withContext(Dispatchers.IO) { userDataRepository.userData.first().language }
         }

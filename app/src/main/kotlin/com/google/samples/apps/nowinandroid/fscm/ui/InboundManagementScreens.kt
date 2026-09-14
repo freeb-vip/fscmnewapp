@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -60,7 +61,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -76,6 +76,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -109,10 +110,10 @@ import com.google.samples.apps.nowinandroid.fscm.data.InboundSessionSummary
 import com.google.samples.apps.nowinandroid.fscm.data.InboundWorkspace
 import com.google.samples.apps.nowinandroid.fscm.data.LocalInboundItemEntity
 import com.google.samples.apps.nowinandroid.fscm.data.LocalInboundSnapshotEntity
+import com.google.samples.apps.nowinandroid.fscm.data.ReceivingProductBusiness
 import com.google.samples.apps.nowinandroid.fscm.data.calculateInboundDraftMetrics
 import com.google.samples.apps.nowinandroid.fscm.data.canStartInboundBatch
-import com.google.samples.apps.nowinandroid.fscm.data.isCompletedPhysicalInbound
-import com.google.samples.apps.nowinandroid.fscm.data.isPendingPhysicalInbound
+import com.google.samples.apps.nowinandroid.fscm.data.collectionBoxes
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerInputMode
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -224,6 +225,7 @@ fun InboundSessionScreen(
     sessionId: Long,
     viewModel: InboundSessionViewModel = hiltViewModel(),
 ) {
+    val crossOrderTasks by viewModel.crossOrder.tasks.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
     val scannerState by viewModel.scannerState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -248,94 +250,127 @@ fun InboundSessionScreen(
     }
 
     val workspace = state.workspace
-    val summary = workspace?.summary
-    val draftBatch = workspace?.draftBatch
-    if (workspace != null && draftBatch != null) {
-        Column(Modifier.fillMaxSize().background(InboundBackground)) {
-            state.error?.let { error ->
-                Box(Modifier.padding(start = 12.dp, top = 12.dp, end = 12.dp)) {
-                    InboundNotice(error.resolve(), true, viewModel::consumeNotice)
-                }
-            }
-            state.message?.let { message ->
-                Box(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                    InboundNotice(message.resolve(), false, viewModel::consumeNotice)
-                }
-            }
-            InboundActiveBatchContent(
-                workspace = workspace,
-                input = input,
-                loading = state.submitting || state.changingLocation || state.pendingRebind != null,
-                broadcastMode = scannerState.effectiveMode == ScannerInputMode.IntentBroadcast,
-                onValueChange = { value ->
-                    input = value
-                    if (value.hasScanTerminator()) viewModel.scan(value.cleanScanInput())
-                },
-                onSubmit = { viewModel.scan(input.cleanScanInput()) },
-                onCamera = openCamera,
-                onFinish = viewModel::requestFinish,
-                onRequestCancel = viewModel::requestCancelDraft,
-                onChangeLocation = viewModel::requestChangeLocation,
-                onDelete = viewModel::deleteDraftBox,
-                modifier = Modifier.weight(1f),
+    val collection = workspace?.collectionBoxes.orEmpty()
+    val summary = workspace?.summary?.let { original ->
+        if (!original.snapshotComplete) {
+            original
+        } else {
+            original.copy(
+                totalCount = collection.count { it.eligible },
+                inboundedCount = collection.count { it.collected },
+                centerPendingCount = collection.count { it.eligible && !it.collected },
+                exceptionCount = collection.count { it.exception },
             )
         }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().background(InboundBackground),
-            contentPadding = PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            state.error?.let { error -> item { InboundNotice(error.resolve(), true, viewModel::consumeNotice) } }
-            state.message?.let { message -> item { InboundNotice(message.resolve(), false, viewModel::consumeNotice) } }
-            if (state.loading && workspace == null) item { InboundLoading() }
-            summary?.let { current ->
-                when {
-                    current.canStartInboundBatch() -> {
-                        if (current.rebindableCount > 0) {
-                            item { InboundVirtualRebindBand(current.rebindableCount) }
-                        }
-                        item {
-                            InboundScanInput(
-                                title = stringResource(R.string.inbound_scan_location),
-                                value = input,
-                                loading = state.submitting,
-                                broadcastMode = scannerState.effectiveMode == ScannerInputMode.IntentBroadcast,
-                                onValueChange = { value ->
-                                    input = value
-                                    if (value.hasScanTerminator()) viewModel.scan(value.cleanScanInput())
-                                },
-                                onSubmit = { viewModel.scan(input.cleanScanInput()) },
-                                onCamera = openCamera,
-                            )
-                        }
+    }
+    val draftBatch = workspace?.draftBatch
+    PullToRefreshBox(isRefreshing = state.syncing, onRefresh = viewModel::manualSync) {
+        if (workspace != null && draftBatch != null) {
+            Column(Modifier.fillMaxSize().background(InboundBackground)) {
+                CrossOrderReceivingPanel(viewModel.crossOrder)
+                InboundSyncStatus(state, viewModel::updateOfflineReferences)
+                state.error?.let { error ->
+                    Box(Modifier.padding(start = 12.dp, top = 12.dp, end = 12.dp)) {
+                        InboundNotice(error.resolve(), true, viewModel::consumeNotice)
                     }
-                    current.status == InboundSessionStatus.Complete.value -> item { InboundCompleteBand() }
-                    else -> item { InboundWaitingBand() }
                 }
-                item {
-                    FscmProgressOverview(
-                        title = stringResource(R.string.inbound_progress_overview),
-                        totalLabel = stringResource(R.string.inbound_total),
-                        pendingLabel = stringResource(R.string.inbound_metric_pending),
-                        completedLabel = stringResource(R.string.inbound_metric_completed),
-                        exceptionLabel = stringResource(R.string.inbound_metric_exception),
-                        metrics = inboundProgress(current),
-                        onPendingClick = viewModel::openPendingBoxes,
-                        onCompletedClick = viewModel::openCompletedBoxes,
-                        onExceptionClick = viewModel::openIssues,
-                    )
+                state.message?.let { message ->
+                    Box(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                        InboundNotice(message.resolve(), false, viewModel::consumeNotice)
+                    }
                 }
-                item {
-                    InboundSyncBand(
-                        summary = current,
-                        submitting = state.submitting,
-                        refreshingSnapshot = state.refreshingSnapshot,
-                        syncProcessed = state.syncProcessed,
-                        syncTotal = state.syncTotal,
-                        onSync = viewModel::manualSync,
-                        onOpenDetails = viewModel::openSyncDetails,
-                    )
+                if (state.referenceSyncing) InboundNotice(stringResource(R.string.inbound_reference_syncing), false)
+                if (state.referenceSyncErrors.isNotEmpty()) InboundNotice(state.referenceSyncErrors.joinToString("；"), true)
+                InboundActiveBatchContent(
+                    crossOrderCount = crossOrderTasks.count { it.batchId == draftBatch.id },
+                    workspace = workspace,
+                    input = input,
+                    loading = state.submitting || state.changingLocation || state.pendingRebind != null,
+                    broadcastMode = scannerState.effectiveMode == ScannerInputMode.IntentBroadcast,
+                    onValueChange = { value ->
+                        input = value
+                        if (value.hasScanTerminator()) viewModel.scan(value.cleanScanInput())
+                    },
+                    onSubmit = { viewModel.scan(input.cleanScanInput()) },
+                    onCamera = openCamera,
+                    onFinish = viewModel::requestFinish,
+                    onRequestCancel = viewModel::requestCancelDraft,
+                    onChangeLocation = viewModel::requestChangeLocation,
+                    onDelete = viewModel::deleteDraftBox,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().background(InboundBackground),
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                item { CrossOrderReceivingPanel(viewModel.crossOrder) }
+                item { InboundSyncStatus(state, viewModel::updateOfflineReferences) }
+                state.error?.let { error -> item { InboundNotice(error.resolve(), true, viewModel::consumeNotice) } }
+                state.message?.let { message -> item { InboundNotice(message.resolve(), false, viewModel::consumeNotice) } }
+                if (state.referenceSyncing) {
+                    item { InboundNotice(stringResource(R.string.inbound_reference_syncing), false) }
+                }
+                if (state.referenceSyncErrors.isNotEmpty()) {
+                    item { InboundNotice(state.referenceSyncErrors.joinToString("；"), true) }
+                }
+                if (state.loading && workspace == null) item { InboundLoading() }
+                summary?.let { current ->
+                    when {
+                        current.canStartInboundBatch() -> {
+                            if (current.rebindableCount > 0) {
+                                item { InboundVirtualRebindBand(current.rebindableCount) }
+                            }
+                            item {
+                                InboundScanInput(
+                                    title = stringResource(R.string.inbound_scan_location),
+                                    value = input,
+                                    loading = state.submitting,
+                                    broadcastMode = scannerState.effectiveMode == ScannerInputMode.IntentBroadcast,
+                                    onValueChange = { value ->
+                                        input = value
+                                        if (value.hasScanTerminator()) viewModel.scan(value.cleanScanInput())
+                                    },
+                                    onSubmit = { viewModel.scan(input.cleanScanInput()) },
+                                    onCamera = openCamera,
+                                )
+                            }
+                        }
+                        current.status == InboundSessionStatus.Complete.value -> item { InboundCompleteBand() }
+                        else -> item { InboundWaitingBand() }
+                    }
+                    item {
+                        FscmProgressOverview(
+                            title = "库位采集进度",
+                            totalLabel = stringResource(R.string.inbound_total),
+                            pendingLabel = stringResource(R.string.collection_uncollected),
+                            completedLabel = stringResource(R.string.collection_collected),
+                            exceptionLabel = stringResource(R.string.inbound_metric_exception),
+                            metrics = inboundProgress(current),
+                            onPendingClick = viewModel::openPendingBoxes,
+                            onCompletedClick = viewModel::openCompletedBoxes,
+                            onExceptionClick = viewModel::openIssues,
+                        )
+                    }
+                    item {
+                        InboundSyncBand(
+                            summary = current,
+                            submitting = state.syncing || state.backgroundSyncing,
+                            refreshingSnapshot = state.refreshingSnapshot,
+                            syncProcessed = state.syncProcessed,
+                            syncTotal = state.syncTotal,
+                            onSync = viewModel::manualSync,
+                            onOpenDetails = viewModel::openSyncDetails,
+                        )
+                    }
+                    item {
+                        Text(stringResource(R.string.collection_center_count, collection.count { it.centerConfirmed }), color = InboundMuted)
+                        val drafts = collection.count { it.draft }
+                        if (drafts > 0) Text(stringResource(R.string.collection_draft_count, drafts), color = InboundWarning)
+                    }
+                    item { PurchaseReceivingCard(sessionId) }
                 }
             }
         }
@@ -418,17 +453,9 @@ fun InboundSessionScreen(
             onDismissRequest = viewModel::dismissFinish,
             title = { Text(stringResource(R.string.inbound_finish_location)) },
             text = {
-                Column {
-                    Text(stringResource(R.string.inbound_finish_confirmation, workspace?.draftBatch?.locationCode.orEmpty(), workspace?.draftItems?.size ?: 0))
-                    if ((workspace?.summary?.exceptionCount ?: 0) > 0) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = state.confirmExceptions, onCheckedChange = viewModel::setConfirmExceptions)
-                            Text("已知存在异常，确认继续完成入库")
-                        }
-                    }
-                }
+                Text(stringResource(R.string.inbound_finish_confirmation, workspace?.draftBatch?.locationCode.orEmpty(), workspace?.draftItems?.size ?: 0))
             },
-            confirmButton = { Button(onClick = viewModel::finishBatch, enabled = (workspace?.summary?.exceptionCount ?: 0) == 0 || state.confirmExceptions) { Text(stringResource(R.string.common_confirm)) } },
+            confirmButton = { Button(onClick = viewModel::finishBatch, enabled = !state.submitting) { Text(stringResource(R.string.common_confirm)) } },
             dismissButton = { TextButton(onClick = viewModel::dismissFinish) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
@@ -438,13 +465,16 @@ fun InboundSessionScreen(
             onDismissRequest = viewModel::dismissCancelDraft,
             title = { Text(stringResource(R.string.inbound_cancel_location)) },
             text = {
-                Text(
-                    stringResource(
-                        R.string.inbound_cancel_confirmation,
-                        workspace?.draftBatch?.locationCode.orEmpty(),
-                        workspace?.draftItems?.size ?: 0,
-                    ),
-                )
+                Column {
+                    Text(
+                        stringResource(
+                            R.string.inbound_cancel_confirmation,
+                            workspace?.draftBatch?.locationCode.orEmpty(),
+                            workspace?.draftItems?.size ?: 0,
+                        ),
+                    )
+                    Text("跨单记录保留在待处理列表；已确认或已收货的跨单箱不随当前批次取消。")
+                }
             },
             confirmButton = {
                 TextButton(onClick = viewModel::cancelDraft) {
@@ -493,7 +523,7 @@ fun InboundSessionScreen(
     if (state.syncDetailsOpen && workspace != null) {
         InboundSyncDetailsSheet(
             workspace = workspace,
-            submitting = state.submitting,
+            submitting = state.syncing || state.backgroundSyncing,
             syncProcessed = state.syncProcessed,
             syncTotal = state.syncTotal,
             onSync = viewModel::manualSync,
@@ -555,6 +585,7 @@ fun InboundSessionScreen(
 
 @Composable
 private fun InboundActiveBatchContent(
+    crossOrderCount: Int,
     workspace: InboundWorkspace,
     input: String,
     loading: Boolean,
@@ -587,7 +618,7 @@ private fun InboundActiveBatchContent(
             skuCount = metrics.skuCount,
             totalQuantity = metrics.totalQuantity,
             quantityComplete = metrics.quantityComplete,
-            finishEnabled = details.isNotEmpty() && !loading,
+            finishEnabled = (details.isNotEmpty() || crossOrderCount > 0) && !loading,
             loading = loading,
             onFinish = onFinish,
             onRequestCancel = onRequestCancel,
@@ -835,7 +866,11 @@ private fun InboundActiveBoxRow(
             } else {
                 detail.skuItems.forEach { sku ->
                     Row(Modifier.fillMaxWidth().padding(end = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(sku.skuCode, color = InboundDeep, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        Column(Modifier.weight(1f)) {
+                            Text(sku.skuCode, color = InboundDeep, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            val description = listOf(sku.skuName.ifBlank { sku.productName }, sku.spec).filter(String::isNotBlank).joinToString(" · ")
+                            if (description.isNotBlank()) Text(description, color = InboundMuted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                         Spacer(Modifier.size(8.dp))
                         Text(
                             sku.quantity?.let { stringResource(R.string.inbound_sku_quantity, it) }
@@ -1073,72 +1108,14 @@ private fun InboundBoxDetailsSheet(
     completed: Boolean,
     onDismiss: () -> Unit,
 ) {
-    var query by rememberSaveable { mutableStateOf("") }
-    val boxes = workspace.snapshotItems.filter { item ->
-        (if (completed) item.isCompletedPhysicalInbound() else item.isPendingPhysicalInbound()) &&
-            listOf(item.labelCode, item.boxNo, item.boxUid, item.locationCode).any {
-                it.contains(query.trim(), ignoreCase = true)
-            }
-    }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                stringResource(if (completed) R.string.inbound_completed_boxes_title else R.string.inbound_pending_boxes_title),
-                color = InboundInk,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+        Box(Modifier.fillMaxWidth().fillMaxHeight(0.9f)) {
+            ReceivingProductProgressScreen(
+                business = ReceivingProductBusiness.Inbound,
+                documentId = workspace.summary.sessionId,
+                viewModel = hiltViewModel(key = "collection-${workspace.summary.sessionId}-$completed"),
+                initialFilter = if (completed) ReceivingProductFilter.All else ReceivingProductFilter.Pending,
             )
-            Text(
-                stringResource(if (completed) R.string.inbound_completed_boxes_hint else R.string.inbound_pending_boxes_hint),
-                color = InboundMuted,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                label = { Text(stringResource(R.string.inbound_box_search)) },
-            )
-            Text(stringResource(R.string.inbound_box_count_short, boxes.size), color = InboundMuted)
-            if (!workspace.summary.snapshotComplete) {
-                InboundNotice(stringResource(R.string.inbound_snapshot_not_ready), error = false)
-            }
-        }
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp),
-        ) {
-            if (boxes.isEmpty()) {
-                item { InboundIssueEmpty(stringResource(R.string.inbound_no_matching_boxes)) }
-            }
-            items(boxes, key = { it.boxPlanId }) { box ->
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(box.labelCode, color = InboundInk, fontWeight = FontWeight.SemiBold)
-                    if (box.boxNo.isNotBlank() && box.boxNo != box.labelCode) {
-                        Text(box.boxNo, color = InboundMuted, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Text(
-                        if (completed) {
-                            stringResource(R.string.inbound_box_location_value, box.locationCode)
-                        } else {
-                            stringResource(if (box.locationCode.isBlank()) R.string.inbound_box_unassigned else R.string.inbound_box_virtual_pending)
-                        },
-                        color = if (completed) InboundSuccess else InboundWarning,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    if (box.remoteScannedAt > 0) {
-                        Text(formatInboundTime(box.remoteScannedAt), color = InboundMuted, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-                HorizontalDivider(color = InboundStroke)
-            }
         }
     }
 }
@@ -1226,20 +1203,22 @@ private fun InboundSyncDetailsSheet(
                 )
             }
         }
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp),
-            contentPadding = PaddingValues(bottom = 24.dp),
-        ) {
-            if (visibleItems.isEmpty()) {
-                item { InboundIssueEmpty(stringResource(R.string.inbound_no_sync_items_for_status)) }
-            } else {
-                items(visibleItems, key = { it.requestId }) { item ->
-                    InboundLocalSyncIssueRow(
-                        item = item,
-                        submitting = submitting,
-                        onUseLocal = { onUseLocal(item.requestId) },
-                        onUseRemote = { onUseRemote(item.requestId) },
-                    )
+        PullToRefreshBox(isRefreshing = submitting, onRefresh = onSync) {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp),
+                contentPadding = PaddingValues(bottom = 24.dp),
+            ) {
+                if (visibleItems.isEmpty()) {
+                    item { InboundIssueEmpty(stringResource(R.string.inbound_no_sync_items_for_status)) }
+                } else {
+                    items(visibleItems, key = { it.requestId }) { item ->
+                        InboundLocalSyncIssueRow(
+                            item = item,
+                            submitting = submitting,
+                            onUseLocal = { onUseLocal(item.requestId) },
+                            onUseRemote = { onUseRemote(item.requestId) },
+                        )
+                    }
                 }
             }
         }
@@ -1425,7 +1404,7 @@ private fun InboundCompleteBand() = InboundCard {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = InboundSuccess)
         Spacer(Modifier.size(8.dp))
-        Text(stringResource(R.string.inbound_session_complete), color = InboundSuccess, fontWeight = FontWeight.Bold)
+        Text("库位采集完成，采购结果请查看下方记录", color = InboundSuccess, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -1479,7 +1458,7 @@ private fun InboundCard(content: @Composable ColumnScope.() -> Unit) {
 @Composable
 private fun InboundStatusPill(status: String) {
     val (text, color) = when (status) {
-        InboundSessionStatus.Complete.value -> stringResource(R.string.inbound_status_complete) to InboundSuccess
+        InboundSessionStatus.Complete.value -> "库位已采集" to InboundSuccess
         InboundSessionStatus.ConflictPending.value -> stringResource(R.string.inbound_status_conflict) to InboundWarning
         InboundSessionStatus.LocalCompletePendingSync.value -> stringResource(R.string.inbound_status_pending_sync) to InboundWarning
         InboundSessionStatus.Failed.value -> stringResource(R.string.inbound_status_failed) to InboundDanger
@@ -1499,3 +1478,24 @@ private fun String.hasScanTerminator(): Boolean = contains('\n') || contains('\r
 private fun String.cleanScanInput(): String = trim { it.isWhitespace() || it == '\u0000' || it == '\uFEFF' }
 
 private fun formatInboundTime(value: Long): String = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(value))
+
+@Composable
+private fun InboundSyncStatus(state: InboundSessionUiState, onUpdateReferences: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        if (state.syncing || state.loading) {
+            Text(
+                stringResource(
+                    when (state.syncPhase) {
+                        "upload" -> R.string.inbound_phase_upload
+                        "recognition" -> R.string.inbound_phase_recognition
+                        else -> R.string.inbound_phase_download
+                    },
+                ) + if (state.syncTotal > 0) " ${state.syncProcessed} / ${state.syncTotal}" else "",
+                modifier = Modifier.weight(1f),
+            )
+        }
+        TextButton(onClick = onUpdateReferences, enabled = !state.referenceSyncing) {
+            Text(stringResource(R.string.inbound_update_offline_references))
+        }
+    }
+}

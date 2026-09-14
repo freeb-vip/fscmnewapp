@@ -30,8 +30,6 @@ import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.media.ToneGenerator
-import android.net.ConnectivityManager
-import android.net.Network
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -46,6 +44,8 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.google.samples.apps.nowinandroid.MainActivity
 import com.google.samples.apps.nowinandroid.R
+import com.google.samples.apps.nowinandroid.fscm.data.EdgeConnectionPolicy
+import com.google.samples.apps.nowinandroid.fscm.data.EdgeNode
 import com.google.samples.apps.nowinandroid.fscm.data.EdgeTerminalConnectionTarget
 import com.google.samples.apps.nowinandroid.fscm.data.EdgeTerminalRepository
 import com.google.samples.apps.nowinandroid.fscm.data.EdgeTicketProvider
@@ -61,7 +61,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -89,6 +88,7 @@ private const val TERMINAL_PROTOCOL_VERSION = 1
 
 enum class TerminalFindConnectionStatus {
     Stopped,
+    Waiting,
     Connecting,
     Online,
     Reconnecting,
@@ -142,14 +142,33 @@ private data class TerminalOutgoingMessage(
 )
 
 internal fun terminalReconnectDelayMillis(attempt: Int): Long {
-    val seconds = listOf(1, 2, 5, 10, 30, 60)[min(attempt.coerceAtLeast(0), 5)]
+    val seconds = listOf(5, 30)[min(attempt.coerceAtLeast(0), 1)]
     return seconds * 1_000L
+}
+
+internal suspend inline fun withTerminalConnectionAttempts(attempt: (Int) -> Unit) {
+    repeat(3) { index ->
+        if (index > 0) delay(terminalReconnectDelayMillis(index - 1))
+        attempt(index)
+    }
+}
+
+internal const val TERMINAL_IDLE_RETRY_INTERVAL_MS = 60 * 60 * 1_000L
+
+internal suspend fun retryIdleTerminalHourly(isIdle: suspend () -> Boolean, retry: suspend () -> Unit) {
+    while (true) {
+        delay(TERMINAL_IDLE_RETRY_INTERVAL_MS)
+        if (isIdle()) retry()
+    }
 }
 
 @AndroidEntryPoint
 class TerminalFindService : Service() {
     @Inject
     lateinit var sessionStore: SessionStore
+
+    @Inject
+    lateinit var connectionPolicy: EdgeConnectionPolicy
 
     @Inject
     lateinit var lazyTerminalRepository: Lazy<EdgeTerminalRepository>
@@ -185,17 +204,8 @@ class TerminalFindService : Service() {
     private var connectedTarget: EdgeTerminalConnectionTarget? = null
     private var activeCommandId = ""
     private val processedCommands = LinkedHashSet<String>()
-    private val connectivityManager by lazy { getSystemService(ConnectivityManager::class.java) }
-    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) {
-            refreshCenterPresence()
-            restartConnection()
-        }
-
-        override fun onLost(network: Network) {
-            updateStatus(TerminalFindConnectionStatus.Reconnecting)
-        }
-    }
+    private var networkJob: Job? = null
+    private var hourlyRetryJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -205,13 +215,40 @@ class TerminalFindService : Service() {
 
     private fun observeSession() {
         if (sessionJob != null) return
-        runCatching { connectivityManager.registerDefaultNetworkCallback(networkCallback) }
+        hourlyRetryJob = serviceScope.launch {
+            retryIdleTerminalHourly(
+                isIdle = {
+                    val loggedIn = sessionStore.current().isLoggedIn
+                    // Recover a stopped center heartbeat without interrupting a healthy edge socket.
+                    if (loggedIn) startCenterPresence()
+                    loggedIn && connectionJob?.isActive != true
+                },
+                retry = {
+                    try {
+                        // Refresh the registry and invalidate old health results. The policy change
+                        // wakes the existing connection observer; this never starts LAN discovery.
+                        connectionPolicy.registeredNodes(force = true)
+                    } catch (error: Exception) {
+                        if (error is CancellationException) throw error
+                        Log.w(LOG_TAG, "Hourly edge connection check failed", error)
+                    }
+                },
+            )
+        }
+        networkJob = serviceScope.launch {
+            connectionPolicy.changes.collect {
+                centerPresenceJob?.cancel()
+                startCenterPresence()
+                restartConnection()
+            }
+        }
         sessionJob = serviceScope.launch {
             sessionStore.session
-                .map { session -> Triple(session.isLoggedIn, session.currentNamespace?.id, session.sessionMode) }
+                .map { session -> listOf(session.isLoggedIn, session.currentNamespace?.id, session.sessionMode, session.user?.id) }
                 .distinctUntilChanged()
-                .collect { (loggedIn) ->
-                    if (loggedIn) {
+                .collect { scope ->
+                    if (scope.first() == true) {
+                        centerPresenceJob?.cancel()
                         startCenterPresence()
                         restartConnection()
                     } else {
@@ -224,7 +261,7 @@ class TerminalFindService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Every foreground start must be acknowledged before session callbacks can stop us.
         // onCreate alone is insufficient when starts are queued for an existing service.
-        showNotification(TerminalFindConnectionStatus.Connecting)
+        showNotification(statusStore.state.value.status)
         if (intent?.action == ACTION_STOP_SERVICE) {
             stopForLogout()
             return START_NOT_STICKY
@@ -239,7 +276,8 @@ class TerminalFindService : Service() {
     }
 
     override fun onDestroy() {
-        runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
+        networkJob?.cancel()
+        hourlyRetryJob?.cancel()
         expiryJob?.cancel()
         centerPresenceJob?.cancel()
         alarm.stop()
@@ -253,7 +291,10 @@ class TerminalFindService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun restartConnectionIfNeeded() {
-        if (connectionJob?.isActive != true) restartConnection()
+        if (connectionJob?.isActive != true) {
+            startCenterPresence()
+            restartConnection()
+        }
     }
 
     private fun restartConnection() {
@@ -263,33 +304,23 @@ class TerminalFindService : Service() {
         connectionJob = serviceScope.launch { connectionLoop() }
     }
 
-    private fun refreshCenterPresence() {
-        serviceScope.launch {
-            try {
-                terminalRepository.maintainCenterPresence()
-            } catch (error: Throwable) {
-                if (error is CancellationException) throw error
-                Log.w(LOG_TAG, "Central terminal presence refresh failed", error)
-            }
-        }
-    }
-
     private fun startCenterPresence() {
         if (centerPresenceJob?.isActive == true) return
         centerPresenceJob = serviceScope.launch {
             var attempt = 0
             while (isActive) {
                 try {
-                    terminalRepository.maintainCenterPresence()
+                    if (!terminalRepository.maintainCenterPresence()) return@launch
                     attempt = 0
                     delay(CENTER_HEARTBEAT_INTERVAL_MS)
                 } catch (error: Throwable) {
                     if (error is CancellationException) throw error
                     Log.w(LOG_TAG, "Central terminal presence update failed", error)
                     updateStatus(
-                        TerminalFindConnectionStatus.Reconnecting,
-                        error = "Central terminal heartbeat failed: ${error.message.orEmpty()}",
+                        statusStore.state.value.status,
+                        error = "中心终端心跳失败：${error.message.orEmpty()}",
                     )
+                    if (attempt >= 2) return@launch
                     delay(terminalReconnectDelayMillis(attempt++))
                 }
             }
@@ -297,44 +328,48 @@ class TerminalFindService : Service() {
     }
 
     private suspend fun connectionLoop() {
-        var attempt = 0
-        while (currentCoroutineContext().isActive) {
-            val session = sessionStore.current()
-            if (!session.isLoggedIn) {
-                stopForLogout()
+        val target = try {
+            terminalRepository.connectionTarget()
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            updateStatus(TerminalFindConnectionStatus.Waiting, error = error.message.orEmpty())
+            return
+        }
+        if (target == null) {
+            updateStatus(TerminalFindConnectionStatus.Waiting)
+            return
+        }
+        val scope = connectionPolicy.scopeKey()
+        connectedTarget = target
+        withTerminalConnectionAttempts { attempt ->
+            if (!sessionStore.current().isLoggedIn || scope != connectionPolicy.scopeKey()) return
+            if (scope != connectionPolicy.scopeKey() || !connectionPolicy.permits(EdgeNode(nodeId = target.nodeId, lanBaseUrl = target.baseUrl))) {
+                updateStatus(TerminalFindConnectionStatus.Waiting)
                 return
             }
-            updateStatus(if (attempt == 0) TerminalFindConnectionStatus.Connecting else TerminalFindConnectionStatus.Reconnecting)
-            val target = try {
-                terminalRepository.connectionTarget()
-            } catch (error: Throwable) {
-                updateStatus(TerminalFindConnectionStatus.Reconnecting, error = error.message.orEmpty())
-                delay(terminalReconnectDelayMillis(attempt++))
-                continue
-            }
-            if (target == null) {
-                delay(terminalReconnectDelayMillis(attempt++))
-                continue
-            }
-            connectedTarget = target
+            updateStatus(if (attempt == 0) TerminalFindConnectionStatus.Connecting else TerminalFindConnectionStatus.Reconnecting, target.nodeName)
             try {
                 terminalRepository.register(target)
-            } catch (error: Throwable) {
+                val closed = CompletableDeferred<Unit>()
+                val request = Request.Builder()
+                    .url(target.webSocketUrl())
+                    .header("X-Edge-Ticket", ticketProvider.ticket(target.nodeId) ?: target.ticket)
+                    .build()
+                val socket = client.newWebSocket(request, listener(target, closed))
+                webSocket = socket
+                try {
+                    closed.await()
+                } finally {
+                    socket.cancel()
+                    if (webSocket == socket) webSocket = null
+                }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 updateStatus(TerminalFindConnectionStatus.Reconnecting, target.nodeName, error.message.orEmpty())
-                delay(terminalReconnectDelayMillis(attempt++))
-                continue
             }
-            val closed = CompletableDeferred<Unit>()
-            val request = Request.Builder()
-                .url(target.webSocketUrl())
-                .header("X-Edge-Ticket", target.ticket)
-                .build()
-            val socket = client.newWebSocket(request, listener(target, closed))
-            webSocket = socket
-            closed.await()
-            if (webSocket == socket) webSocket = null
-            delay(terminalReconnectDelayMillis(attempt++))
         }
+        connectedTarget = null
+        updateStatus(TerminalFindConnectionStatus.Waiting)
     }
 
     private fun listener(
@@ -430,7 +465,7 @@ class TerminalFindService : Service() {
         alarm.stop()
         activeCommandId = ""
         updateStatus(
-            if (webSocket == null) TerminalFindConnectionStatus.Reconnecting else TerminalFindConnectionStatus.Online,
+            if (webSocket == null) TerminalFindConnectionStatus.Waiting else TerminalFindConnectionStatus.Online,
             connectedTarget?.nodeName.orEmpty(),
         )
         if (commandId.isNotBlank()) sendResult(commandId, status)
@@ -444,7 +479,7 @@ class TerminalFindService : Service() {
             delay(TEST_RING_DURATION_MS)
             alarm.stop()
             updateStatus(
-                if (webSocket == null) TerminalFindConnectionStatus.Reconnecting else TerminalFindConnectionStatus.Online,
+                if (webSocket == null) TerminalFindConnectionStatus.Waiting else TerminalFindConnectionStatus.Online,
                 connectedTarget?.nodeName.orEmpty(),
             )
         }
@@ -498,6 +533,7 @@ class TerminalFindService : Service() {
         val text = when (status) {
             TerminalFindConnectionStatus.Online -> getString(R.string.terminal_find_notification_online, nodeName)
             TerminalFindConnectionStatus.Ringing -> getString(R.string.terminal_find_notification_ringing)
+            TerminalFindConnectionStatus.Waiting -> getString(R.string.edge_waiting)
             TerminalFindConnectionStatus.Stopped -> getString(R.string.terminal_find_notification_stopped)
             else -> getString(R.string.terminal_find_notification_connecting)
         }

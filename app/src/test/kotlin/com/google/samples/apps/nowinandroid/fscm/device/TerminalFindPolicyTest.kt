@@ -17,6 +17,12 @@
 package com.google.samples.apps.nowinandroid.fscm.device
 
 import com.google.samples.apps.nowinandroid.fscm.data.isEdgeTicketUsable
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.currentTime
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -55,13 +61,55 @@ class TerminalFindPolicyTest {
 
     @Test
     fun reconnectDelay_usesBoundedBackoff() {
-        assertEquals(1_000L, terminalReconnectDelayMillis(0))
-        assertEquals(2_000L, terminalReconnectDelayMillis(1))
-        assertEquals(5_000L, terminalReconnectDelayMillis(2))
-        assertEquals(10_000L, terminalReconnectDelayMillis(3))
-        assertEquals(30_000L, terminalReconnectDelayMillis(4))
-        assertEquals(60_000L, terminalReconnectDelayMillis(5))
-        assertEquals(60_000L, terminalReconnectDelayMillis(100))
+        assertEquals(5_000L, terminalReconnectDelayMillis(0))
+        assertEquals(30_000L, terminalReconnectDelayMillis(1))
+        assertEquals(30_000L, terminalReconnectDelayMillis(100))
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun connectionBurst_stopsAfterThreeAttempts() = runTest {
+        val times = mutableListOf<Long>()
+        withTerminalConnectionAttempts { times += currentTime }
+        assertEquals(listOf(0L, 5_000L, 35_000L), times)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun hourlyRetry_waitsOneHourSkipsActiveConnectionsAndStopsWhenCancelled() = runTest {
+        var loggedIn = true
+        var connectingOrConnected = false
+        val times = mutableListOf<Long>()
+        val job = launch {
+            retryIdleTerminalHourly(
+                isIdle = { loggedIn && !connectingOrConnected },
+                retry = { times += currentTime },
+            )
+        }
+        runCurrent()
+        advanceTimeBy(3_599_999L)
+        runCurrent()
+        assertTrue(times.isEmpty())
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(listOf(3_600_000L), times)
+        connectingOrConnected = true
+        advanceTimeBy(3_600_000L)
+        runCurrent()
+        assertEquals(1, times.size)
+        connectingOrConnected = false
+        advanceTimeBy(3_600_000L)
+        runCurrent()
+        assertEquals(listOf(3_600_000L, 10_800_000L), times)
+        loggedIn = false
+        advanceTimeBy(3_600_000L)
+        runCurrent()
+        assertEquals(2, times.size)
+        job.cancel()
+        loggedIn = true
+        advanceTimeBy(7_200_000L)
+        runCurrent()
+        assertEquals(2, times.size)
     }
 
     @Test

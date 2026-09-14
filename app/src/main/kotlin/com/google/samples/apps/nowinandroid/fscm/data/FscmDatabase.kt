@@ -327,6 +327,10 @@ interface LocalReceivingDao {
 
 @Database(
     entities = [
+        CrossOrderScanEntity::class,
+        AutoReceiptIntentEntity::class,
+        AutoReceiptScanSnapshot::class,
+        AutoReceiptSubmissionEntity::class,
         OfflineCacheEntity::class,
         ReceivingSessionEntity::class,
         PendingSyncOperationEntity::class,
@@ -349,11 +353,15 @@ interface LocalReceivingDao {
         ProductCountTaskEntity::class,
         ProductCountEntryEntity::class,
         SkuProductIndexEntity::class,
+        LocalSkuCatalogEntity::class,
+        ReferenceCacheMeta::class,
     ],
-    version = 14,
+    version = 19,
     exportSchema = false,
 )
 abstract class FscmDatabase : RoomDatabase() {
+    abstract fun autoReceiptDao(): AutoReceiptDao
+    abstract fun crossOrderScanDao(): CrossOrderScanDao
     abstract fun offlineCacheDao(): OfflineCacheDao
     abstract fun receivingDao(): ReceivingDao
     abstract fun pendingSyncDao(): PendingSyncDao
@@ -363,6 +371,7 @@ abstract class FscmDatabase : RoomDatabase() {
     abstract fun boxLabelMappingDao(): BoxLabelMappingDao
     abstract fun centralReceivingDao(): CentralReceivingDao
     abstract fun receivingProductProgressDao(): ReceivingProductProgressDao
+    abstract fun localSkuCatalogDao(): LocalSkuCatalogDao
     abstract fun productCountingDao(): ProductCountingDao
 }
 
@@ -405,6 +414,11 @@ object FscmDatabaseModule {
                     MIGRATION_11_12,
                     MIGRATION_12_13,
                     MIGRATION_13_14,
+                    MIGRATION_14_15,
+                    MIGRATION_15_16,
+                    MIGRATION_16_17,
+                    MIGRATION_17_18,
+                    MIGRATION_18_19,
                 )
                 .build()
         } finally {
@@ -443,6 +457,55 @@ object FscmDatabaseModule {
 
     @Provides
     fun productCountingDao(database: FscmDatabase): ProductCountingDao = database.productCountingDao()
+
+    internal val MIGRATION_16_17 = object : Migration(16, 17) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS auto_receipt_scan_items (id TEXT NOT NULL PRIMARY KEY,batchId TEXT NOT NULL,userId INTEGER NOT NULL,namespaceId INTEGER NOT NULL,sessionId INTEGER NOT NULL,requestId TEXT NOT NULL,crossOrder INTEGER NOT NULL,scanJson TEXT NOT NULL,ackJson TEXT NOT NULL,errorMessage TEXT NOT NULL)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_auto_receipt_scan_items_userId_namespaceId_sessionId ON auto_receipt_scan_items(userId,namespaceId,sessionId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_auto_receipt_scan_items_requestId_crossOrder ON auto_receipt_scan_items(requestId,crossOrder)")
+            db.query("SELECT * FROM auto_receipt_intents").use { intents ->
+                while (intents.moveToNext()) {
+                    val batch = intents.getString(intents.getColumnIndexOrThrow("batchId"))
+                    val user = intents.getLong(intents.getColumnIndexOrThrow("userId"))
+                    val ns = intents.getLong(intents.getColumnIndexOrThrow("namespaceId"))
+                    val session = intents.getLong(intents.getColumnIndexOrThrow("sessionId"))
+                    val refs = kotlinx.serialization.json.Json.decodeFromString<List<AutoReceiptScanRef>>(intents.getString(intents.getColumnIndexOrThrow("scanRefsJson")))
+                    refs.forEach { ref ->
+                        val table = if (ref.crossOrder) "cross_order_scans" else "local_inbound_items"
+                        val key = if (ref.crossOrder) "id" else "requestId"
+                        var payload = ""
+                        db.query("SELECT * FROM $table WHERE $key=? AND userId=? AND namespaceId=?", arrayOf<Any>(ref.requestId, user, ns)).use { source ->
+                            if (source.moveToFirst()) {
+                                payload = kotlinx.serialization.json.JsonObject(
+                                    source.columnNames.mapIndexed { index, name ->
+                                        name to if (source.getType(index) == 1) kotlinx.serialization.json.JsonPrimitive(source.getLong(index)) else kotlinx.serialization.json.JsonPrimitive(source.getString(index))
+                                    }.toMap(),
+                                ).toString()
+                            }
+                        }
+                        db.execSQL("INSERT OR IGNORE INTO auto_receipt_scan_items VALUES (?,?,?,?,?,?,?,?,?,?)", arrayOf("$batch:${ref.crossOrder}:${ref.requestId}", batch, user, ns, session, ref.requestId, if (ref.crossOrder)1 else 0, payload, "", if (payload.isEmpty()) "扫描依据缺失，待联网恢复" else ""))
+                    }
+                }
+            }
+        }
+    }
+
+    internal val MIGRATION_15_16 = object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS auto_receipt_intents (batchId TEXT NOT NULL PRIMARY KEY,userId INTEGER NOT NULL,namespaceId INTEGER NOT NULL,sessionId INTEGER NOT NULL,scanRefsJson TEXT NOT NULL,createdAt INTEGER NOT NULL)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_auto_receipt_intents_userId_namespaceId_sessionId ON auto_receipt_intents(userId,namespaceId,sessionId)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS auto_receipt_submissions (requestId TEXT NOT NULL PRIMARY KEY,userId INTEGER NOT NULL,namespaceId INTEGER NOT NULL,sourceSessionId INTEGER NOT NULL,sessionId INTEGER NOT NULL,batchId TEXT NOT NULL,scanRefsJson TEXT NOT NULL,payload TEXT NOT NULL,jobId TEXT NOT NULL,status TEXT NOT NULL,errorMessage TEXT NOT NULL,createdAt INTEGER NOT NULL)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_auto_receipt_submissions_userId_namespaceId_sourceSessionId ON auto_receipt_submissions(userId,namespaceId,sourceSessionId)")
+            db.execSQL("ALTER TABLE cross_order_scans ADD COLUMN resultPayload TEXT NOT NULL DEFAULT ''")
+        }
+    }
+
+    internal val MIGRATION_14_15 = object : Migration(14, 15) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS cross_order_scans (id TEXT NOT NULL PRIMARY KEY, userId INTEGER NOT NULL, namespaceId INTEGER NOT NULL, sourceSessionId INTEGER NOT NULL, batchId TEXT NOT NULL, operation TEXT NOT NULL, rawCode TEXT NOT NULL, requestPayload TEXT NOT NULL, confirmationPayload TEXT NOT NULL, state TEXT NOT NULL, effectiveSessionId INTEGER NOT NULL, message TEXT NOT NULL, updatedAt INTEGER NOT NULL)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_cross_order_scans_userId_namespaceId_sourceSessionId ON cross_order_scans(userId,namespaceId,sourceSessionId)")
+        }
+    }
 
     private val MIGRATION_1_2 = object : Migration(1, 2) {
         override fun migrate(database: SupportSQLiteDatabase) {
@@ -623,6 +686,24 @@ object FscmDatabaseModule {
             db.execSQL("UPDATE `product_count_entries` SET `skuItemsJson` = COALESCE((SELECT json_group_array(json_object('sku_code', value, 'quantity', NULL, 'quantity_source', 'unknown')) FROM json_each(`skuCodesJson`)), '[]')")
             db.execSQL("UPDATE `product_count_entries` SET `sequenceNo` = rowid WHERE `sequenceNo` = 0")
             db.execSQL("DELETE FROM `pending_sync_operations` WHERE `module` = 'product_counting'")
+        }
+    }
+
+    internal val MIGRATION_18_19 = object : Migration(18, 19) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS local_sku_catalog (userId INTEGER NOT NULL, namespaceId INTEGER NOT NULL, code TEXT NOT NULL, skuId INTEGER NOT NULL, name TEXT NOT NULL, spec TEXT NOT NULL, productId INTEGER NOT NULL, productCode TEXT NOT NULL, productName TEXT NOT NULL, PRIMARY KEY(userId, namespaceId, code))")
+            db.execSQL("CREATE TABLE IF NOT EXISTS reference_cache_meta (userId INTEGER NOT NULL, namespaceId INTEGER NOT NULL, kind TEXT NOT NULL, complete INTEGER NOT NULL, totalCount INTEGER NOT NULL, refreshedAt INTEGER NOT NULL, PRIMARY KEY(userId, namespaceId, kind))")
+        }
+    }
+
+    internal val MIGRATION_17_18 = object : Migration(17, 18) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE local_inbound_snapshots ADD COLUMN firstSkuCode TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE local_inbound_snapshots ADD COLUMN firstSkuName TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE local_inbound_snapshots ADD COLUMN firstProductCode TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE local_inbound_snapshots ADD COLUMN firstProductName TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE local_inbound_snapshots ADD COLUMN firstProductId INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE local_inbound_snapshots ADD COLUMN isMixed INTEGER NOT NULL DEFAULT 0")
         }
     }
 

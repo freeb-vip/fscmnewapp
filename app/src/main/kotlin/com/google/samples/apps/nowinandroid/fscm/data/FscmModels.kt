@@ -347,6 +347,7 @@ data class ReceivingSession(
     val status: String = "",
     @SerialName("inbound_status") val inboundStatus: String = "",
     @SerialName("has_virtual_inbound") val hasVirtualInbound: Boolean = false,
+    @SerialName("has_local_void_recovery") val hasLocalVoidRecovery: Boolean = false,
     val remark: String = "",
     @SerialName("consolidation_order") val consolidationOrder: BoxLabelDocumentRef? = null,
     @SerialName("tally_items") val tallyItems: List<ReceivingTallyItem> = emptyList(),
@@ -396,6 +397,12 @@ data class ReceivingScanItem(
 )
 
 @Serializable
+data class ReceivingCurrentAssignment(
+    @SerialName("location_code") val locationCode: String = "",
+    @SerialName("warehouse_location_id") val warehouseLocationId: Long? = null,
+)
+
+@Serializable
 data class ReceivingScanResponse(
     val data: ReceivingScanItem = ReceivingScanItem(),
     val item: ReceivingScanItem = ReceivingScanItem(),
@@ -403,6 +410,7 @@ data class ReceivingScanResponse(
     @SerialName("can_scan_rebind") val canScanRebind: Boolean = false,
     @SerialName("virtual_recovery_required") val virtualRecoveryRequired: Boolean = false,
     @SerialName("virtual_transfer") val virtualTransfer: Boolean = false,
+    @SerialName("current_assignment") val currentAssignment: ReceivingCurrentAssignment? = null,
 ) {
     val resolvedData: ReceivingScanItem
         get() = item.takeIf { it.boxPlanId > 0 || it.labelCode.isNotBlank() } ?: data
@@ -556,6 +564,7 @@ internal fun List<EdgePrintNodeOption>.defaultPrintOption(
 data class EdgePrintNodeStatus(
     val node: EdgeNode,
     val localReachable: Boolean,
+    val connectionReachable: Boolean = localReachable,
 ) {
     val identityKey: String
         get() = if (node.id > 0) "center:${node.id}" else "lan:${node.nodeId}:${node.lanBaseUrl}"
@@ -647,12 +656,36 @@ data class BoxLabelDocumentRef(
 
 @Serializable
 data class BoxLabelSKUItem(
+    @SerialName("sku_id") val skuId: Long = 0,
+    @SerialName("sku_name") val skuName: String = "",
+    @SerialName("product_id") val productId: Long = 0,
+    @SerialName("product_code") val productCode: String = "",
+    @SerialName("product_name") val productName: String = "",
     @SerialName("sku_code") val skuCode: String = "",
+    @SerialName("label_sku_code") val labelSkuCode: String = "",
+    @SerialName("label_product_code") val labelProductCode: String = "",
     @SerialName("qty_per_box") val qtyPerBox: Int = 0,
-)
+) {
+    val displaySkuCode: String get() = labelSkuCode.ifBlank { skuCode }
+    val displayProductCode: String get() = labelProductCode.ifBlank { productCode }
+}
 
 @Serializable
 data class BoxLabel(
+    @SerialName("label_sku_code") val labelSkuCode: String = "",
+    @SerialName("label_product_code") val labelProductCode: String = "",
+    @SerialName("detail_complete") val detailComplete: Boolean = false,
+    @SerialName("contract_version") val contractVersion: Int = 0,
+    @SerialName("status_label") val statusLabel: String = "",
+    @SerialName("created_at") val createdAt: String = "",
+    @SerialName("is_mixed") val isMixed: Boolean = false,
+    @SerialName("carton_size_cm") val cartonSizeCm: BoxLabelDimensions? = null,
+    @SerialName("dimensions_source") val dimensionsSource: String = "",
+    @SerialName("lineage_id") val lineageId: String = "",
+    @SerialName("alias_history") val aliasHistory: List<BoxLabelAlias> = emptyList(),
+    @SerialName("lifecycle_events") val lifecycleEvents: List<BoxLabelLifecycleEvent> = emptyList(),
+    val relations: List<BoxLabelRelation> = emptyList(),
+    val receiving: BoxLabelReceiving? = null,
     val id: Long = 0,
     val recognized: Boolean = false,
     @SerialName("valid_for_current_context") val validForCurrentContext: Boolean = true,
@@ -689,7 +722,10 @@ data class BoxLabel(
     @SerialName("print_snapshot") val printSnapshot: JsonObject? = null,
     val warnings: List<String> = emptyList(),
     @Transient val localFallback: Boolean = false,
-)
+) {
+    val displaySkuCode: String get() = labelSkuCode.ifBlank { skuItems.firstOrNull()?.labelSkuCode.orEmpty() }.ifBlank { skuCode }
+    val displayProductCode: String get() = labelProductCode.ifBlank { skuItems.firstOrNull()?.labelProductCode.orEmpty() }.ifBlank { productCode }
+}
 
 internal enum class BoxMarkPrintAvailability {
     Ready,

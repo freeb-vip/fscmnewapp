@@ -24,9 +24,13 @@ import com.google.samples.apps.nowinandroid.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
@@ -434,11 +438,13 @@ class GlobalSearchRepository @Inject constructor(
 
 @Singleton
 class EdgePrintRepository @Inject constructor(
+    private val printLeaseStore: EdgePrintLeaseStore,
     private val api: FscmApiClient,
     private val sessionStore: SessionStore,
     private val deviceIdentityManager: DeviceIdentityManager,
     private val trustedClock: TrustedClock,
     private val edgeServiceDiscovery: EdgeServiceDiscovery,
+    private val connectionPolicy: EdgeConnectionPolicy,
     private val edgeTicketProvider: EdgeTicketProvider,
     @param:FscmJson
     private val json: Json,
@@ -454,8 +460,6 @@ class EdgePrintRepository @Inject constructor(
         .callTimeout(900, TimeUnit.MILLISECONDS)
         .build()
     private val catalogMutex = Mutex()
-    private var cachedCatalogNodes: List<EdgePrintNodeStatus> = emptyList()
-    private var cachedCatalogNodesAt = 0L
 
     suspend fun availableNodes(): List<EdgePrintNodeOption> {
         return printNodes().mapNotNull { status ->
@@ -473,25 +477,38 @@ class EdgePrintRepository @Inject constructor(
         }
 
     suspend fun availableBoxMarkOptions(): List<EdgePrintNodeOption> =
-        printNodes().flatMap { status ->
+        printNodes().onEach { printLeaseStore.lease(it.node.nodeId) }.flatMap { status ->
             status.node.printInventory.templates
                 .filter { template -> status.node.status == "online" && template.isAvailableBoxMarkTemplate() }
                 .map { template -> EdgePrintNodeOption(status.node, template, status.localReachable) }
         }
 
-    suspend fun registeredNodes(): List<EdgePrintNodeStatus> {
-        if (sessionStore.current().isOffline) return discoverLocalNodes(includeSubnetScan = true)
-        val nodes = registeredCenterNodes()
-        return nodeStatuses(mergeWithLocalDiscovery(nodes))
+    private val nodesMutex = Mutex()
+    private var nodesKey = ""
+    private var nodesAt = 0L
+    private var cachedNodes = emptyList<EdgePrintNodeStatus>()
+
+    suspend fun registeredNodes(): List<EdgePrintNodeStatus> = nodesMutex.withLock {
+        val key = connectionPolicy.scopeKey() + connectionPolicy.changes.value
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (key == nodesKey && now - nodesAt < EdgeConnectionPolicy.CACHE_MS) return@withLock cachedNodes
+        val candidates = connectionPolicy.candidates()
+        val center = registeredCenterNodes()
+        val nodes = (candidates + center).distinctBy { it.nodeId }
+        val statuses = nodeStatuses(nodes, candidates.map { it.nodeId }.toSet())
+        if (key != connectionPolicy.scopeKey() + connectionPolicy.changes.value) return@withLock emptyList()
+        nodesKey = key
+        nodesAt = now
+        cachedNodes = statuses
+        statuses
     }
 
-    suspend fun registeredCenterNodes(): List<EdgeNode> {
-        if (sessionStore.current().isOffline) return emptyList()
-        return api.get<PagedList<EdgeNode>>(
-            "edge/nodes/available",
-            edgeNodeListParams(includeOffline = true),
-        ).rows()
+    suspend fun refreshRegisteredNodes() {
+        connectionPolicy.registeredNodes(force = true)
+        nodesMutex.withLock { nodesKey = "" }
     }
+
+    suspend fun registeredCenterNodes(): List<EdgeNode> = connectionPolicy.registeredNodes()
 
     suspend fun resolveBoxLabelFromEdge(labelCode: String): BoxLabel? {
         val normalized = labelCode.trim()
@@ -511,26 +528,8 @@ class EdgePrintRepository @Inject constructor(
         return null
     }
 
-    private suspend fun catalogNodes(): List<EdgePrintNodeStatus> {
-        val now = System.currentTimeMillis()
-        catalogMutex.withLock {
-            if (cachedCatalogNodes.isNotEmpty() && now - cachedCatalogNodesAt < CATALOG_NODE_CACHE_MS) {
-                return cachedCatalogNodes
-            }
-        }
-        val refreshed = runCatching { registeredNodes() }.getOrNull()
-            ?.filter { status ->
-                status.localReachable &&
-                    status.node.lanBaseUrl.isNotBlank() &&
-                    "box_label_catalog" in status.node.capabilities
-            }
-        return catalogMutex.withLock {
-            if (refreshed != null) {
-                cachedCatalogNodes = refreshed
-                cachedCatalogNodesAt = now
-            }
-            cachedCatalogNodes
-        }
+    private suspend fun catalogNodes(): List<EdgePrintNodeStatus> = registeredNodes().filter { status ->
+        status.localReachable && status.node.lanBaseUrl.isNotBlank() && "box_label_catalog" in status.node.capabilities
     }
 
     private suspend fun catalogTicket(node: EdgeNode): String = catalogMutex.withLock {
@@ -579,47 +578,24 @@ class EdgePrintRepository @Inject constructor(
         }
     }
 
-    suspend fun printNodes(): List<EdgePrintNodeStatus> {
-        if (sessionStore.current().isOffline) return discoverLocalNodes(includeSubnetScan = true)
-        val nodes = api.get<PagedList<EdgeNode>>(
-            "edge/nodes/available",
-            edgeNodeListParams(includeOffline = false),
-        ).rows()
-        return nodeStatuses(mergeWithLocalDiscovery(nodes))
-    }
+    suspend fun printNodes(): List<EdgePrintNodeStatus> = registeredNodes()
+        .filter { it.node.status == "online" || it.localReachable }
 
-    /**
-     * The center determines which nodes belong to this namespace. LAN discovery supplies the
-     * address that is actually reachable by this device, including when the center address is stale.
-     */
-    private suspend fun mergeWithLocalDiscovery(centerNodes: List<EdgeNode>): List<EdgeNode> {
-        val discovered = runCatching { discoverLocalNodes(includeSubnetScan = false) }
-            .getOrElse { error ->
-                Log.w(LOG_TAG, "Local edge discovery failed", error)
-                emptyList()
-            }
-        if (discovered.isEmpty()) return centerNodes
-        val discoveredById = discovered
-            .mapNotNull { status -> status.node.nodeId.takeIf(String::isNotBlank)?.let { it to status.node } }
-            .toMap()
-        return centerNodes.map { center ->
-            val local = discoveredById[center.nodeId] ?: return@map center
-            center.copy(
-                lanBaseUrl = local.lanBaseUrl,
-                capabilities = local.capabilities.ifEmpty { center.capabilities },
-            )
-        }
-    }
-
-    private suspend fun nodeStatuses(nodes: List<EdgeNode>): List<EdgePrintNodeStatus> {
+    private suspend fun nodeStatuses(nodes: List<EdgeNode>, eligibleIds: Set<String>): List<EdgePrintNodeStatus> {
         return coroutineScope {
             nodes.map { node ->
                 async(Dispatchers.IO) {
-                    val localReachable = probe(node)
+                    val health = if (node.nodeId in eligibleIds && connectionPolicy.permits(node)) {
+                        fetchProbe(node.lanBaseUrl, localClient)?.takeIf { it.ok && it.nodeId == node.nodeId }
+                    } else {
+                        null
+                    }
+                    val localReachable = health != null && health.directPrintAvailable != false
                     val localInventory = if (localReachable) fetchLocalPrintInventory(node.lanBaseUrl) else null
                     EdgePrintNodeStatus(
                         node = localInventory?.let { node.copy(printInventory = it) } ?: node,
                         localReachable = localReachable,
+                        connectionReachable = health != null,
                     )
                 }
             }.awaitAll()
@@ -630,12 +606,45 @@ class EdgePrintRepository @Inject constructor(
         )
     }
 
-    suspend fun discoverLocalNodes(
+    suspend fun probeLocalNetwork(): List<EdgePrintNodeStatus> = coroutineScope {
+        check(connectionPolicy.hasLan()) { "请连接 Wi-Fi 或以太网后探测局域网" }
+        val key = connectionPolicy.scopeKey()
+        val operation = currentCoroutineContext()[Job]!!
+        val networkWatch = launch {
+            connectionPolicy.changes.collect {
+                if (connectionPolicy.scopeKey() != key) operation.cancel()
+            }
+        }
+        val sessionWatch = launch {
+            sessionStore.session.collect {
+                if (connectionPolicy.scopeKey() != key) operation.cancel()
+            }
+        }
+        try {
+            val nodes = discoverLocalNodes()
+            val registered = runCatching { registeredCenterNodes() }.getOrDefault(emptyList())
+            connectionPolicy.rememberManual(
+                nodes.map { status ->
+                    val center = registered.firstOrNull { it.nodeId == status.node.nodeId }
+                    status.node.copy(id = center?.id ?: -(status.node.nodeId.hashCode().toLong().and(0xffffffffL) + 1))
+                },
+                key,
+            )
+            nodesMutex.withLock { nodesKey = "" }
+            nodes
+        } finally {
+            networkWatch.cancel()
+            sessionWatch.cancel()
+        }
+    }
+
+    private suspend fun discoverLocalNodes(
         port: Int = DEFAULT_EDGE_PORT,
         includeSubnetScan: Boolean = true,
     ): List<EdgePrintNodeStatus> {
         require(port in 1..65535) { "端口必须在 1 到 65535 之间" }
         val advertisedNodes = edgeServiceDiscovery.discoverBaseUrls()
+            .filter(connectionPolicy::isOnLan)
             .mapNotNull { baseUrl -> withContext(Dispatchers.IO) { discoverLocalNode(baseUrl) } }
             .distinctBy { it.node.nodeId.ifBlank { it.node.lanBaseUrl } }
         if (advertisedNodes.isNotEmpty() || !includeSubnetScan) {
@@ -648,7 +657,7 @@ class EdgePrintRepository @Inject constructor(
         val scannedNodes = coroutineScope {
             prefixes.flatMap { prefix ->
                 (1..254).map { host -> "http://$prefix.$host:$port" }
-            }.map { baseUrl ->
+            }.filter(connectionPolicy::isOnLan).map { baseUrl ->
                 async(Dispatchers.IO) {
                     semaphore.withPermit { discoverLocalNode(baseUrl) }
                 }
@@ -669,7 +678,7 @@ class EdgePrintRepository @Inject constructor(
         require(sku.id > 0) { "SKU 缺少有效 ID" }
         require(copies in 1..100) { "打印份数必须在 1 到 100 之间" }
         val idempotencyKey = "mobile-label-${UUID.randomUUID()}"
-        val stillReachable = option.localReachable && withContext(Dispatchers.IO) { probe(option.node) }
+        val stillReachable = option.localReachable && connectionPolicy.permits(option.node) && withContext(Dispatchers.IO) { probe(option.node) }
         return if (stillReachable) {
             runCatching { submitLocal(option, sku, copies, labelPrefix, idempotencyKey) }
                 .getOrElse { error ->
@@ -694,7 +703,7 @@ class EdgePrintRepository @Inject constructor(
         require(normalized.length <= 512) { "标签内容不能超过 512 个字符" }
         require(copies in 1..100) { "打印份数必须在 1 到 100 之间" }
         val idempotencyKey = "mobile-custom-label-${UUID.randomUUID()}"
-        val stillReachable = option.localReachable && withContext(Dispatchers.IO) { probe(option.node) }
+        val stillReachable = option.localReachable && connectionPolicy.permits(option.node) && withContext(Dispatchers.IO) { probe(option.node) }
         return if (stillReachable) {
             runCatching { submitLocalLabel(option, normalized, copies, idempotencyKey) }
                 .getOrElse { error ->
@@ -706,6 +715,62 @@ class EdgePrintRepository @Inject constructor(
                 }
         } else {
             submitRemoteLabel(option, normalized, copies, idempotencyKey)
+        }
+    }
+
+    suspend fun recoverBoxMarkAttempt(option: EdgePrintNodeOption, labelId: Long): EdgePrintSubmission? = withContext(Dispatchers.IO) {
+        val remoteKey = printLeaseStore.pendingKey(labelId, option.node.nodeId, "remote")
+        if (remoteKey != null) {
+            check(!sessionStore.current().isOffline) { "请连接中心后核对上次远程打印任务" }
+            val result = api.post<RemoteBoxMarkLookup>(
+                path = "edge/print-jobs/manufacturer-box-marks",
+                headers = mapOf("Idempotency-Key" to remoteKey),
+                body = buildJsonObject {
+                    put("lookup_only", true)
+                    put("edge_node_id", option.node.id)
+                },
+            )
+            check(result.found != null) { "中心尚未支持打印任务核对，请升级服务" }
+            if (result.found == false) {
+                printLeaseStore.finishAttempt(labelId, remoteKey)
+                error("中心确认未受理上次任务，请核对箱唛后重新提交")
+            }
+            val job = result.job ?: error("中心未返回完整任务记录，请核对后重试")
+            check(job.id > 0 && job.status.isNotBlank()) { "中心任务记录不完整，请核对后重试" }
+            printLeaseStore.finishAttempt(labelId, remoteKey)
+            return@withContext EdgePrintSubmission(option.node.nodeName, false, job.status, job.id.toString())
+        }
+        val key = printLeaseStore.pendingKey(labelId, option.node.nodeId, "local") ?: return@withContext null
+        val path = "/edge/print-jobs/direct"
+        val body = buildJsonObject {
+            put("lookup_only", true)
+            put("idempotency_key", key)
+        }.toString()
+        val session = sessionStore.current()
+        val lease = printLeaseStore.lease(option.node.nodeId)
+        check(!session.isOffline || lease != null) { "离线授权不可用，无法确认上次打印任务" }
+        val builder = Request.Builder().url(localEdgeDirectBaseUrl(option.node.lanBaseUrl) + path)
+            .header("X-FSCM-Client", "mobile-app")
+            .post(body.toRequestBody(JSON_MEDIA_TYPE))
+        if (lease != null) {
+            builder.header("X-FSCM-Offline-Lease", lease)
+        } else {
+            builder.header("Authorization", "Bearer ${session.token}")
+        }
+        deviceIdentityManager.proofHeaders("POST", path, body, trustedClock.trustedNowMillis() ?: error("设备时间不可信"))
+            .forEach(builder::header)
+        localClient.newCall(builder.build()).execute().use { response ->
+            check(response.isSuccessful) { "无法核对上次任务（${response.code}），请检查原节点是否在线并已升级" }
+            val result = json.decodeFromString<LocalEdgePrintResponse>(response.body?.string().orEmpty())
+            check(result.found != null) { "节点不支持打印任务核对，请升级节点" }
+            if (result.found == false) {
+                printLeaseStore.finishAttempt(labelId, key)
+                error("原节点确认未受理上次任务，请核对箱唛后重新提交")
+            }
+            val job = result.job ?: error("节点未返回完整任务记录，请在原节点核对")
+            check(job.id.isNotBlank() && job.status.isNotBlank()) { "节点任务记录不完整，请在原节点核对" }
+            printLeaseStore.finishAttempt(labelId, key)
+            EdgePrintSubmission(option.node.nodeName, true, job.status, job.id)
         }
     }
 
@@ -722,26 +787,39 @@ class EdgePrintRepository @Inject constructor(
         }
         require(option.template.isAvailableBoxMarkTemplate()) { "厂家箱唛模板不可用" }
 
-        val stillReachable = option.localReachable && withContext(Dispatchers.IO) { probe(option.node) }
-        return if (stillReachable) {
-            runCatching {
-                submitLocalDirect(
-                    option = option,
-                    payload = buildLocalBoxMarkPrintRequest(option, label, copies, idempotencyKey),
-                )
-            }.getOrElse { error ->
-                if (error is LocalDirectPrintUnavailableException) {
-                    submitRemoteBoxMark(option, label, copies, idempotencyKey)
-                } else {
-                    throw error
+        val stillReachable = connectionPolicy.permits(option.node) && withContext(Dispatchers.IO) { probe(option.node) }
+        check(stillReachable || !sessionStore.current().isOffline) { "没有可用的局域网打印节点" }
+        val frozen = json.encodeToString(buildLocalBoxMarkPrintRequest(option, label, copies, ""))
+        val key = printLeaseStore.beginAttempt(label.id, "${option.node.nodeId}:${if (stillReachable) "local" else "remote"}", frozen, idempotencyKey)
+        val result = try {
+            if (stillReachable) {
+                try {
+                    submitLocalDirect(option, buildLocalBoxMarkPrintRequest(option, label, copies, key))
+                } catch (error: LocalDirectPrintUnavailableException) {
+                    // This response explicitly means that the local route did not accept the job.
+                    printLeaseStore.finishAttempt(label.id, key)
+                    check(!sessionStore.current().isOffline) { "节点尚未支持此打印方式，请升级节点" }
+                    val remoteKey = printLeaseStore.beginAttempt(label.id, "${option.node.nodeId}:remote", frozen, key)
+                    submitRemoteBoxMark(option, label, copies, remoteKey)
                 }
+            } else {
+                submitRemoteBoxMark(option, label, copies, key)
             }
-        } else {
-            submitRemoteBoxMark(option, label, copies, idempotencyKey)
+        } catch (error: Exception) {
+            if (error is EdgePrintTemplateUnavailableException || error is EdgePrintRejectedException ||
+                (error is FscmApiException && error.statusCode in 400..499 && error.statusCode != 409)
+            ) {
+                printLeaseStore.finishAttempt(label.id, key)
+            }
+            throw error
         }
+        check(result.jobId.isNotBlank() && result.jobId != "0") { "节点未返回任务号，请使用原节点核对打印结果" }
+        printLeaseStore.finishAttempt(label.id, key)
+        return result
     }
 
     suspend fun isEdgeReachable(node: EdgeNode): Boolean = withContext(Dispatchers.IO) {
+        if (!connectionPolicy.permits(node)) return@withContext false
         if (node.lanBaseUrl.isBlank()) return@withContext false
         val payload = fetchProbe(node.lanBaseUrl, localClient) ?: return@withContext false
         payload.ok && payload.nodeId == node.nodeId
@@ -773,7 +851,7 @@ class EdgePrintRepository @Inject constructor(
     }
 
     private fun discoverLocalNode(baseUrl: String): EdgePrintNodeStatus? {
-        val probe = fetchProbe(baseUrl, discoveryClient) ?: return null
+        val probe = fetchProbe(baseUrl, discoveryClient)?.takeIf { it.nodeId.isNotBlank() } ?: return null
         val inventory = fetchLocalPrintInventory(baseUrl) ?: EdgePrintInventory()
         return EdgePrintNodeStatus(
             node = EdgeNode(
@@ -785,6 +863,7 @@ class EdgePrintRepository @Inject constructor(
                 status = "online",
             ),
             localReachable = probe.directPrintAvailable != false,
+            connectionReachable = true,
         )
     }
 
@@ -838,14 +917,17 @@ class EdgePrintRepository @Inject constructor(
         payload: LocalEdgeDirectPrintRequest,
     ): EdgePrintSubmission = withContext(Dispatchers.IO) {
         val session = sessionStore.current()
-        if (session.isOffline) require("edge.print" in session.offlineScopes) { "离线租约不允许边缘打印" }
+        val printLease = if (payload.type == "manufacturer_box_mark") printLeaseStore.lease(option.node.nodeId) else null
+        if (session.isOffline) require(printLease != null || "edge.print" in session.offlineScopes) { "离线打印授权已过期，请联网更新" }
         val path = "/edge/print-jobs/direct"
         val body = json.encodeToString(payload)
         val requestBuilder = Request.Builder()
+            .header("X-FSCM-Client", "mobile-app")
             .url(localEdgeDirectBaseUrl(option.node.lanBaseUrl) + path)
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
+        session.currentNamespace?.id?.let { requestBuilder.header("X-Namespace-ID", it.toString()) }
         session.token.takeIf(String::isNotBlank)?.let { requestBuilder.header("Authorization", "Bearer $it") }
-        session.offlineLease.takeIf(String::isNotBlank)?.let {
+        (printLease ?: session.offlineLease.takeIf(String::isNotBlank))?.let {
             requestBuilder.header("X-FSCM-Offline-Lease", it)
         }
         deviceIdentityManager.proofHeaders(
@@ -865,13 +947,15 @@ class EdgePrintRepository @Inject constructor(
                 if (isEdgeTemplateUnavailable(response.code, error?.code.orEmpty())) {
                     throw EdgePrintTemplateUnavailableException()
                 }
-                throw IllegalStateException(error?.error?.takeIf { it.isNotBlank() } ?: "本地节点打印失败 (${response.code})")
+                val message = error?.error?.takeIf { it.isNotBlank() } ?: "本地节点打印失败 (${response.code})"
+                if (response.code in 400..499 && error?.code != "IDEMPOTENCY_CONFLICT") throw EdgePrintRejectedException(message)
+                throw IllegalStateException(message)
             }
             val result = json.decodeFromString<LocalEdgePrintResponse>(body)
             EdgePrintSubmission(
                 nodeName = option.node.nodeName,
                 local = true,
-                status = result.status,
+                status = result.job?.status?.takeIf(String::isNotBlank) ?: result.status,
                 jobId = result.job?.id.orEmpty(),
             )
         }
@@ -950,6 +1034,7 @@ class EdgePrintRepository @Inject constructor(
                 put("edge_node_id", option.node.id)
                 put("template_code", option.template.code)
                 put("box_plan_ids", buildJsonArray { add(JsonPrimitive(label.id)) })
+                put("expected_snapshots", buildJsonObject { label.printSnapshot?.let { put(label.id.toString(), it) } })
                 put("copies", copies)
             },
         )
@@ -967,7 +1052,6 @@ class EdgePrintRepository @Inject constructor(
         const val DISCOVERY_CONCURRENCY = 32
         const val MAX_DISCOVERY_SUBNETS = 2
         const val LOG_TAG = "FscmEdgeDiscovery"
-        const val CATALOG_NODE_CACHE_MS = 60_000L
     }
 }
 
@@ -989,12 +1073,12 @@ class EdgeTerminalRepository @Inject constructor(
     }
 
     /** Keeps the central terminal record alive without requiring LAN edge connectivity. */
-    suspend fun maintainCenterPresence() {
+    suspend fun maintainCenterPresence(): Boolean {
         val session = sessionStore.current()
-        if (session.isOffline || session.token.isBlank() || session.currentNamespace == null) return
+        if (session.isOffline || session.token.isBlank() || session.currentNamespace == null) return false
 
         val lanIp = currentLocalIPv4Addresses().firstOrNull().orEmpty()
-        registrationMutex.withLock {
+        return registrationMutex.withLock {
             val nodes = edgePrintRepository.registeredCenterNodes()
             val edgeNodeId = (
                 nodes.firstOrNull { it.nodeId.isNotBlank() && it.status == "online" }
@@ -1002,7 +1086,7 @@ class EdgeTerminalRepository @Inject constructor(
                 )
                 ?.nodeId
                 ?.takeIf(String::isNotBlank)
-                ?: error("No edge node is registered with the center for this namespace")
+                ?: return@withLock false
             val now = System.currentTimeMillis()
             val registrationKey = listOf(
                 session.currentNamespace.id,
@@ -1023,6 +1107,7 @@ class EdgeTerminalRepository @Inject constructor(
                 lastRegistrationAtMillis = now
             }
             Log.i(LOG_TAG, "Central terminal presence updated: path=$path edgeNodeId=$edgeNodeId")
+            true
         }
     }
 
@@ -1033,7 +1118,7 @@ class EdgeTerminalRepository @Inject constructor(
             .filter { status ->
                 status.node.nodeId.isNotBlank() &&
                     isRoutableEdgeBaseUrl(status.node.lanBaseUrl) &&
-                    edgePrintRepository.isEdgeReachable(status.node)
+                    status.connectionReachable
             }
         val lastNodeId = preferences().getString(KEY_LAST_NODE_ID, null)
         val node = nodes.firstOrNull { it.node.nodeId == lastNodeId }?.node
@@ -1184,17 +1269,24 @@ internal data class EdgeCustomLabelPayload(
 )
 
 @Serializable
+private data class RemoteBoxMarkLookup(val found: Boolean? = null, val job: EdgePrintJob? = null)
+
+@Serializable
 private data class LocalEdgePrintJob(
     val id: String = "",
+    val status: String = "",
 )
 
 @Serializable
 private data class LocalEdgePrintResponse(
     val status: String = "",
+    val found: Boolean? = null,
     val code: String = "",
     val job: LocalEdgePrintJob? = null,
     val error: String = "",
 )
+
+private class EdgePrintRejectedException(message: String) : IllegalStateException(message)
 
 private class LocalDirectPrintUnavailableException(statusCode: Int) :
     IllegalStateException("本地直打接口不可用($statusCode)")
@@ -1556,7 +1648,7 @@ class ReceivingRepository @Inject constructor(
         return session(id, forceRefresh = true)
     }
 
-    suspend fun preview(id: Long, rawCode: String): ReceivingScanResponse {
+    suspend fun preview(id: Long, rawCode: String, locationCode: String? = null): ReceivingScanResponse {
         val parsed = boxLabelMappingRepository.resolve(rawCode)
         if (sessionStore.current().isOffline) {
             return offlinePreview(parsed ?: throw BoxLabelMappingCacheMissException())
@@ -1564,7 +1656,10 @@ class ReceivingRepository @Inject constructor(
         return runCatching {
             api.post<ReceivingScanResponse>(
                 "receiving-sessions/$id/scan-preview",
-                buildJsonObject { put("raw_code", normalizeBoxLabelLookupCode(rawCode)) },
+                buildJsonObject {
+                    put("raw_code", normalizeBoxLabelLookupCode(rawCode))
+                    locationCode?.let { put("location_code", it) }
+                },
             )
         }.getOrElse { error ->
             if (error is FscmApiException) throw error
@@ -2053,6 +2148,41 @@ class CartonRepository @Inject constructor(
     private val boxLabelMappingRepository: BoxLabelMappingRepository,
     @param:FscmJson private val json: Json,
 ) {
+    suspend fun searchLabels(query: String, page: Int): CatalogResult<BoxLabelSearchPage> {
+        val params = mapOf("keyword" to query, "page" to page.toString(), "page_size" to "20", "search_mode" to "smart")
+        return managementResult("box-labels", params) { payload ->
+            decodeBoxLabelSearchPage(payload, json)
+        }
+    }
+
+    suspend fun labelDetail(id: Long): CatalogResult<BoxLabel> {
+        require(id > 0)
+        return managementResult("box-labels/$id") { payload ->
+            decodeBusinessObject<BoxLabel>(payload, json).also {
+                require(it.contractVersion >= 2 && it.detailComplete) { "节点尚未同步完整箱唛详情，请联网更新" }
+            }.copy(recognized = true)
+        }
+    }
+
+    private suspend fun <T> managementResult(
+        path: String,
+        params: Map<String, String> = emptyMap(),
+        decode: (JsonElement) -> T,
+    ): CatalogResult<T> {
+        if (!sessionStore.current().isOffline) {
+            try {
+                return CatalogResult(decode(api.get(path, params)), CatalogSource.Center)
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                if (error is FscmApiException && !error.isTemporaryCenterFailure()) throw error
+                if (error !is java.io.IOException && error !is FscmApiException) throw error
+            }
+        }
+        val response = edgeCatalogClient.get(path, params)
+            ?: error("中心不可达，且没有支持箱唛目录的边缘节点")
+        return decode(response.payload).toCatalogResult(response)
+    }
+
     suspend fun resolveBoxLabel(rawCode: String): BoxLabel = resolveBoxLabelResult(rawCode).data
 
     suspend fun resolveBoxLabelResult(rawCode: String): CatalogResult<BoxLabel> {
@@ -2271,7 +2401,7 @@ fun visibleMobileApps(
         .map(::applyLocalMobileAppMetadata)
         .distinctBy { it.key }
         .filter { it.visible }
-        .filter { it.key in implementedMobileAppKeys }
+        .filter { it.key in implementedMobileAppKeys && it.key !in setOf("pda_settings", "edge_nodes") }
         .filter { app ->
             sessionMode == SessionMode.Online ||
                 (app.offlineSupported && app.key in offlineImplementedAppKeys && app.hasOfflinePermissions(permissionSet))
@@ -2283,7 +2413,7 @@ private fun normalizeMobileAppEntry(entry: MobileAppEntry): MobileAppEntry {
         "carton_management" -> "box_labels"
         "payment_bills" -> "manufacturer_payment_bills"
         in legacyPdaSettingsAppKeys -> "pda_settings"
-        in legacyEdgeNodeAppKeys -> "edge_nodes"
+        "edge_node", in legacyEdgeNodeAppKeys -> "edge_nodes"
         in legacyLabelPrintAppKeys -> "label_print"
         else -> entry.key
     }

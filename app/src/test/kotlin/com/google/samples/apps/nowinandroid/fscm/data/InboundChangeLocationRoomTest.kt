@@ -84,6 +84,24 @@ class InboundChangeLocationRoomTest {
         assertEquals("A-01", dao.batch("batch")?.locationCode)
     }
 
+    @Test
+    fun correctingPreviewSnapshotPreservesDraftAndPendingOperations() = runBlocking {
+        seed()
+        val batch = dao.batch("batch")!!
+        val preview = ReceivingScanResponse(item = ReceivingScanItem(boxPlanId = 0, labelCode = "BOX-0", status = "normal", locationCode = "A-01"))
+        val stale = inboundSnapshotFromPreview(batch, null, preview, ReceivingCurrentAssignment("A-01", 101))
+        dao.insertSnapshot(stale)
+        val before = dao.itemsForBatch("batch")
+        dao.insertSnapshot(inboundSnapshotFromPreview(batch, stale, preview, ReceivingCurrentAssignment()))
+        assertEquals(before, dao.itemsForBatch("batch"))
+        assertEquals(batch, dao.batch("batch"))
+        assertEquals("", dao.snapshots(7, 9, 11).single().locationCode)
+        dao.finishBatch("batch")
+        val pending = dao.itemsForBatch("batch")
+        dao.insertSnapshot(inboundSnapshotFromPreview(batch, stale, preview, ReceivingCurrentAssignment()))
+        assertEquals(pending, dao.itemsForBatch("batch"))
+    }
+
     private suspend fun seed() {
         dao.insertBatch(LocalInboundBatchEntity("batch", 7, 9, 11, "A-01", 101))
         repeat(2) { index ->

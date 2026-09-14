@@ -23,6 +23,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.withTransaction
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
@@ -79,6 +80,12 @@ interface BoxLabelMappingDao {
         """,
     )
     suspend fun find(userId: Long, namespaceId: Long, code: String, rawCode: String): LocalBoxLabelMappingEntity?
+
+    @Query("SELECT * FROM local_box_label_mappings WHERE userId = :userId AND namespaceId = :namespaceId AND (supplierLabelCode = :code COLLATE NOCASE OR supplierBoxNo = :code COLLATE NOCASE OR supplierBoxUid = :code COLLATE NOCASE OR jifengBoxNo = :code COLLATE NOCASE OR jifengQrCodeText = :rawCode) LIMIT 2")
+    suspend fun captureMatches(userId: Long, namespaceId: Long, code: String, rawCode: String): List<LocalBoxLabelMappingEntity>
+
+    @Query("SELECT * FROM local_box_label_mappings WHERE userId = :userId AND namespaceId = :namespaceId AND (supplierLabelCode COLLATE NOCASE IN (:codes) OR supplierBoxNo COLLATE NOCASE IN (:codes) OR supplierBoxUid COLLATE NOCASE IN (:codes) OR jifengBoxNo COLLATE NOCASE IN (:codes) OR jifengQrCodeText IN (:rawCodes)) ORDER BY mappingId DESC")
+    suspend fun findMany(userId: Long, namespaceId: Long, codes: List<String>, rawCodes: List<String>): List<LocalBoxLabelMappingEntity>
 
     @Query("SELECT MAX(syncedAt) FROM local_box_label_mappings WHERE userId = :userId AND namespaceId = :namespaceId")
     suspend fun latestSyncedAt(userId: Long, namespaceId: Long): Long?
@@ -144,20 +151,14 @@ data class BoxLabelMappingSnapshotItem(
 )
 
 @Serializable
-private data class BoxLabelMappingSnapshot(
+internal data class BoxLabelMappingSnapshot(
     val items: List<BoxLabelMappingSnapshotItem> = emptyList(),
     @SerialName("next_after_id") val nextAfterId: Long = 0,
     @SerialName("has_more") val hasMore: Boolean = false,
-    @SerialName("next_alias_after_id") val nextAliasAfterId: Long = 0,
-    @SerialName("alias_has_more") val aliasHasMore: Boolean = false,
 )
 
-private val BoxLabelMappingSnapshot.effectiveNextAfterId: Long
-    get() = nextAfterId.takeIf { it > 0 } ?: nextAliasAfterId
-
-private val BoxLabelMappingSnapshot.effectiveHasMore: Boolean
-    get() = hasMore || aliasHasMore
-
+// Adjustment aliases have their own pagination stream and are not mapping rows.
+// Only items/next_after_id/has_more control this cache's full snapshot.
 class BoxLabelMappingCacheMissException : IllegalStateException()
 
 @Singleton
@@ -165,19 +166,22 @@ class BoxLabelMappingRepository @Inject constructor(
     private val api: FscmApiClient,
     private val sessionStore: SessionStore,
     private val dao: BoxLabelMappingDao,
+    private val database: FscmDatabase,
 ) {
     private val refreshMutex = Mutex()
-    private val lastRefreshByScope = mutableMapOf<MappingScope, Long>()
 
     suspend fun refreshIfStale(force: Boolean = false): Boolean = refreshMutex.withLock {
         val scope = scope()
         if (scope.userId == 0L || scope.namespaceId == 0L || sessionStore.current().isOffline) return false
-        val latest = maxOf(dao.latestSyncedAt(scope.userId, scope.namespaceId) ?: 0L, lastRefreshByScope[scope] ?: 0L)
+        val latest = database.localSkuCatalogDao().meta(scope.userId, scope.namespaceId, "box_mappings")?.refreshedAt ?: 0L
         if (!force && latest > 0 && System.currentTimeMillis() - latest < CACHE_REFRESH_INTERVAL_MS) return false
         val items = downloadSnapshot()
         val syncedAt = System.currentTimeMillis()
-        dao.replaceScope(scope.userId, scope.namespaceId, items.map { it.toEntity(scope, syncedAt) })
-        lastRefreshByScope[scope] = syncedAt
+        check(scope == scope()) { "工作空间已切换" }
+        database.withTransaction {
+            dao.replaceScope(scope.userId, scope.namespaceId, items.map { it.toEntity(scope, syncedAt) })
+            database.localSkuCatalogDao().saveMeta(ReferenceCacheMeta(scope.userId, scope.namespaceId, "box_mappings", true, items.size, syncedAt))
+        }
         return true
     }
 
@@ -193,6 +197,7 @@ class BoxLabelMappingRepository @Inject constructor(
         }
         val items = downloadSnapshot(sessionId)
         val syncedAt = System.currentTimeMillis()
+        check(scope == scope()) { "工作空间已切换" }
         dao.replacePlans(
             userId = scope.userId,
             namespaceId = scope.namespaceId,
@@ -203,18 +208,30 @@ class BoxLabelMappingRepository @Inject constructor(
     }
 
     private suspend fun downloadSnapshot(sessionId: Long? = null): List<BoxLabelMappingSnapshotItem> {
+        val actor = scope()
         val items = mutableListOf<BoxLabelMappingSnapshotItem>()
         var afterId = 0L
         do {
             val previousAfterId = afterId
             val params = mutableMapOf("after_id" to afterId.toString(), "limit" to PAGE_SIZE.toString())
             sessionId?.let { params["receiving_session_id"] = it.toString() }
-            val page: BoxLabelMappingSnapshot = api.get("mobile/app/box-label-mappings/snapshot", params)
+            check(actor == scope()) { "工作空间已切换" }
+            val page: BoxLabelMappingSnapshot = api.get("mobile/app/box-label-mappings/snapshot", params, headers = inboundScopeHeaders(actor.userId, actor.namespaceId))
             items += page.items
-            afterId = page.effectiveNextAfterId
-            if (page.effectiveHasMore && afterId == previousAfterId) break
-        } while (page.effectiveHasMore)
+            afterId = page.nextAfterId
+            check(!page.hasMore || (afterId > previousAfterId && page.items.isNotEmpty())) { "箱码快照未下载完整" }
+        } while (page.hasMore)
+        check(items.distinctBy { it.id }.size == items.size) { "箱码快照包含重复记录" }
         return items
+    }
+
+    suspend fun resolveForCapture(rawCode: String): BoxLabelQrPayload? {
+        val actor = scope()
+        val raw = rawCode.trimScannerCharactersForLookup()
+        val matches = dao.captureMatches(actor.userId, actor.namespaceId, raw.uppercase(Locale.ROOT), raw)
+        if (matches.size > 1) throw InboundClientException(InboundClientError.BoxOfflineNotFound)
+        return runCatching { parseBoxLabelQr(rawCode) }.getOrNull()
+            ?: matches.singleOrNull()?.toResolvedPayload(raw)
     }
 
     suspend fun resolve(rawCode: String): BoxLabelQrPayload? {
@@ -230,6 +247,28 @@ class BoxLabelMappingRepository @Inject constructor(
         val scope = scope()
         val raw = rawCode.trimScannerCharactersForLookup()
         return dao.find(scope.userId, scope.namespaceId, raw.uppercase(Locale.ROOT), raw)
+    }
+
+    suspend fun cachedMappings(rawCodes: List<String>): Map<String, LocalBoxLabelMappingEntity> {
+        if (rawCodes.isEmpty()) return emptyMap()
+        val actor = scope()
+        val result = mutableMapOf<String, LocalBoxLabelMappingEntity>()
+        rawCodes.distinct().chunked(100).forEach { batch ->
+            val normalized = batch.associateWith { it.trimScannerCharactersForLookup() }
+            val rows = dao.findMany(actor.userId, actor.namespaceId, normalized.values.map { it.uppercase(Locale.ROOT) }, normalized.values.toList())
+            val byCode = mutableMapOf<String, LocalBoxLabelMappingEntity>()
+            val byRaw = mutableMapOf<String, LocalBoxLabelMappingEntity>()
+            rows.forEach { row ->
+                listOf(row.supplierLabelCode, row.supplierBoxNo, row.supplierBoxUid, row.jifengBoxNo).filter { it.isNotBlank() }.forEach { code ->
+                    byCode.putIfAbsent(code.uppercase(Locale.ROOT), row)
+                }
+                if (row.jifengQrCodeText.isNotBlank()) byRaw.putIfAbsent(row.jifengQrCodeText, row)
+            }
+            normalized.forEach { (original, raw) ->
+                listOfNotNull(byCode[raw.uppercase(Locale.ROOT)], byRaw[raw]).maxByOrNull { it.mappingId }?.let { result[original] = it }
+            }
+        }
+        return result
     }
 
     suspend fun knownJifengAliases(): Set<String> {

@@ -16,15 +16,7 @@
 
 package com.google.samples.apps.nowinandroid.fscm.data
 
-import android.content.Context
-import android.net.ConnectivityManager
-import android.net.Network
-import android.net.NetworkRequest
-import android.os.Build
-import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
@@ -128,10 +120,7 @@ private data class EdgeFailureState(
 
 @Singleton
 class EdgeNodeRouter @Inject constructor(
-    @ApplicationContext context: Context,
-    private val api: FscmApiClient,
-    private val sessionStore: SessionStore,
-    private val discovery: EdgeServiceDiscovery,
+    private val connectionPolicy: EdgeConnectionPolicy,
     @param:FscmJson private val json: Json,
 ) {
     private val probeClient = OkHttpClient.Builder()
@@ -141,48 +130,15 @@ class EdgeNodeRouter @Inject constructor(
         .build()
     private val refreshMutex = Mutex()
     private val failures = mutableMapOf<String, EdgeFailureState>()
-    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-
-    @Volatile
     private var snapshot = EdgeNodeSnapshot()
+    private var snapshotKey = ""
 
-    init {
-        val callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) = networkChanged()
+    internal suspend fun candidates(): List<EdgeCatalogNode> = refresh()
 
-            override fun onLost(network: Network) = networkChanged()
-        }
-        runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                connectivityManager.registerDefaultNetworkCallback(callback)
-            } else {
-                connectivityManager.registerNetworkCallback(NetworkRequest.Builder().build(), callback)
-            }
-        }
-    }
-
-    internal suspend fun candidates(): List<EdgeCatalogNode> {
-        val now = System.currentTimeMillis()
-        snapshot.takeIf { it.validUntilMillis > now }?.let { return availableNodes(it.nodes, now) }
-        val localNodes = refresh(DISCOVERY_QUERY_TIMEOUT_MS, includeCenterRegistry = false)
-        return if (shouldUseEdgeRegistryFallback(localNodes, sessionStore.current().isOffline)) {
-            refresh(DISCOVERY_QUERY_TIMEOUT_MS, includeCenterRegistry = true, force = true)
-        } else {
-            localNodes
-        }
-    }
-
-    internal suspend fun prewarm(): List<EdgeCatalogNode> =
-        refresh(DISCOVERY_PREWARM_TIMEOUT_MS, includeCenterRegistry = true, force = true)
+    internal suspend fun prewarm(): List<EdgeCatalogNode> = refresh()
 
     fun invalidate() {
         snapshot = EdgeNodeSnapshot()
-    }
-
-    private fun networkChanged() {
-        invalidate()
-        applicationScope.launch { runCatching { prewarm() } }
     }
 
     internal fun recordSuccess(nodeId: String) {
@@ -200,43 +156,21 @@ class EdgeNodeRouter @Inject constructor(
         }
     }
 
-    private suspend fun refresh(
-        timeoutMillis: Long,
-        includeCenterRegistry: Boolean,
-        force: Boolean = false,
-    ): List<EdgeCatalogNode> = refreshMutex.withLock {
+    private suspend fun refresh(): List<EdgeCatalogNode> = refreshMutex.withLock {
         val now = System.currentTimeMillis()
-        if (!force) {
-            snapshot.takeIf { it.validUntilMillis > now }?.let { return@withLock availableNodes(it.nodes, now) }
-        }
-
-        val cached = discovery.cachedBaseUrls().map(::EdgeAddress)
-        val discovered = withTimeoutOrNull(timeoutMillis) {
-            discovery.discoverBaseUrls(timeoutMillis).map(::EdgeAddress)
-        }.orEmpty()
-        val registered = if (includeCenterRegistry && !sessionStore.current().isOffline) {
-            withTimeoutOrNull(timeoutMillis) {
-                runCatching {
-                    api.get<PagedList<EdgeNode>>(
-                        "edge/nodes/available",
-                        edgeNodeListParams(includeOffline = false),
-                    ).rows().map { EdgeAddress(it.lanBaseUrl, it.nodeId, it.nodeName) }
-                }.getOrDefault(emptyList())
-            }.orEmpty()
-        } else {
-            emptyList()
-        }
-        val addresses = (cached + discovered + registered)
-            .filter { it.baseUrl.isNotBlank() }
-            .distinctBy { localEdgeDirectBaseUrl(it.baseUrl) }
+        val key = connectionPolicy.scopeKey() + connectionPolicy.changes.value
+        if (snapshotKey == key && snapshot.validUntilMillis > now) return@withLock availableNodes(snapshot.nodes, now)
+        val addresses = connectionPolicy.candidates().map { EdgeAddress(it.lanBaseUrl, it.nodeId, it.nodeName) }
         val nodes = coroutineScope {
             addresses.map { address -> async(Dispatchers.IO) { probe(address) } }
                 .awaitAll()
                 .filterNotNull()
         }
+        if (key != connectionPolicy.scopeKey() + connectionPolicy.changes.value) return@withLock emptyList()
+        snapshotKey = key
         snapshot = EdgeNodeSnapshot(
             nodes = nodes,
-            validUntilMillis = now + if (nodes.isEmpty()) NEGATIVE_CACHE_MS else HEALTH_CACHE_MS,
+            validUntilMillis = now + EdgeConnectionPolicy.CACHE_MS,
         )
         availableNodes(nodes, now)
     }
@@ -360,6 +294,7 @@ private data class LocalCatalogRequest(
 
 @Singleton
 class EdgeCatalogClient @Inject constructor(
+    private val printLeaseStore: EdgePrintLeaseStore,
     private val router: EdgeNodeRouter,
     private val sessionStore: SessionStore,
     private val deviceIdentityManager: DeviceIdentityManager,
@@ -470,6 +405,7 @@ class EdgeCatalogClient @Inject constructor(
                 ?.build()
                 ?: return@runCatching EdgeAttempt.RetryableFailure
             val requestBuilder = Request.Builder().url(url)
+                .header("X-FSCM-Client", "mobile-app")
                 .header(authorization.headerName, authorization.headerValue)
             sessionStore.current().currentNamespace?.id?.takeIf { it > 0 }?.let {
                 requestBuilder.header("X-Namespace-ID", it.toString())
@@ -479,8 +415,7 @@ class EdgeCatalogClient @Inject constructor(
             } else {
                 requestBuilder.get()
             }
-            val session = sessionStore.current()
-            if (session.isOffline) {
+            if (authorization.headerName == "X-FSCM-Offline-Lease") {
                 deviceIdentityManager.proofHeaders(
                     method = localRequest.method,
                     path = localRequest.path,
@@ -506,7 +441,7 @@ class EdgeCatalogClient @Inject constructor(
                 EdgeAttempt.Success(
                     EdgeCatalogResponse(
                         payload = payload,
-                        node = node,
+                        node = node.copy(syncedAt = response.header("X-FSCM-Catalog-Synced-At") ?: node.syncedAt),
                         authorization = mapOf(authorization.headerName to authorization.headerValue),
                         servedByEdge = isEdgeServedCatalogResponse(response.header("X-FSCM-Served-By")),
                     ),
@@ -521,10 +456,13 @@ class EdgeCatalogClient @Inject constructor(
     private suspend fun authorization(node: EdgeCatalogNode): EdgeAuthorization? {
         val session = sessionStore.current()
         if (session.isOffline) {
-            if (session.offlineLease.isBlank() || "edge.cache.read" !in session.offlineScopes) return null
-            return EdgeAuthorization("X-FSCM-Offline-Lease", session.offlineLease)
+            val lease = printLeaseStore.lease(node.nodeId)
+                ?: session.offlineLease.takeIf { it.isNotBlank() && "edge.cache.read" in session.offlineScopes }
+                ?: return null
+            return EdgeAuthorization("X-FSCM-Offline-Lease", lease)
         }
-        val ticket = edgeTicketProvider.ticket(node.nodeId) ?: return null
+        val ticket = edgeTicketProvider.ticket(node.nodeId)
+            ?: return printLeaseStore.lease(node.nodeId)?.let { EdgeAuthorization("X-FSCM-Offline-Lease", it) }
         return EdgeAuthorization("X-Edge-Ticket", ticket)
     }
 

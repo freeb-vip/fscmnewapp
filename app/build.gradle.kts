@@ -220,6 +220,7 @@ dependencies {
 
     testImplementation(libs.hilt.android.testing)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.kotlin.test)
     testImplementation(libs.androidx.work.testing)
 

@@ -22,6 +22,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -50,9 +51,12 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -109,7 +113,7 @@ data class ReceivingProductProgressUiState(
     val header: ReceivingProductDocumentHeader = ReceivingProductDocumentHeader(),
     val items: List<ReceivingProductProgress> = emptyList(),
     val query: String = "",
-    val filter: ReceivingProductFilter = ReceivingProductFilter.Pending,
+    val filter: ReceivingProductFilter = ReceivingProductFilter.All,
     val loading: Boolean = false,
     val refreshing: Boolean = false,
     val cacheComplete: Boolean = false,
@@ -118,6 +122,9 @@ data class ReceivingProductProgressUiState(
     val selectedProduct: ReceivingProductProgress? = null,
     val boxDetails: List<ReceivingProductBoxDetail> = emptyList(),
     val boxDetailsLoading: Boolean = false,
+    val inboundBoxes: List<ReceivingProductBoxDetail> = emptyList(),
+    val refreshFailed: Boolean = false,
+    val refreshError: UiText? = null,
 ) {
     val visibleItems: List<ReceivingProductProgress>
         get() = filterReceivingProducts(items, query, filter)
@@ -131,22 +138,19 @@ class ReceivingProductProgressViewModel @Inject constructor(
     val state = _state.asStateFlow()
     private var observeJob: Job? = null
 
-    fun load(business: ReceivingProductBusiness, documentId: Long) {
+    fun load(business: ReceivingProductBusiness, documentId: Long, initialFilter: ReceivingProductFilter = if (business == ReceivingProductBusiness.Inbound) ReceivingProductFilter.All else ReceivingProductFilter.Pending) {
         if (_state.value.documentId == documentId && _state.value.business == business && observeJob != null) return
         observeJob?.cancel()
-        _state.value = ReceivingProductProgressUiState(business = business, documentId = documentId, loading = true)
+        _state.value = ReceivingProductProgressUiState(business = business, documentId = documentId, loading = true, filter = initialFilter)
         observeJob = viewModelScope.launch {
             launch {
                 runCatching { repository.documentHeader(business, documentId) }
                     .onSuccess { header ->
                         _state.update {
                             it.copy(
-                                header = header,
-                                filter = if (header.status in setOf("completed", "cancelled", "complete")) {
-                                    ReceivingProductFilter.All
-                                } else {
-                                    ReceivingProductFilter.Pending
-                                },
+                                header = if (business == ReceivingProductBusiness.Inbound) it.header.copy(code = header.code, warehouse = header.warehouse, status = header.status) else header,
+                                filter = if (business != ReceivingProductBusiness.Inbound && header.status in setOf("completed", "cancelled", "complete")) ReceivingProductFilter.All else it.filter,
+
                             )
                         }
                     }
@@ -157,6 +161,20 @@ class ReceivingProductProgressViewModel @Inject constructor(
                     _state.update {
                         it.copy(
                             items = snapshot.items,
+                            inboundBoxes = if (business == ReceivingProductBusiness.Inbound) snapshot.inboundBoxes else it.inboundBoxes,
+                            selectedProduct = it.selectedProduct?.let { selected -> snapshot.items.find { row -> row.productKey == selected.productKey } },
+                            header = if (business == ReceivingProductBusiness.Inbound) {
+                                it.header.copy(
+                                    totalBoxCount = snapshot.items.sumOf { row -> row.totalBoxCount },
+                                    completedBoxCount = snapshot.items.sumOf { row -> row.completedBoxCount },
+                                    pendingBoxCount = snapshot.items.sumOf { row -> row.pendingBoxCount },
+                                    exceptionBoxCount = snapshot.items.sumOf { row -> row.exceptionBoxCount },
+                                    localPendingCount = snapshot.items.sumOf { row -> row.pendingSyncBoxCount },
+                                    draftBoxCount = snapshot.items.sumOf { row -> row.draftBoxCount },
+                                )
+                            } else {
+                                it.header
+                            },
                             cacheComplete = snapshot.complete,
                             cacheUpdatedAt = snapshot.updatedAt,
                             loading = false,
@@ -164,10 +182,37 @@ class ReceivingProductProgressViewModel @Inject constructor(
                     }
                 }
             }
-            launch {
-                _state.update { it.copy(refreshing = true) }
-                repository.refresh(business, documentId)
-                _state.update { it.copy(refreshing = false, loading = false) }
+            refresh(onlyIfStale = business == ReceivingProductBusiness.Inbound)
+        }
+    }
+
+    fun refresh(onlyIfStale: Boolean = false) {
+        val current = _state.value
+        if (current.refreshing) return
+        _state.update { it.copy(refreshing = true, refreshFailed = false, refreshError = null, error = "") }
+        viewModelScope.launch {
+            val actor = repository.currentScopeKey()
+            val result = runCatching { repository.refresh(current.business, current.documentId, onlyIfStale) }
+            if (result.exceptionOrNull() is kotlinx.coroutines.CancellationException) throw result.exceptionOrNull()!!
+            if (repository.currentScopeKey() != actor) return@launch
+            val header = runCatching { repository.documentHeader(current.business, current.documentId) }.getOrNull()
+            if (repository.currentScopeKey() != actor) return@launch
+            _state.update {
+                if (it.documentId != current.documentId || it.business != current.business) {
+                    it
+                } else {
+                    it.copy(
+                        refreshing = false,
+                        loading = false,
+                        refreshFailed = !result.getOrDefault(false),
+                        refreshError = result.exceptionOrNull()?.inboundUiText(),
+                        header = if (current.business == ReceivingProductBusiness.Inbound) {
+                            it.header.copy(code = header?.code ?: it.header.code, warehouse = header?.warehouse ?: it.header.warehouse, status = header?.status ?: it.header.status)
+                        } else {
+                            header ?: it.header
+                        },
+                    )
+                }
             }
         }
     }
@@ -177,10 +222,14 @@ class ReceivingProductProgressViewModel @Inject constructor(
     fun setFilter(value: ReceivingProductFilter) = _state.update { it.copy(filter = value) }
 
     fun openProduct(product: ReceivingProductProgress) {
+        if (product.business == ReceivingProductBusiness.Inbound) {
+            _state.update { it.copy(selectedProduct = product, boxDetailsLoading = false) }
+            return
+        }
         _state.update { it.copy(selectedProduct = product, boxDetails = emptyList(), boxDetailsLoading = true) }
         viewModelScope.launch {
             runCatching { repository.boxDetails(product) }
-                .onSuccess { rows -> _state.update { it.copy(boxDetails = rows, boxDetailsLoading = false) } }
+                .onSuccess { rows -> _state.update { if (it.selectedProduct?.productKey == product.productKey && it.documentId == product.documentId && it.business == product.business) it.copy(boxDetails = rows, boxDetailsLoading = false) else it } }
                 .onFailure { error -> _state.update { it.copy(boxDetailsLoading = false, error = error.message.orEmpty()) } }
         }
     }
@@ -203,15 +252,19 @@ internal fun filterReceivingProducts(
                 ReceivingProductFilter.All -> true
                 ReceivingProductFilter.Pending -> item.pendingBoxCount > 0 && item.workStatus == ReceivingProductWorkStatus.Pending.value
                 ReceivingProductFilter.Exception -> item.exceptionBoxCount > 0 || item.workStatus == ReceivingProductWorkStatus.ClosedWithException.value
-                ReceivingProductFilter.Completed -> item.workStatus in setOf(
-                    ReceivingProductWorkStatus.Completed.value,
-                    ReceivingProductWorkStatus.ClosedWithException.value,
-                )
+                ReceivingProductFilter.Completed -> if (item.business == ReceivingProductBusiness.Inbound) {
+                    item.totalBoxCount > 0 && item.pendingBoxCount == 0 && item.exceptionBoxCount == 0
+                } else {
+                    item.workStatus in setOf(
+                        ReceivingProductWorkStatus.Completed.value,
+                        ReceivingProductWorkStatus.ClosedWithException.value,
+                    )
+                }
             }
         }
         .sortedWith(
-            compareByDescending<ReceivingProductProgress> { it.exceptionBoxCount > 0 }
-                .thenByDescending { it.pendingBoxCount }
+            compareByDescending<ReceivingProductProgress> { it.pendingBoxCount }
+                .thenByDescending { it.exceptionBoxCount > 0 }
                 .thenByDescending { it.lastOperatedAt }
                 .thenBy { it.productCode },
         )
@@ -223,96 +276,110 @@ fun ReceivingProductProgressScreen(
     business: ReceivingProductBusiness,
     documentId: Long,
     viewModel: ReceivingProductProgressViewModel = hiltViewModel(),
+    initialFilter: ReceivingProductFilter = if (business == ReceivingProductBusiness.Inbound) ReceivingProductFilter.All else ReceivingProductFilter.Pending,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    LaunchedEffect(business, documentId) { viewModel.load(business, documentId) }
+    LaunchedEffect(business, documentId, initialFilter) { viewModel.load(business, documentId, initialFilter) }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().background(ProductBackground),
-        contentPadding = PaddingValues(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        item { ReceivingProductDocumentSummary(state) }
-        item {
-            OutlinedTextField(
-                value = state.query,
-                onValueChange = viewModel::setQuery,
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                label = { Text(stringResource(R.string.receiving_product_search)) },
-            )
-        }
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                ReceivingProductFilter.entries.forEach { filter ->
-                    FilterChip(
-                        selected = state.filter == filter,
-                        onClick = { viewModel.setFilter(filter) },
-                        label = {
-                            Text(
-                                stringResource(
-                                    when (filter) {
-                                        ReceivingProductFilter.All -> R.string.receiving_product_filter_all
-                                        ReceivingProductFilter.Pending -> R.string.receiving_product_filter_pending
-                                        ReceivingProductFilter.Exception -> R.string.receiving_product_filter_exception
-                                        ReceivingProductFilter.Completed -> R.string.receiving_product_filter_completed
-                                    },
-                                ),
-                                maxLines = 1,
-                            )
-                        },
-                        modifier = Modifier.weight(1f),
+    PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = { viewModel.refresh() }) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().background(ProductBackground),
+            contentPadding = PaddingValues(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            item { ReceivingProductDocumentSummary(state) }
+            if (state.refreshFailed || state.error.isNotBlank()) {
+                item {
+                    Text(state.error.ifBlank { stringResource(R.string.collection_refresh_failed) }, color = ProductDanger)
+                    state.refreshError?.let { Text(it.resolve(), color = ProductDanger) }
+                }
+            }
+            item {
+                OutlinedTextField(
+                    value = state.query,
+                    onValueChange = viewModel::setQuery,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                    label = { Text(stringResource(R.string.receiving_product_search)) },
+                )
+            }
+            item {
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ReceivingProductFilter.entries.forEach { filter ->
+                        FilterChip(
+                            selected = state.filter == filter,
+                            onClick = { viewModel.setFilter(filter) },
+                            label = {
+                                Text(
+                                    stringResource(
+                                        when (filter) {
+                                            ReceivingProductFilter.All -> R.string.receiving_product_filter_all
+                                            ReceivingProductFilter.Pending -> if (business == ReceivingProductBusiness.Inbound) R.string.collection_uncollected else R.string.receiving_product_filter_pending
+                                            ReceivingProductFilter.Exception -> R.string.receiving_product_filter_exception
+                                            ReceivingProductFilter.Completed -> R.string.receiving_product_filter_completed
+                                        },
+                                    ),
+                                    maxLines = 1,
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+            if (!state.cacheComplete) {
+                item {
+                    Text(
+                        stringResource(
+                            if (state.items.isEmpty()) R.string.receiving_product_cache_preparing else R.string.receiving_product_cache_partial,
+                        ),
+                        color = ProductWarning,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            } else if (state.cacheUpdatedAt > 0) {
+                item {
+                    Text(
+                        stringResource(R.string.receiving_product_cache_time, formatReceivingProductTime(state.cacheUpdatedAt)),
+                        color = ProductMuted,
+                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }
-        }
-        if (!state.cacheComplete) {
-            item {
-                Text(
-                    stringResource(
-                        if (state.items.isEmpty()) R.string.receiving_product_cache_preparing else R.string.receiving_product_cache_partial,
-                    ),
-                    color = ProductWarning,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        } else if (state.cacheUpdatedAt > 0) {
-            item {
-                Text(
-                    stringResource(R.string.receiving_product_cache_time, formatReceivingProductTime(state.cacheUpdatedAt)),
-                    color = ProductMuted,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        }
-        if (state.loading && state.items.isEmpty()) {
-            item {
-                Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = ProductBrand)
+            if (state.loading && state.items.isEmpty()) {
+                item {
+                    Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = ProductBrand)
+                    }
                 }
-            }
-        } else if (state.visibleItems.isEmpty()) {
-            item {
-                Text(
-                    stringResource(R.string.receiving_product_empty),
-                    color = ProductMuted,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 28.dp),
-                )
-            }
-        } else {
-            items(state.visibleItems, key = { it.productKey }) { product ->
-                ReceivingProductProgressRow(
-                    product = product,
-                    completedLabel = stringResource(
-                        if (business == ReceivingProductBusiness.Inbound) {
-                            R.string.receiving_product_inbounded
-                        } else {
-                            R.string.receiving_product_received
-                        },
-                    ),
-                    onClick = { viewModel.openProduct(product) },
-                )
+            } else if (state.visibleItems.isEmpty()) {
+                item {
+                    Text(
+                        stringResource(
+                            when {
+                                state.query.isNotBlank() -> R.string.collection_search_empty
+                                state.items.isNotEmpty() -> R.string.collection_filter_empty
+                                else -> R.string.collection_document_empty
+                            },
+                        ),
+                        color = ProductMuted,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 28.dp),
+                    )
+                }
+            } else {
+                items(state.visibleItems, key = { it.productKey }) { product ->
+                    ReceivingProductProgressRow(
+                        product = product,
+                        completedLabel = stringResource(
+                            if (business == ReceivingProductBusiness.Inbound) {
+                                R.string.collection_collected
+                            } else {
+                                R.string.receiving_product_received
+                            },
+                        ),
+                        onClick = { viewModel.openProduct(product) },
+                    )
+                }
             }
         }
     }
@@ -320,7 +387,7 @@ fun ReceivingProductProgressScreen(
     state.selectedProduct?.let { product ->
         ReceivingProductBoxesSheet(
             product = product,
-            rows = state.boxDetails,
+            rows = if (business == ReceivingProductBusiness.Inbound) state.inboundBoxes.filter { it.id.removePrefix("inbound-").toLongOrNull() in product.boxPlanIds } else state.boxDetails,
             loading = state.boxDetailsLoading,
             onDismiss = viewModel::closeProduct,
         )
@@ -347,7 +414,7 @@ private fun ReceivingProductDocumentSummary(state: ReceivingProductProgressUiSta
             Text(
                 stringResource(
                     if (state.business == ReceivingProductBusiness.Inbound) {
-                        R.string.receiving_product_document_inbound_progress
+                        R.string.collection_document_progress
                     } else {
                         R.string.receiving_product_document_receiving_progress
                     },
@@ -369,6 +436,7 @@ private fun ReceivingProductDocumentSummary(state: ReceivingProductProgressUiSta
                 Text(stringResource(R.string.receiving_product_pending_count, state.header.pendingBoxCount), color = ProductWarning, style = MaterialTheme.typography.bodySmall)
                 Text(stringResource(R.string.receiving_product_exception_count, state.header.exceptionBoxCount), color = ProductDanger, style = MaterialTheme.typography.bodySmall)
             }
+            if (state.header.draftBoxCount > 0) Text(stringResource(R.string.collection_draft_count, state.header.draftBoxCount), color = ProductWarning)
             if (state.header.localPendingCount > 0) {
                 Text(
                     stringResource(R.string.receiving_product_local_pending_count, state.header.localPendingCount),
@@ -411,7 +479,7 @@ private fun ReceivingProductProgressRow(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        product.productCode.ifBlank { stringResource(R.string.receiving_product_unknown_code) },
+                        product.productCode.ifBlank { stringResource(if (product.business == ReceivingProductBusiness.Inbound) R.string.collection_unknown_product else R.string.receiving_product_unknown_code) },
                         color = ProductDeep,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f),
@@ -421,6 +489,11 @@ private fun ReceivingProductProgressRow(
                     ReceivingProductStatusPill(product.workStatus)
                 }
                 Text(product.productName, color = ProductInk, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (product.business == ReceivingProductBusiness.Inbound) {
+                    Text(stringResource(R.string.collection_plan, product.totalBoxCount), color = ProductInk)
+                    if (product.draftBoxCount > 0) Text(stringResource(R.string.collection_draft_count, product.draftBoxCount), color = ProductWarning)
+                    if (product.pendingSyncBoxCount > 0) Text(stringResource(R.string.collection_sync_count, product.pendingSyncBoxCount), color = ProductBrand)
+                }
                 Text(stringResource(R.string.receiving_product_sku_count, product.skuCount), color = ProductMuted, style = MaterialTheme.typography.labelSmall)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -455,15 +528,35 @@ private fun ReceivingProductBoxesSheet(
     loading: Boolean,
     onDismiss: () -> Unit,
 ) {
+    var boxFilter by rememberSaveable(product.productKey) { mutableStateOf(0) }
+    val inbound = product.business == ReceivingProductBusiness.Inbound
+    val visibleRows = if (!inbound) {
+        rows
+    } else {
+        rows.filter {
+            when (boxFilter) {
+                0 -> it.eligible && !it.collected
+                1 -> true
+                else -> it.collected
+            }
+        }
+    }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-            Text(product.productCode, color = ProductDeep, fontWeight = FontWeight.Bold)
+            Text(product.productCode.ifBlank { stringResource(R.string.collection_unknown_product) }, color = ProductDeep, fontWeight = FontWeight.Bold)
             Text(product.productName, color = ProductInk, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(
                 stringResource(R.string.receiving_product_box_progress, product.completedBoxCount, product.totalBoxCount),
                 color = ProductMuted,
                 style = MaterialTheme.typography.bodySmall,
             )
+        }
+        if (inbound) {
+            FlowRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(R.string.collection_uncollected, R.string.receiving_product_filter_all, R.string.collection_collected).forEachIndexed { index, label ->
+                    FilterChip(selected = boxFilter == index, onClick = { boxFilter = index }, label = { Text(stringResource(label)) })
+                }
+            }
         }
         LazyColumn(
             modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
@@ -475,10 +568,10 @@ private fun ReceivingProductBoxesSheet(
                         CircularProgressIndicator(color = ProductBrand)
                     }
                 }
-            } else if (rows.isEmpty()) {
-                item { Text(stringResource(R.string.receiving_product_no_boxes), color = ProductMuted, modifier = Modifier.padding(16.dp)) }
+            } else if (visibleRows.isEmpty()) {
+                item { Text(stringResource(if (inbound && boxFilter == 0 && product.totalBoxCount > 0 && product.pendingBoxCount == 0) R.string.collection_all_collected else R.string.receiving_product_no_boxes), color = ProductMuted, modifier = Modifier.padding(16.dp)) }
             } else {
-                items(rows, key = { it.id }) { row -> ReceivingProductBoxRow(row) }
+                items(visibleRows, key = { it.id }) { row -> ReceivingProductBoxRow(row) }
             }
         }
     }
@@ -491,7 +584,9 @@ private fun ReceivingProductBoxRow(row: ReceivingProductBoxDetail) {
             Text(row.labelCode, color = ProductDeep, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             ReceivingProductStatusPill(if (row.localPending) "local_pending" else row.status)
         }
-        if (row.skuCode.isNotBlank()) Text(row.skuCode, color = ProductInk, style = MaterialTheme.typography.bodySmall)
+        if (row.boxNo.isNotBlank() && row.boxNo != row.labelCode) Text(row.boxNo, color = ProductMuted)
+        Text(if (row.id.startsWith("inbound-")) row.skuName.ifBlank { stringResource(R.string.collection_sku_name_pending, row.skuCode) } else row.skuCode, color = ProductInk, style = MaterialTheme.typography.bodySmall)
+        if (row.isMixed) Text(stringResource(R.string.collection_mixed), color = ProductWarning, style = MaterialTheme.typography.labelSmall)
         if (row.exceptionReason.isNotBlank()) Text(row.exceptionReason, color = ProductDanger, style = MaterialTheme.typography.bodySmall)
         if (row.locationCode.isNotBlank()) ReceivingProductBoxMeta(stringResource(R.string.receiving_product_location), row.locationCode)
         if (row.operator.isNotBlank()) ReceivingProductBoxMeta(stringResource(R.string.receiving_product_operator), row.operator)
@@ -512,6 +607,7 @@ private fun ReceivingProductBoxMeta(label: String, value: String) {
 @Composable
 private fun ReceivingProductStatusPill(status: String) {
     val (text, color) = when (status) {
+        "draft" -> stringResource(R.string.collection_draft) to ProductWarning
         "completed", "complete" -> stringResource(R.string.receiving_product_status_completed) to ProductSuccess
         "closed_with_exception", "cancelled" -> stringResource(R.string.receiving_product_status_closed_exception) to ProductWarning
         "local_pending", "pending_sync", "syncing" -> stringResource(R.string.receiving_product_status_local_pending) to ProductBrand

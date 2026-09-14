@@ -21,6 +21,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.fscm.data.BoxLabelMappingRepository
+import com.google.samples.apps.nowinandroid.fscm.data.CrossOrderReceivingRepository
 import com.google.samples.apps.nowinandroid.fscm.data.FscmApiException
 import com.google.samples.apps.nowinandroid.fscm.data.InboundClientError
 import com.google.samples.apps.nowinandroid.fscm.data.InboundClientException
@@ -45,6 +46,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -131,8 +133,13 @@ data class InboundSessionUiState(
     val loading: Boolean = false,
     val submitting: Boolean = false,
     val refreshingSnapshot: Boolean = false,
+    val referenceSyncErrors: List<String> = emptyList(),
+    val referenceSyncing: Boolean = false,
+    val syncing: Boolean = false,
+    val backgroundSyncing: Boolean = false,
     val syncProcessed: Int = 0,
     val syncTotal: Int = 0,
+    val syncPhase: String = "",
     val workspace: InboundWorkspace? = null,
     val error: UiText? = null,
     val message: UiText? = null,
@@ -143,7 +150,6 @@ data class InboundSessionUiState(
     val cameraOpen: Boolean = false,
     val cameraResumeToken: Long = 0,
     val finishConfirmationOpen: Boolean = false,
-    val confirmExceptions: Boolean = false,
     val cancelConfirmationOpen: Boolean = false,
     val conflictDialogOpen: Boolean = false,
     val issuesOpen: Boolean = false,
@@ -156,11 +162,13 @@ data class InboundSessionUiState(
 
 @HiltViewModel
 class InboundSessionViewModel @Inject constructor(
+    private val crossOrderRepository: CrossOrderReceivingRepository,
     private val repository: LocalInboundRepository,
     private val boxLabelMappingRepository: BoxLabelMappingRepository,
     private val scannerManager: ScannerManager,
     private val scanFeedback: ReceivingScanFeedback,
 ) : ViewModel() {
+    val crossOrder = CrossOrderReceivingController(viewModelScope, crossOrderRepository, scanFeedback)
     private val _state = MutableStateFlow(InboundSessionUiState())
     val state = _state.asStateFlow()
     val scannerState: StateFlow<ScannerRuntimeState> = scannerManager.scannerState.stateIn(
@@ -169,14 +177,42 @@ class InboundSessionViewModel @Inject constructor(
         initialValue = scannerManager.scannerState.value,
     )
     private var sessionId: Long = 0
+    private var scanRevision: Long = 0
     private var productCacheJob: Job? = null
 
     fun load(id: Long) {
+        crossOrder.load(id, refreshRemote = false)
         sessionId = id
         productCacheJob?.cancel()
         productCacheJob = viewModelScope.launch {
+            launch {
+                repository.downloadProgress.collect { progress ->
+                    if (progress != null && progress.sessionId == sessionId && repository.currentScopeKey() == (progress.userId to progress.namespaceId)) {
+                        _state.update { if (it.syncPhase in setOf("download", "recognition") || it.loading) it.copy(syncProcessed = progress.processed, syncTotal = progress.total, syncPhase = progress.phase) else it }
+                    }
+                }
+            }
+            launch {
+                repository.referenceSyncReport.collect { report ->
+                    val actor = repository.currentScopeKey()
+                    if (actor == (report.userId to report.namespaceId)) {
+                        val locations = if (report.completedAt > 0) repository.knownLocationCodes(id) else _state.value.knownLocationCodes
+                        val aliases = if (report.completedAt > 0) boxLabelMappingRepository.knownJifengAliases() else _state.value.knownJifengCodes
+                        _state.update { it.copy(referenceSyncErrors = report.errors, referenceSyncing = report.running, knownLocationCodes = locations, knownJifengCodes = aliases) }
+                    } else {
+                        _state.update { it.copy(referenceSyncErrors = emptyList(), referenceSyncing = false) }
+                    }
+                }
+            }
+            launch {
+                repository.observeSyncActivity(id).collect { active ->
+                    if (sessionId == id) _state.update { it.copy(backgroundSyncing = active) }
+                }
+            }
             repository.observeProductCache(id).collectLatest { cache ->
                 _state.update { state ->
+                    if (sessionId != id) return@update state
+                    if (cache.session == null) return@update state.copy(workspace = null)
                     val workspace = state.workspace ?: return@update state
                     val pendingCount = cache.localSyncItems.count {
                         it.status in setOf(InboundItemStatus.Pending.value, InboundItemStatus.Syncing.value)
@@ -187,6 +223,7 @@ class InboundSessionViewModel @Inject constructor(
                     state.copy(
                         workspace = workspace.copy(
                             pendingProducts = cache.items,
+                            collectionItems = cache.collectionItems,
                             snapshotItems = cache.snapshotItems,
                             localSyncItems = cache.localSyncItems,
                             conflicts = conflicts,
@@ -238,7 +275,7 @@ class InboundSessionViewModel @Inject constructor(
     }
 
     fun scan(rawCode: String) {
-        if (_state.value.pendingRebind != null) return
+        if (_state.value.pendingRebind != null || crossOrder.isBlocking) return
         submitScan(rawCode)
     }
 
@@ -263,17 +300,22 @@ class InboundSessionViewModel @Inject constructor(
         if (currentState.finishConfirmationOpen || currentState.cancelConfirmationOpen) return
         val workspace = currentState.workspace
         val scanningLocation = workspace?.draftBatch == null
+        scanRevision++
         _state.update { it.copy(submitting = true, error = null, message = null, pendingRebind = null) }
         viewModelScope.launch {
+            val actor = repository.currentScopeKey()
+            val requestedSession = sessionId
             val result = runCatching {
                 if (scanningLocation) {
                     repository.startBatch(sessionId, rawCode)
                     repository.workspace(sessionId)
                 } else {
+                    crossOrderRepository.intercept(sessionId, rawCode, "inbound", workspace.draftBatch.id, workspace.draftBatch.warehouseLocationId, workspace.draftBatch.locationCode)
                     repository.addBox(workspace.draftBatch.id, rawCode, confirmedRebind)
                     repository.workspace(sessionId)
                 }
             }
+            if (sessionId != requestedSession || repository.currentScopeKey() != actor) return@launch
             result.onSuccess { refreshed ->
                 scanFeedback.success()
                 val knownLocations = if (scanningLocation) {
@@ -292,7 +334,12 @@ class InboundSessionViewModel @Inject constructor(
                         knownLocationCodes = knownLocations.filter(String::isNotBlank).toSet(),
                     )
                 }
+                repository.requestBackgroundSync(refreshed.summary.sessionId)
             }.onFailure { error ->
+                if (crossOrder.handle(error)) {
+                    _state.update { it.copy(submitting = false, cameraOpen = false, cameraResumeToken = it.cameraResumeToken + 1) }
+                    return@onFailure
+                }
                 scanFeedback.failure()
                 _state.update {
                     it.copy(
@@ -360,6 +407,7 @@ class InboundSessionViewModel @Inject constructor(
                             message = UiText.Resource(R.string.inbound_location_changed, listOf(location.code, workspace.draftItems.size)),
                         )
                     }
+                    repository.requestBackgroundSync(workspace.summary.sessionId)
                 }
                 .onFailure { error -> _state.update { it.copy(submitting = false, error = error.inboundUiText()) } }
         }
@@ -373,23 +421,21 @@ class InboundSessionViewModel @Inject constructor(
             .getOrNull() in _state.value.knownLocationCodes
 
     fun requestFinish() {
-        if (_state.value.submitting || _state.value.changingLocation || _state.value.pendingRebind != null) return
-        _state.update { it.copy(finishConfirmationOpen = true, confirmExceptions = false, cameraOpen = false) }
+        if (_state.value.submitting || _state.value.changingLocation || _state.value.pendingRebind != null || crossOrder.isBlocking) return
+        _state.update { it.copy(finishConfirmationOpen = true, cameraOpen = false) }
     }
-
-    fun setConfirmExceptions(value: Boolean) = _state.update { it.copy(confirmExceptions = value) }
 
     fun dismissFinish() = _state.update { it.copy(finishConfirmationOpen = false) }
 
     fun requestCancelDraft() {
-        if (_state.value.submitting || _state.value.changingLocation || _state.value.pendingRebind != null) return
+        if (_state.value.submitting || _state.value.changingLocation || _state.value.pendingRebind != null || crossOrder.isBlocking) return
         _state.update { it.copy(cancelConfirmationOpen = true, cameraOpen = false) }
     }
 
     fun dismissCancelDraft() = _state.update { it.copy(cancelConfirmationOpen = false) }
 
     fun finishBatch() {
-        if (_state.value.submitting || _state.value.changingLocation || _state.value.pendingRebind != null) return
+        if (_state.value.submitting || _state.value.changingLocation || _state.value.pendingRebind != null || crossOrder.isBlocking) return
         val batch = _state.value.workspace?.draftBatch ?: return
         val count = _state.value.workspace?.draftItems?.size ?: 0
         _state.update { it.copy(submitting = true, finishConfirmationOpen = false, error = null) }
@@ -409,7 +455,7 @@ class InboundSessionViewModel @Inject constructor(
     }
 
     fun deleteDraftBox(requestId: String) {
-        if (_state.value.submitting || _state.value.changingLocation || _state.value.pendingRebind != null) return
+        if (_state.value.submitting || _state.value.changingLocation || _state.value.pendingRebind != null || crossOrder.isBlocking) return
         _state.update { it.copy(submitting = true) }
         viewModelScope.launch {
             runCatching {
@@ -421,7 +467,7 @@ class InboundSessionViewModel @Inject constructor(
     }
 
     fun cancelDraft() {
-        if (_state.value.submitting || _state.value.changingLocation || _state.value.pendingRebind != null) return
+        if (_state.value.submitting || _state.value.changingLocation || _state.value.pendingRebind != null || crossOrder.isBlocking) return
         val batch = _state.value.workspace?.draftBatch ?: return
         _state.update { it.copy(submitting = true, cancelConfirmationOpen = false, error = null) }
         viewModelScope.launch {
@@ -442,49 +488,70 @@ class InboundSessionViewModel @Inject constructor(
         }
     }
 
+    fun updateOfflineReferences() {
+        viewModelScope.launch { repository.updateOfflineReferences(sessionId) }
+    }
+
     fun manualSync() {
-        if (_state.value.submitting) return
+        if (_state.value.syncing) return
+        val requestedSession = sessionId
+        val requestedRevision = scanRevision
+        _state.update { it.copy(syncing = true) }
         viewModelScope.launch {
+            val actor = repository.currentScopeKey()
             _state.update {
-                it.copy(submitting = true, syncProcessed = 0, syncTotal = 0, error = null, message = null)
+                it.copy(syncing = true, syncProcessed = 0, syncTotal = 0, error = null, message = null)
             }
             runCatching {
-                repository.syncSessionManually(sessionId) { processed, total ->
+                repository.syncSessionManually(requestedSession, onPhase = { phase ->
+                    _state.update { it.copy(syncPhase = phase) }
+                }) { processed, total ->
                     _state.update { it.copy(syncProcessed = processed, syncTotal = total) }
                 }
-                repository.completeInboundIfReady(sessionId)
-                repository.workspace(sessionId)
             }
                 .onSuccess { workspace ->
+                    if (repository.currentScopeKey() != actor) return@onSuccess
                     _state.update {
-                        it.copy(
-                            submitting = false,
-                            syncProcessed = 0,
-                            syncTotal = 0,
-                            workspace = workspace,
-                            conflictDialogOpen = !it.issuesOpen && workspace.conflicts.isNotEmpty(),
-                            message = if (workspace.syncIssues.isEmpty()) {
-                                UiText.Resource(R.string.inbound_sync_finished)
-                            } else {
-                                UiText.Resource(
-                                    R.string.inbound_sync_finished_with_issues,
-                                    listOf(
-                                        workspace.syncIssues.count { it.status == "conflict_pending" },
-                                        workspace.syncIssues.count { it.status == "rejected" },
-                                    ),
-                                )
-                            },
-                        )
+                        if (sessionId != requestedSession) {
+                            it
+                        } else {
+                            it.copy(
+                                syncing = false,
+                                syncPhase = "",
+                                syncProcessed = 0,
+                                syncTotal = 0,
+                                conflictDialogOpen = it.workspace?.draftBatch == null && !it.issuesOpen && workspace.conflicts.isNotEmpty(),
+                                message = if (scanRevision != requestedRevision) {
+                                    it.message
+                                } else if (workspace.syncIssues.isEmpty()) {
+                                    UiText.Resource(R.string.inbound_sync_finished)
+                                } else {
+                                    UiText.Resource(
+                                        R.string.inbound_sync_finished_with_issues,
+                                        listOf(
+                                            workspace.syncIssues.count { it.status == "conflict_pending" },
+                                            workspace.syncIssues.count { it.status == "rejected" },
+                                        ),
+                                    )
+                                },
+                            )
+                        }
                     }
                 }
                 .onFailure { error ->
+                    if (repository.currentScopeKey() != actor) return@onFailure
                     _state.update {
-                        it.copy(
-                            submitting = false,
-                            syncProcessed = 0,
-                            syncTotal = 0,
-                            error = error.inboundUiText(),
-                        )
+                        if (sessionId != requestedSession) {
+                            it
+                        } else {
+                            it.copy(
+                                syncing = false,
+                                syncPhase = "",
+                                syncProcessed = 0,
+                                syncTotal = 0,
+                                error = if (scanRevision == requestedRevision) error.inboundUiText() else it.error,
+                            )
+                        }
                     }
                 }
         }
@@ -574,7 +641,7 @@ class InboundSessionViewModel @Inject constructor(
     }
 }
 
-private fun Throwable.inboundUiText(): UiText = when (this) {
+internal fun Throwable.inboundUiText(): UiText = when (this) {
     is InboundClientException -> UiText.Resource(
         when (reason) {
             InboundClientError.SnapshotUnavailable -> R.string.inbound_snapshot_required
@@ -582,6 +649,7 @@ private fun Throwable.inboundUiText(): UiText = when (this) {
             InboundClientError.LocationCacheUnavailable -> R.string.inbound_location_cache_unavailable
             InboundClientError.LocationNotFound -> R.string.inbound_location_not_found
             InboundClientError.LocationInactive -> R.string.inbound_location_inactive
+            InboundClientError.SkuCacheMiss -> R.string.inbound_sku_cache_miss
             InboundClientError.LocationWarehouseMismatch -> R.string.inbound_location_warehouse_mismatch
             InboundClientError.TargetWarehouseMissing -> R.string.inbound_target_warehouse_missing
             InboundClientError.SessionComplete -> R.string.inbound_session_already_complete
@@ -591,11 +659,21 @@ private fun Throwable.inboundUiText(): UiText = when (this) {
             InboundClientError.MappingCacheMiss -> R.string.box_label_mapping_cache_miss
             InboundClientError.BoxNotInSession -> R.string.inbound_box_not_in_session
             InboundClientError.BoxNotEligible -> R.string.inbound_box_not_eligible
-            InboundClientError.BoxAlreadyAssigned -> R.string.inbound_box_already_assigned
-            InboundClientError.BoxAlreadyScanned -> R.string.inbound_box_already_scanned
+            InboundClientError.BoxOfflineNotFound -> R.string.inbound_box_offline_not_found
+            InboundClientError.BoxScannedInCurrentBatch -> R.string.inbound_box_scanned_current
+            InboundClientError.BoxDuplicateRecord -> R.string.inbound_box_duplicate_record
+            InboundClientError.BoxManualReceived -> R.string.inbound_box_manual_received
+            InboundClientError.BoxVoided -> R.string.inbound_box_voided
+            InboundClientError.BoxCancelled -> R.string.inbound_box_cancelled
+            InboundClientError.BoxShorted -> R.string.inbound_box_shorted
+            InboundClientError.BoxAdjustedOut -> R.string.inbound_box_adjusted_out
+            InboundClientError.BoxException -> R.string.inbound_box_exception
+            InboundClientError.BoxAlreadyAssigned -> if (detail.isBlank()) R.string.inbound_box_already_assigned else R.string.inbound_box_assigned_location
+            InboundClientError.BoxAlreadyScanned -> if (detail.isBlank()) R.string.inbound_box_already_scanned else R.string.inbound_box_scanned_location
             InboundClientError.ConflictNotFound -> R.string.inbound_conflict_not_found
             InboundClientError.OfflineSyncUnavailable -> R.string.inbound_sync_offline
         },
+        args = listOf(detail),
     )
     is FscmApiException -> when (inboundStandardCode()) {
         42244 -> UiText.Resource(R.string.inbound_location_not_found)

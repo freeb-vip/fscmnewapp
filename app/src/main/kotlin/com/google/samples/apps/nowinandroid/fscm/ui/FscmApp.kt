@@ -56,10 +56,12 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -312,7 +314,10 @@ fun FscmApp(
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) rootViewModel.validateActiveSession()
+            if (event == Lifecycle.Event.ON_RESUME) {
+                rootViewModel.validateActiveSession()
+                rootViewModel.refreshEdgeConnection()
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -708,7 +713,7 @@ private enum class MainTab(@StringRes val titleRes: Int, val icon: ImageVector) 
     Profile(R.string.profile, Icons.Rounded.Person),
 }
 
-private sealed interface FeatureRoute : Serializable {
+internal sealed interface FeatureRoute : Serializable {
     data object None : FeatureRoute
     data object Profit : FeatureRoute
     data object ReceivingList : FeatureRoute
@@ -731,6 +736,7 @@ private sealed interface FeatureRoute : Serializable {
     data class BoxLabelDetail(val code: String) : FeatureRoute
     data object CartonManagement : FeatureRoute
     data object PdaMode : FeatureRoute
+    data object AppSettings : FeatureRoute
     data object PdaSettings : FeatureRoute
     data object EdgeNodes : FeatureRoute
     data class EdgeNodeDetail(val nodeId: Long) : FeatureRoute
@@ -754,6 +760,7 @@ private fun FeatureRoute.parentRoute(): FeatureRoute = when (this) {
     is FeatureRoute.SkuDetail,
     -> FeatureRoute.ProductManagement
     is FeatureRoute.BoxLabelDetail -> FeatureRoute.CartonManagement
+    FeatureRoute.PdaSettings, FeatureRoute.EdgeNodes -> FeatureRoute.AppSettings
     is FeatureRoute.EdgeNodeDetail -> FeatureRoute.EdgeNodes
     else -> FeatureRoute.None
 }
@@ -815,6 +822,15 @@ private fun MainShell(
 
     if (featureRoute !is FeatureRoute.None) {
         FeatureScreen(
+            settingsContent = {
+                ProfileScreen(
+                    session = session, onLogout = onLogout, onSwitchNamespace = onSwitchNamespace,
+                    language = language, onUpdateLanguage = onUpdateLanguage,
+                    displayMode = displayMode, onUpdateDisplayMode = onUpdateDisplayMode,
+                    onCheckForUpdate = onCheckForUpdate, terminalFindState = terminalFindState,
+                    displayPolicy = displayPolicy, settingsOnly = true, onOpenFeature = { featureRoute = it },
+                )
+            },
             route = featureRoute,
             session = session,
             onBack = { featureRoute = featureRoute.parentRoute() },
@@ -874,6 +890,7 @@ private fun MainShell(
                     displayPolicy = displayPolicy,
                 )
                 MainTab.Profile -> ProfileScreen(
+                    onOpenFeature = { featureRoute = it },
                     session = session,
                     onLogout = onLogout,
                     onSwitchNamespace = onSwitchNamespace,
@@ -892,6 +909,7 @@ private fun MainShell(
 
 @Composable
 private fun FeatureScreen(
+    settingsContent: @Composable () -> Unit,
     route: FeatureRoute,
     session: SessionState,
     onBack: () -> Unit,
@@ -961,6 +979,7 @@ private fun FeatureScreen(
                         is FeatureRoute.BoxLabelDetail -> stringResource(R.string.feature_box_label_detail)
                         FeatureRoute.CartonManagement -> stringResource(R.string.feature_box_label_management)
                         FeatureRoute.PdaMode -> stringResource(R.string.feature_pda_scan_mode)
+                        FeatureRoute.AppSettings -> stringResource(R.string.app_settings_title)
                         FeatureRoute.PdaSettings -> stringResource(R.string.feature_pda_settings)
                         FeatureRoute.EdgeNodes -> stringResource(R.string.feature_edge_nodes)
                         is FeatureRoute.EdgeNodeDetail -> stringResource(R.string.feature_edge_nodes)
@@ -1109,6 +1128,7 @@ private fun FeatureScreen(
                 is FeatureRoute.BoxLabelDetail -> BoxLabelSearchDetailScreen(route.code, onNavigate)
                 FeatureRoute.CartonManagement -> CartonManagementScreen(onNavigate = onNavigate)
                 FeatureRoute.PdaMode -> PdaModeScreen()
+                FeatureRoute.AppSettings -> settingsContent()
                 FeatureRoute.PdaSettings -> PdaSettingsScreen()
                 FeatureRoute.EdgeNodes -> EdgeNodesScreen(onOpenDetail = { onNavigate(FeatureRoute.EdgeNodeDetail(it)) })
                 is FeatureRoute.EdgeNodeDetail -> EdgeNodeDetailScreen(route.nodeId)
@@ -1832,6 +1852,8 @@ private fun MessageRow(
 
 @Composable
 private fun ProfileScreen(
+    settingsOnly: Boolean = false,
+    onOpenFeature: (FeatureRoute) -> Unit,
     session: SessionState,
     onLogout: () -> Unit,
     onSwitchNamespace: (Long) -> Unit,
@@ -1850,90 +1872,114 @@ private fun ProfileScreen(
         contentPadding = displayPolicy.pageContentPadding(),
         verticalArrangement = Arrangement.spacedBy(displayPolicy.sectionSpacing()),
     ) {
-        item {
-            FscmCard(padding = displayPolicy.cardPadding(), containerColor = BrandDeep) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(if (displayPolicy.isCompact) 52.dp else 58.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.Person, contentDescription = null, tint = Color.White)
+        if (!settingsOnly) {
+            item {
+                FscmCard(padding = displayPolicy.cardPadding(), containerColor = BrandDeep) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(if (displayPolicy.isCompact) 52.dp else 58.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.Person, contentDescription = null, tint = Color.White)
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(session.user?.name?.ifBlank { session.user.username } ?: stringResource(R.string.profile_fallback_user), color = Color.White, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleLarge)
+                            Text(session.effectiveRole.ifBlank { stringResource(R.string.profile_mobile_role) }, color = Color.White.copy(alpha = 0.72f))
+                        }
                     }
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(session.user?.name?.ifBlank { session.user.username } ?: stringResource(R.string.profile_fallback_user), color = Color.White, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleLarge)
-                        Text(session.effectiveRole.ifBlank { stringResource(R.string.profile_mobile_role) }, color = Color.White.copy(alpha = 0.72f))
+                }
+            }
+            item {
+                FscmCard(padding = displayPolicy.cardPadding()) {
+                    Text(stringResource(R.string.profile_workspace), color = InkStrong, fontWeight = FontWeight.Black)
+                    Spacer(Modifier.height(10.dp))
+                    session.namespaces.forEach { namespace ->
+                        NamespaceRow(namespace, selected = namespace.id == session.currentNamespace?.id, onSwitchNamespace)
+                    }
+                }
+            }
+            item {
+                FscmCard(modifier = Modifier.clickable { onOpenFeature(FeatureRoute.AppSettings) }, padding = displayPolicy.cardPadding()) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.app_settings_title), Modifier.weight(1f), color = InkStrong, fontWeight = FontWeight.Bold)
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = InkSoft)
                     }
                 }
             }
         }
-        item {
-            FscmCard(padding = displayPolicy.cardPadding()) {
-                Text(stringResource(R.string.profile_workspace), color = InkStrong, fontWeight = FontWeight.Black)
-                Spacer(Modifier.height(10.dp))
-                session.namespaces.forEach { namespace ->
-                    NamespaceRow(namespace, selected = namespace.id == session.currentNamespace?.id, onSwitchNamespace)
-                }
-            }
-        }
-        item {
-            FscmCard(modifier = Modifier.clickable { showLanguageDialog = true }, padding = displayPolicy.cardPadding()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(stringResource(R.string.settings_language), color = InkStrong, fontWeight = FontWeight.Black)
-                        Text(languageLabel(language), color = InkSoft, style = MaterialTheme.typography.bodySmall)
+        if (settingsOnly) {
+            item {
+                FscmCard(padding = displayPolicy.cardPadding()) {
+                    TextButton(onClick = { onOpenFeature(FeatureRoute.PdaSettings) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.feature_pda_settings))
                     }
-                    Icon(
-                        Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                        contentDescription = stringResource(R.string.settings_language),
-                        tint = InkSoft,
-                    )
-                }
-            }
-        }
-        item {
-            FscmCard(modifier = Modifier.clickable { showDisplayModeDialog = true }, padding = displayPolicy.cardPadding()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(stringResource(R.string.settings_display_mode), color = InkStrong, fontWeight = FontWeight.Black)
-                        Text(displayModeLabel(displayMode), color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { onOpenFeature(FeatureRoute.EdgeNodes) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.feature_edge_nodes))
                     }
-                    Icon(
-                        Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                        contentDescription = stringResource(R.string.settings_display_mode),
-                        tint = InkSoft,
-                    )
                 }
             }
-        }
-        item {
-            TerminalFindSettingsCard(terminalFindState, displayPolicy)
-        }
-        item {
-            FscmCard(modifier = Modifier.clickable(onClick = onCheckForUpdate), padding = displayPolicy.cardPadding()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(stringResource(R.string.app_update), color = InkStrong, fontWeight = FontWeight.Black)
-                        Text(
-                            stringResource(
-                                R.string.app_update_current_version,
-                                BuildConfig.VERSION_NAME,
-                                BuildConfig.VERSION_CODE,
-                            ),
-                            color = InkSoft,
-                            style = MaterialTheme.typography.bodySmall,
+            item {
+                FscmCard(modifier = Modifier.clickable { showLanguageDialog = true }, padding = displayPolicy.cardPadding()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(R.string.settings_language), color = InkStrong, fontWeight = FontWeight.Black)
+                            Text(languageLabel(language), color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Icon(
+                            Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                            contentDescription = stringResource(R.string.settings_language),
+                            tint = InkSoft,
                         )
                     }
-                    Icon(Icons.Rounded.Refresh, contentDescription = stringResource(R.string.app_update), tint = BrandMain)
+                }
+            }
+            item {
+                FscmCard(modifier = Modifier.clickable { showDisplayModeDialog = true }, padding = displayPolicy.cardPadding()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(R.string.settings_display_mode), color = InkStrong, fontWeight = FontWeight.Black)
+                            Text(displayModeLabel(displayMode), color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Icon(
+                            Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                            contentDescription = stringResource(R.string.settings_display_mode),
+                            tint = InkSoft,
+                        )
+                    }
+                }
+            }
+            item {
+                TerminalFindSettingsCard(terminalFindState, displayPolicy)
+            }
+            item {
+                FscmCard(modifier = Modifier.clickable(onClick = onCheckForUpdate), padding = displayPolicy.cardPadding()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(R.string.app_update), color = InkStrong, fontWeight = FontWeight.Black)
+                            Text(
+                                stringResource(
+                                    R.string.app_update_current_version,
+                                    BuildConfig.VERSION_NAME,
+                                    BuildConfig.VERSION_CODE,
+                                ),
+                                color = InkSoft,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        Icon(Icons.Rounded.Refresh, contentDescription = stringResource(R.string.app_update), tint = BrandMain)
+                    }
                 }
             }
         }
-        item {
-            OutlinedButton(
-                onClick = onLogout,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger),
-                border = BorderStroke(1.dp, Danger.copy(alpha = 0.32f)),
-            ) {
-                Text(stringResource(R.string.profile_logout))
+        if (!settingsOnly) {
+            item {
+                OutlinedButton(
+                    onClick = onLogout,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger),
+                    border = BorderStroke(1.dp, Danger.copy(alpha = 0.32f)),
+                ) {
+                    Text(stringResource(R.string.profile_logout))
+                }
             }
         }
     }
@@ -2038,6 +2084,7 @@ private fun TerminalFindSettingsCard(
         TerminalFindConnectionStatus.Ringing -> stringResource(R.string.terminal_find_status_ringing)
         TerminalFindConnectionStatus.Connecting -> stringResource(R.string.terminal_find_status_connecting)
         TerminalFindConnectionStatus.Reconnecting -> stringResource(R.string.terminal_find_status_reconnecting)
+        TerminalFindConnectionStatus.Waiting -> stringResource(R.string.edge_waiting)
         TerminalFindConnectionStatus.Stopped -> stringResource(R.string.terminal_find_status_stopped)
     }
     FscmCard(padding = displayPolicy.cardPadding()) {
@@ -2705,6 +2752,7 @@ private fun ReceivingDetailScreen(
     ) {
         state.error?.let { item { FscmErrorCard(it) { viewModel.load(sessionId) } } }
         if (session != null) {
+            item { CrossOrderReceivingPanel(viewModel.crossOrder) }
             item {
                 FscmCard {
                     SectionHeader(stringResource(R.string.receiving_scan_label), stringResource(R.string.receiving_scanner_or_manual))
@@ -2936,7 +2984,7 @@ private fun localizedAppDescription(app: MobileAppEntry): String =
     }
 
 @Composable
-private fun StatusChip(text: String, color: Color) {
+internal fun StatusChip(text: String, color: Color) {
     StatusChip(text = text, color = color, containerColor = color.copy(alpha = 0.10f))
 }
 
@@ -3367,28 +3415,10 @@ private fun LabelPrintDialog(
 private fun BoxLabelSearchDetailScreen(
     code: String,
     onNavigate: (FeatureRoute) -> Unit,
-    viewModel: BoxLabelDetailViewModel = hiltViewModel(),
+    viewModel: CartonManagementViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    LaunchedEffect(code) { viewModel.load(code) }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        if (state.loading) item { LinearLoadingCard(stringResource(R.string.device_loading_box_label)) }
-        state.error?.let { error -> item { FscmErrorCard(error, onRetry = { viewModel.load(code) }) } }
-        state.data?.let { label ->
-            item {
-                BoxLabelDetailCard(
-                    label = label,
-                    onOpenSupplierOrder = { onNavigate(FeatureRoute.SupplierOrderDetail(it)) },
-                    onOpenCentralReceipt = { onNavigate(FeatureRoute.CentralReceivingDetail(it)) },
-                    onOpenReceivingSession = { onNavigate(FeatureRoute.ReceivingDetail(it)) },
-                )
-            }
-        }
-    }
+    BoxLabelManagementContent(state, viewModel, onNavigate, initialCode = code)
 }
 
 @Composable
@@ -3397,230 +3427,11 @@ private fun CartonManagementScreen(
     viewModel: CartonManagementViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val scannerState by viewModel.scannerState.collectAsStateWithLifecycle()
-    val broadcastMode = scannerState.configuredMode == ScannerInputMode.IntentBroadcast
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val focusRequester = remember { FocusRequester() }
-    var scanCode by rememberSaveable { mutableStateOf("") }
-    var showCamera by remember { mutableStateOf(false) }
-
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { isGranted ->
-        if (isGranted) showCamera = true
-    }
-
-    fun doResolve(code: String = scanCode) {
-        val normalized = code.normalizeBarcode()
-        if (normalized.isBlank()) return
-        viewModel.resolve(normalized)
-        scanCode = "" // Clear after trigger
-    }
-
-    DisposableEffect(lifecycleOwner) {
-        viewModel.registerScanner(lifecycleOwner) { rawCode ->
-            val normalized = rawCode.normalizeBarcode()
-            doResolve(normalized)
-        }
-        onDispose { viewModel.unregisterScanner() }
-    }
-
-    LaunchedEffect(scanCode) {
-        if (scanCode.hasBarcodeTerminator()) {
-            doResolve()
-        }
-    }
-
-    if (showCamera) {
-        Dialog(
-            onDismissRequest = { showCamera = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false),
-        ) {
-            Box(Modifier.fillMaxSize().background(Color.Black)) {
-                BarcodeScanner(
-                    onBarcodeDetected = { barcode ->
-                        showCamera = false
-                        scanCode = barcode.normalizeBarcode()
-                        doResolve(scanCode)
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                    showSelectionDialogForMultiple = true,
-                    preferredBarcodeMatcher = viewModel::isKnownBoxLabelCode,
-                    preferredBarcodeWaitMillis = 800L,
-                    noPreferredBarcodeTitle = stringResource(R.string.box_label_scan_not_detected),
-                    noPreferredBarcodePrompt = stringResource(R.string.box_label_scan_retry_prompt),
-                    retryScanLabel = stringResource(R.string.box_label_scan_retry),
-                )
-                FscmTopBar(title = stringResource(R.string.device_scan_box_label), onBack = { showCamera = false })
-            }
-        }
-    }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        item {
-            FscmCard {
-                if (broadcastMode) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Icon(
-                            Icons.Rounded.QrCodeScanner,
-                            contentDescription = null,
-                            modifier = Modifier.size(40.dp),
-                            tint = BrandMain,
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            stringResource(if (state.loading) R.string.device_querying_box_label else R.string.device_waiting_box_label),
-                            color = InkStrong,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                    state.boxLabel?.let { label ->
-                        BoxMarkPrintAction(
-                            label = label,
-                            loadingOptions = state.loadingPrintOptions,
-                            submitting = state.printSubmitting,
-                            printMessage = state.printMessage,
-                            printError = state.printError,
-                            onPrint = viewModel::requestBoxMarkPrint,
-                        )
-                    }
-                } else {
-                    SectionHeader(stringResource(R.string.device_identify_box_label), stringResource(R.string.receiving_scanner_or_manual))
-                    OutlinedTextField(
-                        value = scanCode,
-                        onValueChange = { value ->
-                            scanCode = value.normalizeBarcode()
-                            if (value.hasBarcodeTerminator()) {
-                                doResolve(value.normalizeBarcode())
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(focusRequester)
-                            .onPreviewKeyEvent { event ->
-                                if (event.type == KeyEventType.KeyUp && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
-                                    doResolve()
-                                    true
-                                } else {
-                                    false
-                                }
-                            },
-                        label = { Text(stringResource(R.string.business_label_or_qr)) },
-                        leadingIcon = {
-                            IconButton(onClick = {
-                                if (PdaPermissions.hasCameraPermission(context)) {
-                                    showCamera = true
-                                } else {
-                                    cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
-                                }
-                            }) {
-                                Icon(Icons.Rounded.QrCodeScanner, contentDescription = stringResource(R.string.business_camera_scan))
-                            }
-                        },
-                        trailingIcon = {
-                            if (scanCode.isNotEmpty()) {
-                                IconButton(onClick = {
-                                    scanCode = ""
-                                    viewModel.clear()
-                                }) {
-                                    Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.product_clear))
-                                }
-                            }
-                        },
-                        colors = fscmTextFieldColors(),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = { doResolve() }),
-                    )
-                    state.boxLabel?.let { label ->
-                        BoxMarkPrintAction(
-                            label = label,
-                            loadingOptions = state.loadingPrintOptions,
-                            submitting = state.printSubmitting,
-                            printMessage = state.printMessage,
-                            printError = state.printError,
-                            onPrint = viewModel::requestBoxMarkPrint,
-                        )
-                    }
-                }
-            }
-        }
-
-        if (state.lastScannedCode.isNotBlank()) {
-            item {
-                FscmCard(modifier = Modifier.fillMaxWidth(), containerColor = BrandSoft.copy(alpha = 0.55f)) {
-                    SectionHeader(stringResource(R.string.device_scan_results), "")
-                    Text(stringResource(R.string.business_last_scan_characters), color = InkSoft, style = MaterialTheme.typography.labelMedium)
-                    Text(
-                        state.lastScannedCode,
-                        color = BrandDeep,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
-
-        if (state.loading) {
-            item { LinearLoadingCard(stringResource(R.string.device_loading_box_label)) }
-        }
-
-        if (state.unrecognized) {
-            item {
-                FscmCard(modifier = Modifier.fillMaxWidth(), containerColor = Danger.copy(alpha = 0.08f)) {
-                    Text(stringResource(R.string.business_unrecognized_label), color = Danger, fontWeight = FontWeight.Bold)
-                    Text(stringResource(R.string.business_reenter_label), color = InkSoft, modifier = Modifier.padding(top = 6.dp))
-                }
-            }
-        }
-
-        state.error?.let { item { FscmErrorCard(it, onRetry = viewModel::retry) } }
-
-        state.boxLabel?.let { label ->
-            item {
-                BoxLabelDetailCard(
-                    label = label,
-                    onOpenSupplierOrder = { onNavigate(FeatureRoute.SupplierOrderDetail(it)) },
-                    onOpenCentralReceipt = { onNavigate(FeatureRoute.CentralReceivingDetail(it)) },
-                    onOpenReceivingSession = { onNavigate(FeatureRoute.ReceivingDetail(it)) },
-                )
-            }
-        }
-
-        if (state.boxLabel == null && !state.loading && state.error == null && !state.unrecognized) {
-            item { EmptyCard(stringResource(R.string.device_scan_prompt)) }
-        }
-    }
-
-    if (state.printDialogVisible) {
-        BoxMarkPrintDialog(
-            options = state.boxMarkOptions,
-            selectedOptionKey = state.selectedBoxMarkOptionKey,
-            copies = state.boxMarkCopies,
-            submitting = state.printSubmitting,
-            onSelectOption = viewModel::selectBoxMarkOption,
-            onCopiesChange = viewModel::updateBoxMarkCopies,
-            onConfirm = viewModel::confirmBoxMarkPrint,
-            onDismiss = viewModel::dismissBoxMarkPrintDialog,
-        )
-    }
+    BoxLabelManagementContent(state, viewModel, onNavigate)
 }
 
 @Composable
-private fun BoxMarkPrintAction(
+internal fun BoxMarkPrintAction(
     label: BoxLabel,
     loadingOptions: Boolean,
     submitting: Boolean,
@@ -3711,9 +3522,9 @@ private fun BoxLabelDetailCard(
         if (label.boxNo.isNotBlank() && label.boxNo != label.labelCode) {
             DetailItem(stringResource(R.string.device_box_number), label.boxNo)
         }
-        DetailItem(stringResource(R.string.device_product), "[${label.productCode}] ${label.productName}")
+        DetailItem(stringResource(R.string.device_product), "[${label.displayProductCode}] ${label.productName}")
         if (label.skuItems.isEmpty()) {
-            CopyableDetailItem("SKU", label.skuCode, clipboardManager)
+            CopyableDetailItem("SKU", label.displaySkuCode, clipboardManager)
             DetailItem(stringResource(R.string.device_quantity), label.qtyPerCarton.takeIf { it > 0 }?.toString().orEmpty())
         } else {
             label.skuItems.forEach { item ->
@@ -3817,7 +3628,7 @@ private fun BoxMarkPrintAvailability.messageResource(): Int = when (this) {
 }
 
 @Composable
-private fun BoxMarkPrintDialog(
+internal fun BoxMarkPrintDialog(
     options: List<com.google.samples.apps.nowinandroid.fscm.data.EdgePrintNodeOption>,
     selectedOptionKey: String?,
     copies: Int,
@@ -3826,12 +3637,19 @@ private fun BoxMarkPrintDialog(
     onCopiesChange: (Int) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    label: BoxLabel? = null,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.device_select_box_mark_node)) },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                label?.let {
+                    Text(it.labelCode, fontWeight = FontWeight.Bold, color = InkStrong)
+                    Text(it.skuItems.joinToString(" / ") { sku -> "${sku.skuCode} × ${sku.qtyPerBox}" })
+                    Text("计划箱内数量 ${it.plannedBoxQty} · ${it.dimensionText()}")
+                    Spacer(Modifier.height(12.dp))
+                }
                 options.forEach { option ->
                     Row(
                         modifier = Modifier
@@ -4415,7 +4233,15 @@ private fun EdgeNodesScreen(
     onOpenDetail: (Long) -> Unit,
     viewModel: EdgeNodesViewModel = hiltViewModel(),
 ) {
+    LaunchedEffect(viewModel) { viewModel.observeConnectionScope() }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.cancelDiscovery() }
+    }
+    LaunchedEffect(state.discoveryCompleted) {
+        if (state.discoveryCompleted > 0) TerminalFindService.start(context)
+    }
     val nodes = state.nodes.sortedByDescending { it.node.id == state.defaultEdgePrintNodeId }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -4426,7 +4252,7 @@ private fun EdgeNodesScreen(
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(stringResource(R.string.device_edge_service_nodes), color = InkStrong, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleLarge)
-                    Text(stringResource(R.string.device_edge_summary, nodes.size, nodes.count { it.localReachable }), color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.edge_nodes_summary, nodes.size, nodes.count { it.localReachable }), color = InkSoft, style = MaterialTheme.typography.bodySmall)
                 }
                 IconButton(onClick = viewModel::load, enabled = !state.loading) {
                     if (state.loading && nodes.isNotEmpty()) {
@@ -4435,6 +4261,16 @@ private fun EdgeNodesScreen(
                         Icon(Icons.Rounded.Refresh, contentDescription = stringResource(R.string.device_refresh_nodes))
                     }
                 }
+            }
+        }
+        item {
+            FscmCard {
+                Text(stringResource(R.string.edge_auto_policy), color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { if (state.discovering) viewModel.cancelDiscovery() else viewModel.discover() }, enabled = !state.loading) {
+                    Text(stringResource(if (state.discovering) R.string.edge_cancel_discovery else R.string.edge_discover))
+                }
+                if (state.discovering) LinearProgressIndicator(Modifier.fillMaxWidth())
+                state.discoveryMessage?.let { Text(it, color = InkSoft) }
             }
         }
         if (state.loading && nodes.isEmpty()) item { LinearLoadingCard(stringResource(R.string.device_loading_edge_nodes)) }
@@ -4483,6 +4319,7 @@ private fun EdgeNodeDetailScreen(
     nodeId: Long,
     viewModel: EdgeNodesViewModel = hiltViewModel(),
 ) {
+    LaunchedEffect(viewModel) { viewModel.observeConnectionScope() }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val status = state.nodes.firstOrNull { it.node.id == nodeId }
     if (status == null) {
