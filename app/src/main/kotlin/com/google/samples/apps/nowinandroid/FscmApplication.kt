@@ -68,6 +68,9 @@ class FscmApplication : Application(), ImageLoaderFactory, Configuration.Provide
     @Inject
     lateinit var sessionStore: com.google.samples.apps.nowinandroid.fscm.data.SessionStore
 
+    @Inject
+    lateinit var networkMonitor: com.google.samples.apps.nowinandroid.core.data.util.NetworkMonitor
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onCreate() {
@@ -76,6 +79,20 @@ class FscmApplication : Application(), ImageLoaderFactory, Configuration.Provide
         localInboundSyncScheduler.schedulePeriodic()
         offlineSyncScheduler.schedulePeriodic()
         centralReceivingSyncScheduler.schedulePeriodic()
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityResumed(activity: android.app.Activity) = refreshReferences()
+            override fun onActivityCreated(activity: android.app.Activity, state: android.os.Bundle?) = Unit
+            override fun onActivityStarted(activity: android.app.Activity) = Unit
+            override fun onActivityPaused(activity: android.app.Activity) = Unit
+            override fun onActivityStopped(activity: android.app.Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: android.app.Activity, state: android.os.Bundle) = Unit
+            override fun onActivityDestroyed(activity: android.app.Activity) = Unit
+        })
+        applicationScope.launch {
+            networkMonitor.isOnline.distinctUntilChanged().collect { online ->
+                if (online) refreshReferences()
+            }
+        }
         applicationScope.launch {
             sessionStore.session.map { session ->
                 Triple(session.user?.id ?: 0L, session.currentNamespace?.id ?: 0L, session.isOffline)
@@ -96,6 +113,17 @@ class FscmApplication : Application(), ImageLoaderFactory, Configuration.Provide
             }
             applicationScope.launch {
                 userDataRepository.clearLegacyLanguage()
+            }
+        }
+    }
+
+    private fun refreshReferences() {
+        applicationScope.launch {
+            val session = sessionStore.current()
+            val user = session.user?.id ?: 0L
+            val namespace = session.currentNamespace?.id ?: 0L
+            if (user > 0 && namespace > 0 && !session.isOffline) {
+                localInboundSyncScheduler.enqueueCacheRefresh(userId = user, namespaceId = namespace)
             }
         }
     }

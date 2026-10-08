@@ -715,6 +715,11 @@ private enum class MainTab(@StringRes val titleRes: Int, val icon: ImageVector) 
 
 internal sealed interface FeatureRoute : Serializable {
     data object None : FeatureRoute
+    data object WarehouseDetail : FeatureRoute
+    data object SalesDetail : FeatureRoute
+    data object DailyDetail : FeatureRoute
+    data object Todos : FeatureRoute
+    data class TodoDetail(val id: Long?) : FeatureRoute
     data object Profit : FeatureRoute
     data object ReceivingList : FeatureRoute
     data class ReceivingDetail(val id: Long) : FeatureRoute
@@ -744,6 +749,7 @@ internal sealed interface FeatureRoute : Serializable {
 }
 
 private fun FeatureRoute.parentRoute(): FeatureRoute = when (this) {
+    is FeatureRoute.TodoDetail -> FeatureRoute.Todos
     is FeatureRoute.ReceivingDetail -> FeatureRoute.ReceivingList
     is FeatureRoute.InboundSession -> FeatureRoute.InboundManagement
     is FeatureRoute.CentralReceivingDetail -> FeatureRoute.CentralReceivingList
@@ -782,6 +788,11 @@ private fun MainShell(
 ) {
     val rootViewModel: FscmRootViewModel = hiltViewModel()
     val workbenchViewModel: WorkbenchViewModel = hiltViewModel()
+    val presentation by workbenchViewModel.presentation.collectAsStateWithLifecycle()
+    val presentationReady by workbenchViewModel.presentationReady.collectAsStateWithLifecycle()
+    val warehouseState by workbenchViewModel.warehouse.collectAsStateWithLifecycle()
+    val operationsState by workbenchViewModel.operations.collectAsStateWithLifecycle()
+    val mobileAppUsage by workbenchViewModel.mobileAppUsage.collectAsStateWithLifecycle()
     val globalScanResult by rootViewModel.globalScanResult.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -796,6 +807,28 @@ private fun MainShell(
     var featureRoute by rememberSaveable { mutableStateOf<FeatureRoute>(FeatureRoute.None) }
     var lastBackPressedAt by remember { mutableStateOf(0L) }
     val exitConfirmMessage = stringResource(R.string.exit_confirm)
+
+    LaunchedEffect(session.user?.id, session.currentNamespace?.id, session.sessionMode) {
+        if (session.isLoggedIn) {
+            workbenchViewModel.loadUsage(session)
+        }
+    }
+
+    LaunchedEffect(session.user?.id, session.currentNamespace?.id, session.sessionMode, selectedTab, featureRoute) {
+        if (session.isLoggedIn && selectedTab == MainTab.Workbench && featureRoute == FeatureRoute.None) {
+            workbenchViewModel.loadStyle(session, force = true)
+            while (true) {
+                kotlinx.coroutines.delay(if (workbenchViewModel.presentation.value.style == "operations") 180_000 else 60_000)
+                workbenchViewModel.loadStyle(session, force = true)
+            }
+        }
+    }
+
+    LaunchedEffect(presentation.style) {
+        if (presentation.style == "warehouse" && selectedTab in setOf(MainTab.Apps, MainTab.Messages)) {
+            selectedTab = MainTab.Workbench
+        }
+    }
 
     LaunchedEffect(globalScanResult) {
         if (globalScanResult == null) return@LaunchedEffect
@@ -822,6 +855,7 @@ private fun MainShell(
 
     if (featureRoute !is FeatureRoute.None) {
         FeatureScreen(
+            workbenchViewModel = workbenchViewModel,
             settingsContent = {
                 ProfileScreen(
                     session = session, onLogout = onLogout, onSwitchNamespace = onSwitchNamespace,
@@ -847,37 +881,73 @@ private fun MainShell(
     Scaffold(
         containerColor = Color.Transparent,
         bottomBar = {
-            NavigationBar(
-                containerColor = Color.White.copy(alpha = 0.96f),
-                tonalElevation = 8.dp,
-            ) {
-                MainTab.entries.forEach { tab ->
-                    NavigationBarItem(
-                        selected = selectedTab == tab,
-                        onClick = { selectedTab = tab },
-                        icon = { Icon(tab.icon, contentDescription = null) },
-                        label = { Text(stringResource(tab.titleRes)) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = BrandMain,
-                            selectedTextColor = BrandDeep,
-                            indicatorColor = BrandSoft,
-                            unselectedIconColor = InkSoft,
-                            unselectedTextColor = InkSoft,
-                        ),
-                    )
+            if (presentation.style != "warehouse") {
+                NavigationBar(
+                    containerColor = Color.White.copy(alpha = 0.96f),
+                    tonalElevation = 8.dp,
+                ) {
+                    MainTab.entries.forEach { tab ->
+                        NavigationBarItem(
+                            selected = selectedTab == tab,
+                            onClick = { selectedTab = tab },
+                            icon = { Icon(tab.icon, contentDescription = null) },
+                            label = { Text(stringResource(tab.titleRes)) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = BrandMain,
+                                selectedTextColor = BrandDeep,
+                                indicatorColor = BrandSoft,
+                                unselectedIconColor = InkSoft,
+                                unselectedTextColor = InkSoft,
+                            ),
+                        )
+                    }
                 }
             }
         },
     ) { padding ->
         Box(Modifier.padding(padding)) {
             when (selectedTab) {
-                MainTab.Workbench -> WorkbenchScreen(
-                    session = session,
-                    pendingSyncCount = pendingSyncCount,
-                    onOpenFeature = { featureRoute = it },
-                    viewModel = workbenchViewModel,
-                    displayPolicy = displayPolicy,
-                )
+                MainTab.Workbench -> when {
+                    !presentationReady -> LoadingScreen(stringResource(R.string.connecting_fscm))
+                    presentation.style == "warehouse" -> WarehouseStyleScreen(
+                        session = session,
+                        presentation = presentation,
+                        state = warehouseState,
+                        pendingSyncCount = pendingSyncCount,
+                        onProfile = { selectedTab = MainTab.Profile },
+                        onDetail = { featureRoute = FeatureRoute.WarehouseDetail },
+                        onRefresh = { workbenchViewModel.loadStyle(session, force = true) },
+                        onOpenApp = { app ->
+                            if (openAppEntry(context, app, { featureRoute = it }) { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }) {
+                                workbenchViewModel.recordMobileAppUsage(session, app.key)
+                            }
+                        },
+                    )
+                    presentation.style == "operations" -> OperationsStyleScreen(
+                        session = session,
+                        presentation = presentation,
+                        usage = mobileAppUsage,
+                        state = operationsState,
+                        onSales = { featureRoute = FeatureRoute.SalesDetail },
+                        onDaily = { featureRoute = FeatureRoute.DailyDetail },
+                        onTodos = { featureRoute = FeatureRoute.Todos },
+                        onTodo = { featureRoute = FeatureRoute.TodoDetail(it) },
+                        onRefresh = { workbenchViewModel.loadStyle(session, force = true) },
+                        onAccount = { workbenchViewModel.selectSalesSource(session, it) },
+                        onOpenApp = { app ->
+                            if (openAppEntry(context, app, { featureRoute = it }) { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }) {
+                                workbenchViewModel.recordMobileAppUsage(session, app.key)
+                            }
+                        },
+                    )
+                    else -> WorkbenchScreen(
+                        session = session,
+                        pendingSyncCount = pendingSyncCount,
+                        onOpenFeature = { featureRoute = it },
+                        viewModel = workbenchViewModel,
+                        displayPolicy = displayPolicy,
+                    )
+                }
                 MainTab.Apps -> AppsScreen(
                     session = session,
                     onOpenFeature = { featureRoute = it },
@@ -909,6 +979,7 @@ private fun MainShell(
 
 @Composable
 private fun FeatureScreen(
+    workbenchViewModel: WorkbenchViewModel,
     settingsContent: @Composable () -> Unit,
     route: FeatureRoute,
     session: SessionState,
@@ -917,6 +988,8 @@ private fun FeatureScreen(
     onOpenReceivingDetail: (Long) -> Unit,
     onScanResult: (String) -> Unit = {},
 ) {
+    val warehouseState by workbenchViewModel.warehouse.collectAsStateWithLifecycle()
+    val operationsState by workbenchViewModel.operations.collectAsStateWithLifecycle()
     val receivingDetailId = (route as? FeatureRoute.ReceivingDetail)?.id
     val receivingDetailViewModel: ReceivingDetailViewModel? =
         if (receivingDetailId != null) {
@@ -960,6 +1033,10 @@ private fun FeatureScreen(
                 FscmTopBar(
                     title = when (route) {
                         FeatureRoute.Profit -> stringResource(R.string.profit_dashboard)
+                        FeatureRoute.WarehouseDetail -> stringResource(R.string.style_personal_detail)
+                        FeatureRoute.SalesDetail -> stringResource(R.string.style_today_sales)
+                        FeatureRoute.DailyDetail -> stringResource(R.string.style_yesterday_daily)
+                        FeatureRoute.Todos, is FeatureRoute.TodoDetail -> stringResource(R.string.style_todos)
                         FeatureRoute.ReceivingList -> stringResource(R.string.warehouse_receiving)
                         is FeatureRoute.ReceivingDetail -> stringResource(R.string.scan_receiving)
                         FeatureRoute.InboundManagement -> stringResource(R.string.inbound_title)
@@ -1075,6 +1152,14 @@ private fun FeatureScreen(
     ) { padding ->
         Box(Modifier.padding(padding)) {
             when (route) {
+                FeatureRoute.WarehouseDetail -> WarehouseDetailScreen(warehouseState)
+                FeatureRoute.SalesDetail -> SalesDetailScreen(operationsState)
+                FeatureRoute.DailyDetail -> DailyDetailScreen(operationsState)
+                FeatureRoute.Todos -> TodosScreen(
+                    onCreate = { onNavigate(FeatureRoute.TodoDetail(null)) },
+                    onOpen = { onNavigate(FeatureRoute.TodoDetail(it)) },
+                )
+                is FeatureRoute.TodoDetail -> TodoDetailScreen(id = route.id, onBack = onBack)
                 FeatureRoute.Profit -> ProfitScreen(session)
                 FeatureRoute.ReceivingList -> WarehouseReceivingScreen(onOpenReceivingDetail)
                 is FeatureRoute.ReceivingDetail -> ReceivingDetailScreen(

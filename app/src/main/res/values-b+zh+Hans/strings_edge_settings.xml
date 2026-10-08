@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_settings_title">应用设置</string>
+    <string name="edge_waiting">等待同一局域网的注册节点或手动探测</string>
+    <string name="edge_auto_policy">仅自动连接中心已注册且在当前局域网的节点；未连接时每小时重试一次。其他节点请手动探测。</string>
+    <string name="edge_discover">探测局域网</string>
+    <string name="edge_cancel_discovery">取消探测</string>
+    <string name="edge_nodes_summary">共 %1$d 个节点，局域网可达 %2$d 个</string>
+</resources>

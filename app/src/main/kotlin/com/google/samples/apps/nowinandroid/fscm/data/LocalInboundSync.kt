@@ -64,10 +64,10 @@ constructor(
     }
 
     fun schedulePeriodic() {
-        val cacheRequest = PeriodicWorkRequestBuilder<LocalInboundCacheRefreshWorker>(24, TimeUnit.HOURS)
+        val cacheRequest = PeriodicWorkRequestBuilder<LocalInboundCacheRefreshWorker>(2, TimeUnit.HOURS)
             .setConstraints(networkConstraints())
             .build()
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork("fscm-reference-cache-daily", ExistingPeriodicWorkPolicy.KEEP, cacheRequest)
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork("fscm-reference-cache-daily", ExistingPeriodicWorkPolicy.UPDATE, cacheRequest)
         val request =
             PeriodicWorkRequestBuilder<LocalInboundSyncWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(networkConstraints())

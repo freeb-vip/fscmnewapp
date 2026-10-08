@@ -1132,6 +1132,7 @@ constructor(
     }
 
     suspend fun prepareSession(sessionId: Long): InboundWorkspace {
+        enqueueReferenceRefresh()
         val scope = scope()
         val localSession = dao.session(scope.userId, scope.namespaceId, sessionId)
         if (
@@ -1207,7 +1208,7 @@ constructor(
                         skuItems =
                         quantities.map { quantity ->
                             val sku = skus[normalizeCatalogCode(quantity.skuCode)]
-                            quantity.copy(skuName = sku?.name.orEmpty(), spec = sku?.spec.orEmpty(), productName = sku?.productName ?: mapping?.productName.orEmpty())
+                            quantity.copy(skuName = sku?.name.orEmpty(), spec = sku?.spec.orEmpty(), productName = sku?.productName.orEmpty())
                         },
                     )
                 },
@@ -1497,7 +1498,14 @@ constructor(
     ): InboundWorkspace {
         val actor = currentScopeKey()
         return manualSyncs.run(Triple(actor.first, actor.second, sessionId)) {
-            syncSessionNow(sessionId, onPhase, onProgress)
+            coroutineScope {
+                val references = async { refreshCachesInBackground(force = true) }
+                val business = cacheSyncResult { syncSessionNow(sessionId, onPhase, onProgress) }
+                val referencesSucceeded = references.await()
+                business.getOrThrow()
+                check(referencesSucceeded) { "单据已同步；${referenceSyncReport.value.errors.joinToString("；").ifBlank { "资料更新未完成，请联网后重试" }}" }
+                workspace(sessionId)
+            }
         }
     }
 
@@ -2075,6 +2083,17 @@ constructor(
         return workspace(sessionId, session.inboundStatus.ifBlank { session.status })
     }
 
+    suspend fun referenceCacheState(): ReferenceSyncReport {
+        val actor = currentScopeKey()
+        val report = ReferenceSyncReport(
+            userId = actor.first,
+            namespaceId = actor.second,
+            locations = warehouseLocationRepository.cacheState(),
+            skus = skuCatalogRepository.cacheState(),
+        )
+        return if (currentScopeKey() == actor) report else ReferenceSyncReport()
+    }
+
     suspend fun refreshCachesInBackground(preferredSessionId: Long? = null, force: Boolean = false): Boolean = cacheRefreshMutex.withLock {
         val actor = currentScopeKey()
         val session = sessionStore.current()
@@ -2083,7 +2102,13 @@ constructor(
         val canLocation = canReceive || "warehouse_locations" in session.permissions
         val canSku = canReceive || session.permissions.any { it in setOf("mobile-app:receiving", "mobile-app:product-counting", "skus", "products") }
         val canMapping = canReceive || session.permissions.any { it in setOf("mobile-app:box-labels", "mobile-app:receiving") }
-        referenceSyncReport.value = ReferenceSyncReport(actor.first, actor.second, true)
+        referenceSyncReport.value = ReferenceSyncReport(
+            actor.first,
+            actor.second,
+            true,
+            locations = warehouseLocationRepository.cacheState(),
+            skus = skuCatalogRepository.cacheState(),
+        )
         try {
             val (locationResult, skuResult) = coroutineScope {
                 val locations = async { cacheSyncResult { if (canLocation) warehouseLocationRepository.refreshIfStale(force) } }
@@ -2103,8 +2128,10 @@ constructor(
                 actor.second,
                 false,
                 listOf("库位" to locationResult, "SKU" to skuResult, "箱码" to mappingResult, "单据" to businessResult)
-                    .filter { it.second.isFailure }.map { "${it.first}资料同步失败" },
+                    .filter { it.second.isFailure }.map { "${it.first}资料同步失败：${it.second.exceptionOrNull()!!.referenceSyncMessage()}" },
                 System.currentTimeMillis(),
+                warehouseLocationRepository.cacheState(),
+                skuCatalogRepository.cacheState(),
             )
             return locationResult.isSuccess && skuResult.isSuccess && mappingResult.isSuccess && businessResult.isSuccess
         } finally {
@@ -2433,4 +2460,6 @@ data class ReferenceSyncReport(
     val running: Boolean = false,
     val errors: List<String> = emptyList(),
     val completedAt: Long = 0,
+    val locations: WarehouseLocationCacheState? = null,
+    val skus: ReferenceCacheMeta? = null,
 )

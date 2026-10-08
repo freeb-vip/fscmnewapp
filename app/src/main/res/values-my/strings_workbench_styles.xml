@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="style_my_work">ယနေ့ ကျွန်ုပ်၏အလုပ်</string>
+    <string name="style_work_count">လုပ်ဆောင်ပြီး အော်ဒါ</string>
+    <string name="style_efficiency">တစ်နာရီလျှင် အော်ဒါ</string>
+    <string name="style_person_hours">အလုပ်ချိန် နာရီ</string>
+    <string name="style_common_work">အလုပ်စတင်ရန်</string>
+    <string name="style_other_apps">အခြားအက်ပ်များ</string>
+    <string name="style_no_work_data">ယနေ့ အလုပ်စာရင်းမရှိသေးပါ</string>
+    <string name="style_data_unavailable">ဒေတာ ယာယီမရနိုင်ပါ</string>
+    <string name="style_last_updated">%1$s တွင် အပ်ဒိတ်လုပ်ထားသည်</string>
+    <string name="style_pending_sync">စင့်ခ်လုပ်ရန် %1$d ခုကျန်သည်</string>
+    <string name="style_today_sales">ယနေ့ ရောင်းအား</string>
+    <string name="style_sales_amount">ရောင်းအားပမာဏ</string>
+    <string name="style_sales_orders">အော်ဒါအရေအတွက်</string>
+    <string name="style_yesterday_daily">မနေ့က လုပ်ငန်းအစီရင်ခံစာ</string>
+    <string name="style_operating_profit">လုပ်ငန်းအမြတ်</string>
+    <string name="style_profit_margin">အမြတ်နှုန်း</string>
+    <string name="style_sales_trend">တစ်နာရီအလိုက် အော်ဒါ</string>
+    <string name="style_trend_orders">အော်ဒါ</string>
+    <string name="style_trend_amount">ရောင်းအား</string>
+    <string name="style_yesterday">မနေ့က</string>
+    <string name="style_no_access">ကြည့်ရှုခွင့်မရှိပါ</string>
+    <string name="style_no_source">ဒေတာရင်းမြစ် မသတ်မှတ်ရသေးပါ</string>
+    <string name="style_todos">လုပ်ရန်ရှိသောအလုပ်များ</string>
+    <string name="style_view_all">အားလုံးကြည့်ရန်</string>
+    <string name="style_no_todos">ကျန်ရှိသောအလုပ်မရှိပါ</string>
+    <string name="style_personal_detail">ကိုယ်ပိုင်အလုပ် အသေးစိတ်</string>
+    <string name="style_select_account">အကောင့်ရွေးရန်</string>
+    <string name="style_delayed">နောက်ဆုံးဒေတာ အပ်ဒိတ်နောက်ကျနေသည်</string>
+</resources>

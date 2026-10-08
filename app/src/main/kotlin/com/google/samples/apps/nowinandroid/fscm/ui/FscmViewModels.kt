@@ -58,15 +58,20 @@ import com.google.samples.apps.nowinandroid.fscm.data.MobileRepository
 import com.google.samples.apps.nowinandroid.fscm.data.MobileWorkbenchOverview
 import com.google.samples.apps.nowinandroid.fscm.data.OfflineSyncRepository
 import com.google.samples.apps.nowinandroid.fscm.data.OfflineSyncScheduler
+import com.google.samples.apps.nowinandroid.fscm.data.OperationsWorkbench
 import com.google.samples.apps.nowinandroid.fscm.data.ProductRepository
 import com.google.samples.apps.nowinandroid.fscm.data.ProfitOverview
 import com.google.samples.apps.nowinandroid.fscm.data.ProfitRepository
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingRepository
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingScanItem
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingSession
+import com.google.samples.apps.nowinandroid.fscm.data.SalesAccount
 import com.google.samples.apps.nowinandroid.fscm.data.SearchDestination
 import com.google.samples.apps.nowinandroid.fscm.data.SessionState
 import com.google.samples.apps.nowinandroid.fscm.data.Sku
+import com.google.samples.apps.nowinandroid.fscm.data.WarehouseWorkbench
+import com.google.samples.apps.nowinandroid.fscm.data.WorkbenchPresentation
+import com.google.samples.apps.nowinandroid.fscm.data.WorkbenchStyleRepository
 import com.google.samples.apps.nowinandroid.fscm.data.boxMarkPrintAvailability
 import com.google.samples.apps.nowinandroid.fscm.data.defaultPrintOption
 import com.google.samples.apps.nowinandroid.fscm.data.exactNavigationId
@@ -435,11 +440,79 @@ internal fun workbenchRefreshFailureState(
 @HiltViewModel
 class WorkbenchViewModel @Inject constructor(
     private val mobileRepository: MobileRepository,
+    private val styleRepository: WorkbenchStyleRepository,
     private val edgeTerminalRepository: EdgeTerminalRepository,
     private val globalSearchRepository: GlobalSearchRepository,
     private val mobileAppUsageStore: MobileAppUsageStore,
     scannerManager: ScannerManager,
 ) : ViewModel() {
+    private val _presentation = MutableStateFlow(WorkbenchPresentation())
+    val presentation = _presentation.asStateFlow()
+    private val _presentationReady = MutableStateFlow(false)
+    val presentationReady = _presentationReady.asStateFlow()
+    private val _warehouse = MutableStateFlow(LoadState<WarehouseWorkbench>())
+    val warehouse = _warehouse.asStateFlow()
+    private val _operations = MutableStateFlow(LoadState<OperationsWorkbench>())
+    val operations = _operations.asStateFlow()
+    private var styleSessionKey: String? = null
+    private var styleLoadJob: Job? = null
+
+    fun loadStyle(session: SessionState, force: Boolean = false) {
+        val key = "${session.user?.id}:${session.currentNamespace?.id}:${session.sessionMode}"
+        if (!force && styleSessionKey == key) return
+        styleLoadJob?.cancel()
+        val changed = styleSessionKey != key
+        styleSessionKey = key
+        if (changed) {
+            _presentationReady.value = false
+            _presentation.value = WorkbenchPresentation()
+            _warehouse.value = LoadState()
+            _operations.value = LoadState()
+        }
+        styleLoadJob = viewModelScope.launch {
+            val presentation = styleRepository.presentation(session)
+            if (styleSessionKey != key) return@launch
+            _presentation.value = presentation
+            _presentationReady.value = true
+            if (session.isOffline) return@launch
+            when (presentation.style) {
+                "warehouse" -> loadWarehouse(key)
+                "operations" -> loadOperations(key, session)
+            }
+        }
+    }
+
+    private suspend fun loadWarehouse(key: String) {
+        _warehouse.value = _warehouse.value.copy(loading = true)
+        try {
+            val data = styleRepository.warehouse()
+            if (styleSessionKey == key) _warehouse.value = LoadState(data = data)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            if (styleSessionKey == key) _warehouse.value = LoadState(error = error.toUiText(R.string.load_home_failed))
+        }
+    }
+
+    private suspend fun loadOperations(key: String, session: SessionState) {
+        _operations.value = _operations.value.copy(loading = true)
+        try {
+            val data = styleRepository.operations(session)
+            if (styleSessionKey == key) _operations.value = LoadState(data = data)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            if (styleSessionKey == key) _operations.value = LoadState(error = error.toUiText(R.string.load_home_failed))
+        }
+    }
+
+    fun selectSalesSource(session: SessionState, account: SalesAccount) {
+        val key = styleSessionKey ?: return
+        viewModelScope.launch {
+            styleRepository.selectSalesSource(session, account)
+            loadOperations(key, session)
+        }
+    }
     private val _state = MutableStateFlow(LoadState<MobileWorkbenchOverview>())
     val state = _state.asStateFlow()
 
@@ -453,6 +526,7 @@ class WorkbenchViewModel @Inject constructor(
     private var workbenchSearchJob: Job? = null
     private var workbenchLoadJob: Job? = null
     private var mobileAppUsageJob: Job? = null
+    private var mobileAppUsageSessionKey: String? = null
     private var loadedSessionKey: String? = null
     private val _mobileAppUsage = MutableStateFlow(MobileAppUsage())
     val mobileAppUsage = _mobileAppUsage.asStateFlow()
@@ -475,13 +549,7 @@ class WorkbenchViewModel @Inject constructor(
         workbenchLoadJob?.cancel()
         loadedSessionKey = sessionKey
         if (sessionChanged) _state.value = LoadState()
-        viewModelScope.launch {
-            mobileAppUsageStore.initializeDefaultCommonApps(session)
-        }
-        mobileAppUsageJob?.cancel()
-        mobileAppUsageJob = viewModelScope.launch {
-            mobileAppUsageStore.usage(session).collect { usage -> _mobileAppUsage.value = usage }
-        }
+        loadUsage(session)
         workbenchLoadJob = viewModelScope.launch {
             val existing = _state.value.data.takeUnless { sessionChanged }
             val cached = existing ?: try {
@@ -509,6 +577,18 @@ class WorkbenchViewModel @Inject constructor(
                     error = error.toUiText(R.string.load_home_failed),
                 )
             }
+        }
+    }
+
+    fun loadUsage(session: SessionState) {
+        val key = "${session.user?.id}:${session.currentNamespace?.id}:${session.sessionMode}"
+        if (mobileAppUsageSessionKey == key) return
+        mobileAppUsageSessionKey = key
+        mobileAppUsageJob?.cancel()
+        _mobileAppUsage.value = MobileAppUsage()
+        mobileAppUsageJob = viewModelScope.launch {
+            mobileAppUsageStore.initializeDefaultCommonApps(session)
+            mobileAppUsageStore.usage(session).collect { usage -> _mobileAppUsage.value = usage }
         }
     }
 

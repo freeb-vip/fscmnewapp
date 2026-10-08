@@ -33,6 +33,7 @@ import com.google.samples.apps.nowinandroid.fscm.data.InboundSessionSummary
 import com.google.samples.apps.nowinandroid.fscm.data.InboundWorkspace
 import com.google.samples.apps.nowinandroid.fscm.data.LocalInboundRepository
 import com.google.samples.apps.nowinandroid.fscm.data.LocalWarehouseLocationEntity
+import com.google.samples.apps.nowinandroid.fscm.data.ReferenceSyncReport
 import com.google.samples.apps.nowinandroid.fscm.data.inboundStandardCode
 import com.google.samples.apps.nowinandroid.fscm.data.isCompletedPhysicalInbound
 import com.google.samples.apps.nowinandroid.fscm.data.isKnownMappedBoxLabel
@@ -135,6 +136,7 @@ data class InboundSessionUiState(
     val refreshingSnapshot: Boolean = false,
     val referenceSyncErrors: List<String> = emptyList(),
     val referenceSyncing: Boolean = false,
+    val references: ReferenceSyncReport = ReferenceSyncReport(),
     val syncing: Boolean = false,
     val backgroundSyncing: Boolean = false,
     val syncProcessed: Int = 0,
@@ -198,9 +200,28 @@ class InboundSessionViewModel @Inject constructor(
                     if (actor == (report.userId to report.namespaceId)) {
                         val locations = if (report.completedAt > 0) repository.knownLocationCodes(id) else _state.value.knownLocationCodes
                         val aliases = if (report.completedAt > 0) boxLabelMappingRepository.knownJifengAliases() else _state.value.knownJifengCodes
-                        _state.update { it.copy(referenceSyncErrors = report.errors, referenceSyncing = report.running, knownLocationCodes = locations, knownJifengCodes = aliases) }
+                        val revision = scanRevision
+                        val refreshed = if (report.completedAt > 0 && !_state.value.submitting && _state.value.workspace != null) {
+                            runCatching { repository.workspace(id) }.getOrNull()
+                        } else {
+                            null
+                        }
+                        if (repository.currentScopeKey() != actor || sessionId != id) return@collect
+                        _state.update {
+                            it.copy(
+                                referenceSyncErrors = report.errors,
+                                referenceSyncing = report.running,
+                                references = report,
+                                knownLocationCodes = locations,
+                                knownJifengCodes = aliases,
+                                workspace = if (revision == scanRevision && !it.submitting) refreshed ?: it.workspace else it.workspace,
+                            )
+                        }
                     } else {
-                        _state.update { it.copy(referenceSyncErrors = emptyList(), referenceSyncing = false) }
+                        val stored = repository.referenceCacheState()
+                        if (repository.currentScopeKey() == actor && sessionId == id) {
+                            _state.update { it.copy(referenceSyncErrors = emptyList(), referenceSyncing = false, references = stored) }
+                        }
                     }
                 }
             }
@@ -676,7 +697,7 @@ internal fun Throwable.inboundUiText(): UiText = when (this) {
         args = listOf(detail),
     )
     is FscmApiException -> when (inboundStandardCode()) {
-        42244 -> UiText.Resource(R.string.inbound_location_not_found)
+        42244 -> UiText.Resource(R.string.inbound_location_center_not_found)
         42245 -> UiText.Resource(R.string.inbound_location_inactive)
         42246 -> UiText.Resource(R.string.inbound_location_warehouse_mismatch)
         else -> UiText.Dynamic(serverMessage ?: message.orEmpty())

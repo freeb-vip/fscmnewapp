@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="style_my_work">我的今日作业</string>
+    <string name="style_work_count">作业订单</string>
+    <string name="style_efficiency">每人时订单</string>
+    <string name="style_person_hours">统计人时</string>
+    <string name="style_common_work">开始作业</string>
+    <string name="style_other_apps">其他应用</string>
+    <string name="style_no_work_data">今天暂无当前人员的作业统计</string>
+    <string name="style_data_unavailable">数据暂不可用</string>
+    <string name="style_last_updated">更新于 %1$s</string>
+    <string name="style_pending_sync">%1$d 项待同步</string>
+    <string name="style_today_sales">今日销售</string>
+    <string name="style_sales_amount">销售额</string>
+    <string name="style_sales_orders">订单数</string>
+    <string name="style_yesterday_daily">昨日运营日报</string>
+    <string name="style_operating_profit">运营利润</string>
+    <string name="style_profit_margin">利润率</string>
+    <string name="style_sales_trend">每小时订单</string>
+    <string name="style_trend_orders">订单</string>
+    <string name="style_trend_amount">销售额</string>
+    <string name="style_yesterday">昨日同期</string>
+    <string name="style_no_access">暂无查看权限</string>
+    <string name="style_no_source">尚未配置数据来源</string>
+    <string name="style_todos">待办事项</string>
+    <string name="style_view_all">查看全部</string>
+    <string name="style_no_todos">暂无待办</string>
+    <string name="style_personal_detail">个人作业明细</string>
+    <string name="style_select_account">选择账户</string>
+    <string name="style_delayed">最新数据更新延迟</string>
+</resources>

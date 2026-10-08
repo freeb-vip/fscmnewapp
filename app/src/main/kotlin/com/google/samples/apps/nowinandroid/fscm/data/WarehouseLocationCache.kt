@@ -25,10 +25,10 @@ import androidx.room.Query
 import androidx.room.Transaction
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.encodeToJsonElement
+import java.io.IOException
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -188,12 +188,17 @@ data class WarehouseLocationZone(
 )
 
 @Serializable
-data class WarehouseLocationPage(
+internal data class MobileLocationSnapshotPage(
     val items: List<WarehouseLocationOption> = emptyList(),
-    val total: Int = 0,
-    val page: Int = 1,
-    @SerialName("page_size") val pageSize: Int = WAREHOUSE_LOCATION_PAGE_SIZE,
+    @SerialName("next_after_id") val nextAfterId: Long = 0,
+    @SerialName("has_more") val hasMore: Boolean = false,
 )
+
+internal fun validateLocationSnapshotPage(page: MobileLocationSnapshotPage, after: Long) {
+    check(page.items.zipWithNext().all { (a, b) -> a.id < b.id }) { "库位分页顺序异常" }
+    check(page.items.all { it.id > after && it.code.isNotBlank() && it.warehouse.code.isNotBlank() && it.isActive }) { "库位快照记录无效" }
+    check(!page.hasMore || (page.items.isNotEmpty() && page.nextAfterId == page.items.last().id)) { "库位快照未下载完整" }
+}
 
 data class WarehouseLocationCacheState(
     val complete: Boolean = false,
@@ -220,33 +225,27 @@ class WarehouseLocationRepository @Inject constructor(
         if (sessionStore.current().isOffline) return cached.toState()
         if (
             !force && cached?.complete == true &&
-            System.currentTimeMillis() - cached.refreshedAt < CACHE_REFRESH_INTERVAL_MS
+            referenceDataIsFresh(cached.refreshedAt)
         ) {
             return cached.toState()
         }
 
         val options = mutableListOf<WarehouseLocationOption>()
-        var page = 1
-        var total = Int.MAX_VALUE
-        while (options.size < total) {
+        var after = 0L
+        do {
             check(scope == scope()) { "工作空间已切换" }
-            val response: WarehouseLocationPage = api.get(
-                "warehouse-location-options",
+            val response: MobileLocationSnapshotPage = api.get(
+                "mobile/app/catalog/locations/snapshot",
                 mapOf(
-                    "is_active" to "true",
-                    "page" to page.toString(),
-                    "page_size" to WAREHOUSE_LOCATION_PAGE_SIZE.toString(),
+                    "after_id" to after.toString(),
+                    "limit" to "500",
                 ),
                 headers = inboundScopeHeaders(scope.userId, scope.namespaceId),
             )
-            check(response.page == page && response.total >= 0) { "库位分页异常" }
-            if (page > 1) check(response.total == total) { "库位数据已变化，请重试同步" }
-            total = response.total
-            check(response.items.isNotEmpty() || options.size == total) { "库位快照未下载完整" }
+            validateLocationSnapshotPage(response, after)
             options += response.items
-            if (options.size >= total) break
-            page++
-        }
+            after = response.nextAfterId
+        } while (response.hasMore)
         val now = System.currentTimeMillis()
         val rows = options
             .asSequence()
@@ -254,7 +253,7 @@ class WarehouseLocationRepository @Inject constructor(
             .distinctBy { it.id }
             .map { it.toEntity(scope, now) }
             .toList()
-        check(rows.size == total) { "库位快照不完整或包含重复记录" }
+        check(rows.size == options.size && rows.distinctBy { it.warehouseCode to it.code }.size == rows.size) { "库位快照不完整或包含重复记录" }
         check(scope == scope()) { "工作空间已切换" }
         val meta = WarehouseLocationCacheMetaEntity(
             userId = scope.userId,
@@ -267,14 +266,18 @@ class WarehouseLocationRepository @Inject constructor(
         return meta.toState()
     }
 
-    // Capture is deliberately independent of connectivity; only sync may contact the server.
+    // Fresh center-owned identities stay local; missing or expired identities are revalidated.
     suspend fun resolveForCapture(rawCode: String, warehouseCode: String): ResolvedWarehouseLocation {
         val actor = scope()
         val warehouse = warehouseCode.trim().uppercase(Locale.ROOT)
         if (warehouse.isBlank()) throw InboundClientException(InboundClientError.TargetWarehouseMissing)
-        val location = requireCached(actor, warehouse, normalizeInboundLocation(rawCode))
+        val code = normalizeInboundLocation(rawCode)
+        val location = dao.findActive(actor.userId, actor.namespaceId, warehouse, code)
         check(actor == scope()) { "工作空间已切换，请重新扫描" }
-        return ResolvedWarehouseLocation(location, fromCache = true)
+        if (location != null && (sessionStore.current().isOffline || referenceDataIsFresh(location.syncedAt))) {
+            return ResolvedWarehouseLocation(location, fromCache = true)
+        }
+        return resolve(rawCode, warehouseCode)
     }
 
     suspend fun resolve(rawCode: String, warehouseCode: String): ResolvedWarehouseLocation {
@@ -290,39 +293,38 @@ class WarehouseLocationRepository @Inject constructor(
         }
 
         return try {
-            val warehouseId = dao.warehouseId(scope.userId, scope.namespaceId, normalizedWarehouse)
-            var remote = queryExact(normalizedCode, normalizedWarehouse, warehouseId)
-            if (remote == null) {
-                var job: PurchaseReceiptJob? = api.post("warehouse-source-sync", Json { encodeDefaults = true }.encodeToJsonElement(StorageSyncRequest(warehouseCode = normalizedWarehouse)))
-                var attempts = 0
-                while (job != null && job.status in setOf("queued", "running") && attempts++ < 30) {
-                    kotlinx.coroutines.delay(1000)
-                    job = api.get("receiving-purchases/jobs/${job.id}")
+            withTimeoutOrNull(REFERENCE_LOOKUP_TIMEOUT_MS) {
+                refreshMutex.withLock {
+                    check(scope == scope()) { "工作空间已切换，请重新扫描" }
+                    // Another lookup or background snapshot may already have refreshed this row.
+                    dao.findActive(scope.userId, scope.namespaceId, normalizedWarehouse, normalizedCode)
+                        ?.takeIf { referenceDataIsFresh(it.syncedAt) }
+                        ?.let { return@withLock ResolvedWarehouseLocation(it, fromCache = true) }
+                    try {
+                        val remote: WarehouseLocationOption = api.get(
+                            "mobile/app/catalog/locations/resolve",
+                            mapOf("code" to normalizedCode, "warehouse_code" to normalizedWarehouse),
+                            headers = inboundScopeHeaders(scope.userId, scope.namespaceId),
+                        )
+                        check(selectWarehouseLocation(listOf(remote), normalizedCode, normalizedWarehouse) != null) { "中心库位响应不匹配" }
+                        val entity = remote.toEntity(scope, System.currentTimeMillis())
+                        check(scope == scope()) { "工作空间已切换，请重新扫描" }
+                        dao.upsertAll(listOf(entity))
+                        ResolvedWarehouseLocation(entity, fromCache = false)
+                    } catch (error: FscmApiException) {
+                        check(scope == scope()) { "工作空间已切换，请重新扫描" }
+                        if (error.inboundStandardCode() in setOf(42244, 42245, 42246)) {
+                            dao.deleteCode(scope.userId, scope.namespaceId, normalizedWarehouse, normalizedCode)
+                        }
+                        throw error
+                    }
                 }
-                check(scope == scope()) { "工作空间已切换，请重新扫描" }
-                if (job != null && job.status != "succeeded") throw java.io.IOException(job.errorMessage.ifBlank { "库位正在同步，请稍后上传" })
-                remote = queryExact(normalizedCode, normalizedWarehouse, warehouseId)
-            }
-            if (remote == null) {
-                dao.deleteCode(scope.userId, scope.namespaceId, normalizedWarehouse, normalizedCode)
-                val otherWarehouses = dao.findActiveByCode(scope.userId, scope.namespaceId, normalizedCode)
-                if (otherWarehouses.any { !it.warehouseCode.equals(normalizedWarehouse, true) }) {
-                    throw InboundClientException(InboundClientError.LocationWarehouseMismatch)
-                }
-                throw InboundClientException(InboundClientError.LocationNotFound)
-            }
-            val entity = remote.toEntity(scope, System.currentTimeMillis())
-            check(scope == scope()) { "工作空间已切换，请重新扫描" }
-            dao.upsertAll(listOf(entity))
-            ResolvedWarehouseLocation(entity, fromCache = false)
+            } ?: throw IOException("中心服务器查询超时，暂时无法核验库位")
         } catch (error: Throwable) {
-            if (!error.canUseWarehouseLocationCache()) throw error
-            val cachedLocation = try {
-                requireCached(scope, normalizedWarehouse, normalizedCode)
-            } catch (cacheError: InboundClientException) {
-                if (cacheError.reason == InboundClientError.LocationCacheUnavailable) throw error
-                throw cacheError
-            }
+            if (!error.canUseReferenceCache()) throw error
+            check(scope == scope()) { "工作空间已切换，请重新扫描" }
+            val cachedLocation = dao.findActive(scope.userId, scope.namespaceId, normalizedWarehouse, normalizedCode)
+                ?: throw IOException("无法连接中心服务器，暂时无法核验库位，请联网后重试", error)
             ResolvedWarehouseLocation(location = cachedLocation, fromCache = true)
         }
     }
@@ -335,7 +337,7 @@ class WarehouseLocationRepository @Inject constructor(
         val scope = scope()
         if (locationId > 0) {
             dao.findActiveById(scope.userId, scope.namespaceId, locationId)
-                ?.takeIf { it.warehouseCode.equals(warehouseCode, true) && it.code.equals(locationCode, true) }
+                ?.takeIf { it.warehouseCode.equals(warehouseCode, true) && it.code.equals(locationCode, true) && (sessionStore.current().isOffline || referenceDataIsFresh(it.syncedAt)) }
                 ?.let { return ResolvedWarehouseLocation(it, fromCache = true) }
         }
         return resolve(locationCode, warehouseCode)
@@ -350,34 +352,6 @@ class WarehouseLocationRepository @Inject constructor(
         val scope = scope()
         return dao.activeCodes(scope.userId, scope.namespaceId, warehouseCode)
             .mapTo(mutableSetOf()) { it.uppercase(Locale.ROOT) }
-    }
-
-    private suspend fun queryExact(
-        code: String,
-        warehouseCode: String,
-        warehouseId: Long?,
-    ): WarehouseLocationOption? {
-        var page = 1
-        var loaded = 0
-        var total = Int.MAX_VALUE
-        while (loaded < total) {
-            val response: WarehouseLocationPage = api.get(
-                "warehouse-location-options",
-                buildMap {
-                    put("keyword", code)
-                    put("is_active", "true")
-                    put("page", page.toString())
-                    put("page_size", WAREHOUSE_LOCATION_PAGE_SIZE.toString())
-                    warehouseId?.takeIf { it > 0 }?.let { put("warehouse_id", it.toString()) }
-                },
-            )
-            selectWarehouseLocation(response.items, code, warehouseCode)?.let { return it }
-            loaded += response.items.size
-            total = response.total
-            if (response.items.isEmpty() || loaded >= total) break
-            page++
-        }
-        return null
     }
 
     private suspend fun requireCached(
@@ -415,30 +389,13 @@ class WarehouseLocationRepository @Inject constructor(
     private fun WarehouseLocationOption.warehouseCode(): String = warehouse.code.trim()
 
     private data class WarehouseLocationScope(val userId: Long, val namespaceId: Long)
-
-    private companion object {
-        const val CACHE_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000L
-    }
 }
-
-@Serializable
-private data class StorageSyncRequest(
-    @SerialName("warehouse_code") val warehouseCode: String,
-    val kind: String = "locations",
-    val mode: String = "missing",
-    @SerialName("request_id") val requestId: String = java.util.UUID.randomUUID().toString(),
-)
 
 private fun WarehouseLocationCacheMetaEntity?.toState() = WarehouseLocationCacheState(
     complete = this?.complete == true,
     refreshedAt = this?.refreshedAt ?: 0,
     totalCount = this?.totalCount ?: 0,
 )
-
-private fun Throwable.canUseWarehouseLocationCache(): Boolean =
-    this !is InboundClientException && (this !is FscmApiException || statusCode >= 500)
-
-const val WAREHOUSE_LOCATION_PAGE_SIZE = 200
 
 internal fun selectWarehouseLocation(
     options: List<WarehouseLocationOption>,

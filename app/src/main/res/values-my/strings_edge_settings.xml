@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_settings_title">အက်ပ် ဆက်တင်များ</string>
+    <string name="edge_waiting">ဤကွန်ရက်ရှိ မှတ်ပုံတင်ထားသော node သို့မဟုတ် ကိုယ်တိုင်ရှာဖွေမှုကို စောင့်နေသည်</string>
+    <string name="edge_auto_policy">ဤကွန်ရက်ရှိ မှတ်ပုံတင်ထားသော node များကိုသာ အလိုအလျောက် ချိတ်ဆက်မည်။ မချိတ်ဆက်ရသေးပါက တစ်နာရီလျှင် တစ်ကြိမ် ပြန်လည်ကြိုးစားမည်။ အခြား node များကို ကိုယ်တိုင် ရှာဖွေပါ။</string>
+    <string name="edge_discover">ဒေသတွင်းကွန်ရက်၌ ရှာဖွေမည်</string>
+    <string name="edge_cancel_discovery">ရှာဖွေမှုကို ပယ်ဖျက်မည်</string>
+    <string name="edge_nodes_summary">စုစုပေါင်း node %1$d ခု၊ ကွန်ရက်မှ ချိတ်ဆက်နိုင်သည့် node %2$d ခု</string>
+</resources>

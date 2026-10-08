@@ -179,4 +179,8 @@
     <string name="inbound_phase_upload">正在上传记录</string>
     <string name="inbound_phase_download">正在下载箱资料</string>
     <string name="inbound_phase_recognition">正在更新识别资料</string>
+    <string name="inbound_location_center_not_found">Location not found on the center server. Check the warehouse and location code.</string>
+    <string name="inbound_location_cache_status">Locations: %1$d · Updated: %2$s</string>
+    <string name="inbound_sku_cache_status">SKUs: %1$d · Updated: %2$s</string>
+    <string name="inbound_reference_never_synced">Not synced yet</string>
 </resources>

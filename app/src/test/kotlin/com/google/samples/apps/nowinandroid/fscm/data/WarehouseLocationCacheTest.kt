@@ -26,7 +26,7 @@ class WarehouseLocationCacheTest {
 
     @Test
     fun locationPage_decodesLatestBackendContract() {
-        val page = json.decodeFromString<WarehouseLocationPage>(
+        val page = json.decodeFromString<MobileLocationSnapshotPage>(
             """
             {
               "items": [{
@@ -41,14 +41,14 @@ class WarehouseLocationCacheTest {
                 "warehouse": {"id": 3, "code": "TH-FB111", "name": "Bangkok"},
                 "zone": {"id": 5, "code": "PICK", "name": "Picking"}
               }],
-              "total": 1,
-              "page": 1,
-              "page_size": 200
+              "has_more": true,
+              "next_after_id": 17
             }
             """.trimIndent(),
         )
 
-        assertEquals(200, page.pageSize)
+        assertEquals(17L, page.nextAfterId)
+        assertEquals(true, page.hasMore)
         assertEquals("TH-FB111", page.items.single().warehouse.code)
         assertEquals("Picking", page.items.single().zone.name)
     }

@@ -356,7 +356,7 @@ interface LocalReceivingDao {
         LocalSkuCatalogEntity::class,
         ReferenceCacheMeta::class,
     ],
-    version = 19,
+    version = 20,
     exportSchema = false,
 )
 abstract class FscmDatabase : RoomDatabase() {
@@ -419,6 +419,7 @@ object FscmDatabaseModule {
                     MIGRATION_16_17,
                     MIGRATION_17_18,
                     MIGRATION_18_19,
+                    MIGRATION_19_20,
                 )
                 .build()
         } finally {
@@ -686,6 +687,12 @@ object FscmDatabaseModule {
             db.execSQL("UPDATE `product_count_entries` SET `skuItemsJson` = COALESCE((SELECT json_group_array(json_object('sku_code', value, 'quantity', NULL, 'quantity_source', 'unknown')) FROM json_each(`skuCodesJson`)), '[]')")
             db.execSQL("UPDATE `product_count_entries` SET `sequenceNo` = rowid WHERE `sequenceNo` = 0")
             db.execSQL("DELETE FROM `pending_sync_operations` WHERE `module` = 'product_counting'")
+        }
+    }
+
+    internal val MIGRATION_19_20 = object : Migration(19, 20) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE local_sku_catalog ADD COLUMN syncedAt INTEGER NOT NULL DEFAULT 0")
         }
     }
 

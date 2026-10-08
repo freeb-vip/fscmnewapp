@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="style_my_work">งานของฉันวันนี้</string>
+    <string name="style_work_count">ออเดอร์ที่ทำ</string>
+    <string name="style_efficiency">ออเดอร์ต่อชั่วโมงทำงาน</string>
+    <string name="style_person_hours">ชั่วโมงทำงาน</string>
+    <string name="style_common_work">เริ่มทำงาน</string>
+    <string name="style_other_apps">แอปอื่น</string>
+    <string name="style_no_work_data">ยังไม่มีสถิติงานของคุณวันนี้</string>
+    <string name="style_data_unavailable">ข้อมูลยังไม่พร้อมใช้งาน</string>
+    <string name="style_last_updated">อัปเดตเมื่อ %1$s</string>
+    <string name="style_pending_sync">รอซิงก์ %1$d รายการ</string>
+    <string name="style_today_sales">ยอดขายวันนี้</string>
+    <string name="style_sales_amount">ยอดขาย</string>
+    <string name="style_sales_orders">จำนวนออเดอร์</string>
+    <string name="style_yesterday_daily">รายงานการดำเนินงานเมื่อวาน</string>
+    <string name="style_operating_profit">กำไรจากการดำเนินงาน</string>
+    <string name="style_profit_margin">อัตรากำไร</string>
+    <string name="style_sales_trend">ออเดอร์รายชั่วโมง</string>
+    <string name="style_trend_orders">ออเดอร์</string>
+    <string name="style_trend_amount">ยอดขาย</string>
+    <string name="style_yesterday">เมื่อวาน</string>
+    <string name="style_no_access">ไม่มีสิทธิ์ดูข้อมูลนี้</string>
+    <string name="style_no_source">ยังไม่ได้ตั้งค่าแหล่งข้อมูล</string>
+    <string name="style_todos">งานที่ต้องทำ</string>
+    <string name="style_view_all">ดูทั้งหมด</string>
+    <string name="style_no_todos">ไม่มีงานค้าง</string>
+    <string name="style_personal_detail">รายละเอียดงานของฉัน</string>
+    <string name="style_select_account">เลือกบัญชี</string>
+    <string name="style_delayed">ข้อมูลล่าสุดอัปเดตล่าช้า</string>
+</resources>

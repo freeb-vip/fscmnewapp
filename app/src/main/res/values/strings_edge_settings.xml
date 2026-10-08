@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_settings_title">App settings</string>
+    <string name="edge_waiting">Waiting for a registered node on this LAN or manual discovery</string>
+    <string name="edge_auto_policy">Only registered nodes on this LAN connect automatically. When disconnected, retry once an hour. Discover other nodes manually.</string>
+    <string name="edge_discover">Discover LAN nodes</string>
+    <string name="edge_cancel_discovery">Cancel discovery</string>
+    <string name="edge_nodes_summary">%1$d nodes, %2$d reachable on LAN</string>
+</resources>

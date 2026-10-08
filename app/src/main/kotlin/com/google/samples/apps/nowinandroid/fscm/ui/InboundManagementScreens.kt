@@ -1481,21 +1481,41 @@ private fun formatInboundTime(value: Long): String = SimpleDateFormat("MM-dd HH:
 
 @Composable
 private fun InboundSyncStatus(state: InboundSessionUiState, onUpdateReferences: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        if (state.syncing || state.loading) {
-            Text(
-                stringResource(
-                    when (state.syncPhase) {
-                        "upload" -> R.string.inbound_phase_upload
-                        "recognition" -> R.string.inbound_phase_recognition
-                        else -> R.string.inbound_phase_download
-                    },
-                ) + if (state.syncTotal > 0) " ${state.syncProcessed} / ${state.syncTotal}" else "",
-                modifier = Modifier.weight(1f),
-            )
-        }
-        TextButton(onClick = onUpdateReferences, enabled = !state.referenceSyncing) {
-            Text(stringResource(R.string.inbound_update_offline_references))
+    Column(Modifier.fillMaxWidth()) {
+        val locations = state.references.locations
+        val skus = state.references.skus
+        Text(
+            stringResource(
+                R.string.inbound_location_cache_status,
+                locations?.totalCount ?: 0,
+                locations?.refreshedAt?.takeIf { it > 0 }?.let(::formatInboundTime) ?: stringResource(R.string.inbound_reference_never_synced),
+            ),
+            color = InboundMuted,
+        )
+        Text(
+            stringResource(
+                R.string.inbound_sku_cache_status,
+                skus?.totalCount ?: 0,
+                skus?.refreshedAt?.takeIf { it > 0 }?.let(::formatInboundTime) ?: stringResource(R.string.inbound_reference_never_synced),
+            ),
+            color = InboundMuted,
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            if (state.syncing || state.loading) {
+                Text(
+                    stringResource(
+                        when (state.syncPhase) {
+                            "upload" -> R.string.inbound_phase_upload
+                            "recognition" -> R.string.inbound_phase_recognition
+                            else -> R.string.inbound_phase_download
+                        },
+                    ) + if (state.syncTotal > 0) " ${state.syncProcessed} / ${state.syncTotal}" else "",
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            TextButton(onClick = onUpdateReferences, enabled = !state.referenceSyncing) {
+                Text(stringResource(R.string.inbound_update_offline_references))
+            }
         }
     }
 }

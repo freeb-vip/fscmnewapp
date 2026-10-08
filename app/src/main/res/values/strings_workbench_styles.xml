@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="style_my_work">My work today</string>
+    <string name="style_work_count">Work orders</string>
+    <string name="style_efficiency">Orders per person-hour</string>
+    <string name="style_person_hours">Person-hours</string>
+    <string name="style_common_work">Start work</string>
+    <string name="style_other_apps">More applications</string>
+    <string name="style_no_work_data">No work statistics for this person today</string>
+    <string name="style_data_unavailable">Data is currently unavailable</string>
+    <string name="style_last_updated">Updated %1$s</string>
+    <string name="style_pending_sync">%1$d items pending sync</string>
+    <string name="style_today_sales">Today’s sales</string>
+    <string name="style_sales_amount">Sales amount</string>
+    <string name="style_sales_orders">Orders</string>
+    <string name="style_yesterday_daily">Yesterday’s operations</string>
+    <string name="style_operating_profit">Operating profit</string>
+    <string name="style_profit_margin">Profit margin</string>
+    <string name="style_sales_trend">Hourly orders</string>
+    <string name="style_trend_orders">Orders</string>
+    <string name="style_trend_amount">Sales</string>
+    <string name="style_yesterday">Yesterday</string>
+    <string name="style_no_access">No access to this data</string>
+    <string name="style_no_source">No data source configured</string>
+    <string name="style_todos">To do</string>
+    <string name="style_view_all">View all</string>
+    <string name="style_no_todos">Nothing pending</string>
+    <string name="style_personal_detail">Personal work detail</string>
+    <string name="style_select_account">Select account</string>
+    <string name="style_delayed">Latest update is delayed</string>
+</resources>
