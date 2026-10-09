@@ -19,7 +19,6 @@ package com.google.samples.apps.nowinandroid.fscm.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,10 +32,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -45,9 +43,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,7 +58,6 @@ import com.google.samples.apps.nowinandroid.fscm.data.MobileAppEntry
 import com.google.samples.apps.nowinandroid.fscm.data.MobileAppUsage
 import com.google.samples.apps.nowinandroid.fscm.data.MobileWorkbenchOverview
 import com.google.samples.apps.nowinandroid.fscm.data.OperationsWorkbench
-import com.google.samples.apps.nowinandroid.fscm.data.SalesAccount
 import com.google.samples.apps.nowinandroid.fscm.data.SessionState
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseWorkbench
 import com.google.samples.apps.nowinandroid.fscm.data.WorkbenchModule
@@ -204,60 +198,33 @@ internal fun OperationsStyleScreen(
     presentation: WorkbenchPresentation,
     usage: MobileAppUsage,
     state: LoadState<OperationsWorkbench>,
-    onSales: () -> Unit,
+    realtimeState: RealtimeUiState,
+    onRealtime: () -> Unit,
+    onRealtimeSelect: (String) -> Unit,
+    onSearch: () -> Unit,
     onDaily: () -> Unit,
     onTodos: () -> Unit,
     onTodo: (Long) -> Unit,
     onRefresh: () -> Unit,
-    onAccount: (SalesAccount) -> Unit,
     onOpenApp: (MobileAppEntry) -> Unit,
 ) {
     val data = state.data
-    var accountMenuOpen by remember { mutableStateOf(false) }
     val apps = commonMobileApps(visibleMobileApps(MobileWorkbenchOverview(apps = presentation.apps), session.permissions, session.sessionMode), usage).take(4)
     val columns = if (LocalConfiguration.current.screenWidthDp < 360 || LocalDensity.current.fontScale >= 1.3f) 1 else 2
-    PullToRefreshBox(isRefreshing = state.loading, onRefresh = onRefresh) {
+    PullToRefreshBox(isRefreshing = state.loading || realtimeState.loading, onRefresh = onRefresh) {
         LazyColumn(
             modifier = Modifier.background(workbenchBackground),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Text(session.currentNamespace?.name.orEmpty(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            }
-            if (data == null || data.sales.status != "no_permission") {
-                item {
-                    StyleCard(onClick = onSales) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(stringResource(R.string.style_today_sales), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                            if ((data?.accounts?.size ?: 0) > 1) {
-                                Box {
-                                    val selectedName = data?.accounts?.firstOrNull { it.id == data?.sales?.data?.connectionId }?.name.orEmpty()
-                                    TextButton(onClick = { accountMenuOpen = true }) { Text(selectedName.ifBlank { stringResource(R.string.style_select_account) }, maxLines = 1) }
-                                    DropdownMenu(expanded = accountMenuOpen, onDismissRequest = { accountMenuOpen = false }) {
-                                        data?.accounts.orEmpty().forEach { account ->
-                                            DropdownMenuItem(text = { Text(account.name) }, onClick = {
-                                                accountMenuOpen = false
-                                                onAccount(account)
-                                            })
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        val sales = data?.sales
-                        ModuleNotice(sales)
-                        sales?.data?.let { overview ->
-                            Text("${overview.date} · ${overview.timezone}", style = MaterialTheme.typography.bodySmall)
-                            StyleMetric(stringResource(R.string.style_sales_amount), money(overview.summary.amount), prominent = true)
-                            StyleMetric(stringResource(R.string.style_sales_orders), overview.summary.orders?.toString() ?: "—")
-                            overview.modules["summary"]?.fetchedAt?.let { Text(stringResource(R.string.style_last_updated, it.take(16).replace('T', ' ')), style = MaterialTheme.typography.bodySmall) }
-                            if (overview.modules["summary"]?.status == "delayed") {
-                                Text(stringResource(R.string.style_delayed), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(session.currentNamespace?.name.orEmpty(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    IconButton(onClick = onSearch) { Icon(Icons.Rounded.Search, stringResource(R.string.common_search), tint = workbenchBlue) }
                 }
+            }
+            if (realtimeState.allowed) {
+                item { RealtimeHomeCard(realtimeState, onRealtime, onRealtimeSelect, onRefresh) }
             }
             if (data == null || data.daily.status != "no_permission") {
                 item {
@@ -301,62 +268,6 @@ internal fun OperationsStyleScreen(
                 }
             }
         }
-    }
-}
-
-@Composable
-internal fun SalesDetailScreen(state: LoadState<OperationsWorkbench>) {
-    val sales = state.data?.sales?.data
-    var showAmount by rememberSaveable { mutableStateOf(false) }
-    val maxValue = sales?.hours.orEmpty().flatMap { hour ->
-        if (showAmount) {
-            listOf(hour.amount?.toDoubleOrNull(), hour.yesterdayAmount?.toDoubleOrNull())
-        } else {
-            listOf(hour.orders?.toDouble(), hour.yesterdayOrders?.toDouble())
-        }
-    }.filterNotNull().maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
-    LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item {
-            StyleCard {
-                Text(stringResource(R.string.style_today_sales), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                if (sales == null) {
-                    Text(stringResource(R.string.style_data_unavailable))
-                } else {
-                    Text("${sales.date} · ${sales.timezone}")
-                    StyleMetric(stringResource(R.string.style_sales_amount), money(sales.summary.amount), prominent = true)
-                    StyleMetric(stringResource(R.string.style_sales_orders), sales.summary.orders?.toString() ?: "—")
-                }
-            }
-        }
-        item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.style_sales_trend), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                TextButton(onClick = { showAmount = false }) { Text(stringResource(R.string.style_trend_orders)) }
-                TextButton(onClick = { showAmount = true }) { Text(stringResource(R.string.style_trend_amount)) }
-            }
-        }
-        items(sales?.hours.orEmpty()) { hour ->
-            val current = if (showAmount) hour.amount?.toDoubleOrNull() else hour.orders?.toDouble()
-            val yesterday = if (showAmount) hour.yesterdayAmount?.toDoubleOrNull() else hour.yesterdayOrders?.toDouble()
-            StyleCard {
-                Text("${hour.hour.toString().padStart(2, '0')}:00", fontWeight = FontWeight.SemiBold)
-                TrendBar(current, maxValue, workbenchBlue)
-                Text(if (showAmount) money(hour.amount) else hour.orders?.toString() ?: "—")
-                Text(stringResource(R.string.style_yesterday), style = MaterialTheme.typography.bodySmall)
-                TrendBar(yesterday, maxValue, workbenchBlue.copy(alpha = 0.28f))
-            }
-        }
-    }
-}
-
-@Composable
-private fun TrendBar(value: Double?, maxValue: Double, color: Color) {
-    if (value == null) {
-        Text("—", style = MaterialTheme.typography.bodySmall)
-        return
-    }
-    Box(Modifier.fillMaxWidth().height(8.dp).background(workbenchBackground, RoundedCornerShape(4.dp))) {
-        Box(Modifier.fillMaxWidth((value / maxValue).toFloat().coerceIn(0f, 1f)).height(8.dp).background(color, RoundedCornerShape(4.dp)))
     }
 }
 

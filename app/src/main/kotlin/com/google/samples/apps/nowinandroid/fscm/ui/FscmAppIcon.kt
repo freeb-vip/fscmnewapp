@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.NoteAlt
 import androidx.compose.material.icons.rounded.Print
 import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.QrCodeScanner
+import androidx.compose.material.icons.rounded.QueryStats
 import androidx.compose.material.icons.rounded.ReceiptLong
 import androidx.compose.material.icons.rounded.Warehouse
 import androidx.compose.material3.Icon
@@ -59,6 +60,7 @@ internal enum class AppGlyph {
     InboundManagement,
     CentralReceiving,
     Profit,
+    RealtimeData,
     Products,
     ProductCounting,
     OfflineShipping,
@@ -83,6 +85,7 @@ private fun appGlyphForKey(rawKey: String): AppGlyph? = when (rawKey.normalizedI
     "receiving" -> AppGlyph.Receiving
     "inbound_management" -> AppGlyph.InboundManagement
     "central_receiving" -> AppGlyph.CentralReceiving
+    "realtime_data" -> AppGlyph.RealtimeData
     "profit" -> AppGlyph.Profit
     "product_management" -> AppGlyph.Products
     "offline_shipping" -> AppGlyph.OfflineShipping
@@ -105,6 +108,7 @@ private fun appGlyphForToken(rawToken: String): AppGlyph? = when (rawToken.norma
     "receiving", "warehouse" -> AppGlyph.Receiving
     "inbound_management", "inbound" -> AppGlyph.InboundManagement
     "central_receiving", "consolidation", "hub" -> AppGlyph.CentralReceiving
+    "monitoring", "realtime_data" -> AppGlyph.RealtimeData
     "profit", "chart", "trending" -> AppGlyph.Profit
     "product", "products", "inventory" -> AppGlyph.Products
     "product_counting", "counting", "stocktake" -> AppGlyph.ProductCounting
@@ -129,6 +133,7 @@ private fun AppGlyph.imageVector(): ImageVector = when (this) {
     AppGlyph.Receiving -> Icons.Rounded.Warehouse
     AppGlyph.InboundManagement -> Icons.Rounded.MoveToInbox
     AppGlyph.CentralReceiving -> Icons.Rounded.Hub
+    AppGlyph.RealtimeData -> Icons.Rounded.QueryStats
     AppGlyph.Profit -> Icons.AutoMirrored.Rounded.TrendingUp
     AppGlyph.Products -> Icons.Rounded.Inventory2
     AppGlyph.OfflineShipping -> Icons.Rounded.LocalShipping

@@ -93,10 +93,14 @@ data class SalesHour(
 data class SalesModuleState(
     val status: String = "pending",
     @SerialName("fetchedAt") val fetchedAt: String? = null,
+    val reason: String = "",
+    val queryAt: String? = null,
+    val sourceUpdatedAt: String? = null,
 )
 
 @Serializable
 data class SalesComparison(
+    val mode: String = "",
     val cutoff: String = "",
     val current: SalesSummary = SalesSummary(),
     val previous: SalesSummary = SalesSummary(),
@@ -104,6 +108,9 @@ data class SalesComparison(
 
 @Serializable
 data class SalesOverview(
+    val provider: String = "",
+    val productBasis: String = "",
+    val rankingLimit: Int = 50,
     val date: String = "",
     val timezone: String = "",
     val currency: String = "CNY",
@@ -111,6 +118,9 @@ data class SalesOverview(
     val summary: SalesSummary = SalesSummary(),
     val comparison: SalesComparison = SalesComparison(),
     val hours: List<SalesHour> = emptyList(),
+    val shops: List<RealtimeShop> = emptyList(),
+    val products: List<RealtimeProduct> = emptyList(),
+    val week: List<RealtimeDay> = emptyList(),
     val modules: Map<String, SalesModuleState> = emptyMap(),
 )
 
@@ -140,11 +150,12 @@ data class OperationsWorkbench(
 data class SalesAccount(
     val id: String = "",
     val name: String = "",
+    val provider: String = "xinjian",
     @SerialName("defaultTimezone") val defaultTimezone: String = "Asia/Shanghai",
 )
 
 @Serializable
-private data class SalesSourceSelection(val id: String, val timezone: String)
+internal data class SalesSourceSelection(val id: String, val timezone: String = "Asia/Shanghai")
 
 @Singleton
 class WorkbenchStyleRepository @Inject constructor(
@@ -185,27 +196,8 @@ class WorkbenchStyleRepository @Inject constructor(
 
     suspend fun warehouse(): WarehouseWorkbench = api.get("mobile/app/workbench/warehouse")
 
-    suspend fun operations(session: SessionState): OperationsWorkbench {
-        val selection = offlineCacheDao.find(session.user?.id ?: 0, session.currentNamespace?.id ?: 0, "sales_source_selection")
-            ?.let { runCatching { json.decodeFromString<SalesSourceSelection>(it.payload) }.getOrNull() }
-        return api.get(
-            "mobile/app/workbench/operations",
-            params = selection?.let { mapOf("connectionId" to it.id, "timezone" to it.timezone) } ?: emptyMap(),
-        )
-    }
-
-    suspend fun selectSalesSource(session: SessionState, account: SalesAccount) {
-        if (account.id.isBlank()) return
-        val current = sessionStore.current()
-        if (current.user?.id != session.user?.id || current.currentNamespace?.id != session.currentNamespace?.id) return
-        offlineCacheDao.upsert(
-            OfflineCacheEntity(
-                userId = session.user?.id ?: 0,
-                namespaceId = session.currentNamespace?.id ?: 0,
-                cacheKey = "sales_source_selection",
-                payload = json.encodeToString(SalesSourceSelection(account.id, account.defaultTimezone)),
-                updatedAt = System.currentTimeMillis(),
-            ),
-        )
-    }
+    suspend fun operations(): OperationsWorkbench = api.get(
+        "mobile/app/workbench/operations",
+        params = mapOf("include_sales" to "false"),
+    )
 }

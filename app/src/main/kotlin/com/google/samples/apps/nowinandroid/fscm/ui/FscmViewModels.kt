@@ -65,7 +65,6 @@ import com.google.samples.apps.nowinandroid.fscm.data.ProfitRepository
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingRepository
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingScanItem
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingSession
-import com.google.samples.apps.nowinandroid.fscm.data.SalesAccount
 import com.google.samples.apps.nowinandroid.fscm.data.SearchDestination
 import com.google.samples.apps.nowinandroid.fscm.data.SessionState
 import com.google.samples.apps.nowinandroid.fscm.data.Sku
@@ -477,7 +476,7 @@ class WorkbenchViewModel @Inject constructor(
             if (session.isOffline) return@launch
             when (presentation.style) {
                 "warehouse" -> loadWarehouse(key)
-                "operations" -> loadOperations(key, session)
+                "operations" -> loadOperations(key)
             }
         }
     }
@@ -494,10 +493,10 @@ class WorkbenchViewModel @Inject constructor(
         }
     }
 
-    private suspend fun loadOperations(key: String, session: SessionState) {
+    private suspend fun loadOperations(key: String) {
         _operations.value = _operations.value.copy(loading = true)
         try {
-            val data = styleRepository.operations(session)
+            val data = styleRepository.operations()
             if (styleSessionKey == key) _operations.value = LoadState(data = data)
         } catch (error: CancellationException) {
             throw error
@@ -506,13 +505,6 @@ class WorkbenchViewModel @Inject constructor(
         }
     }
 
-    fun selectSalesSource(session: SessionState, account: SalesAccount) {
-        val key = styleSessionKey ?: return
-        viewModelScope.launch {
-            styleRepository.selectSalesSource(session, account)
-            loadOperations(key, session)
-        }
-    }
     private val _state = MutableStateFlow(LoadState<MobileWorkbenchOverview>())
     val state = _state.asStateFlow()
 

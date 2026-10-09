@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="rt_title">Live data</string>
+    <string name="rt_description">Today sales, operations and rankings</string>
+    <string name="rt_today">Today</string>
+    <string name="rt_view_details">View details</string>
+    <string name="rt_shops">Shop ranking</string>
+    <string name="rt_products">Product ranking</string>
+    <string name="rt_shop_basis">By sales amount · Change vs same time yesterday</string>
+    <string name="rt_product_link_basis">Top 10 product links by units sold</string>
+    <string name="rt_product_basis">Top 10 by units sold today</string>
+    <string name="rt_waiting">Waiting for valid data</string>
+    <string name="rt_updated">Updated %1$s</string>
+    <string name="rt_no_ranking">No ranking data</string>
+    <string name="rt_source_limit">Source limit: %1$d entries</string>
+    <string name="rt_updating">Updating</string>
+    <string name="rt_delayed">Delayed</string>
+    <string name="rt_live">Monitoring</string>
+    <string name="rt_select_account">Select data account</string>
+    <string name="rt_no_account">No fully authorized account</string>
+    <string name="rt_xinjian">Xinjian</string>
+    <string name="rt_sales">Sales today</string>
+    <string name="rt_orders">Orders today</string>
+    <string name="rt_order_unit">orders</string>
+    <string name="rt_piece_unit">units</string>
+    <string name="rt_quantity">Units sold</string>
+    <string name="rt_work">Packed today</string>
+    <string name="rt_efficiency">Efficiency today</string>
+    <string name="rt_efficiency_unit">orders/person/hour</string>
+    <string name="rt_previous_time">Same time yesterday</string>
+    <string name="rt_previous_period">Same period yesterday</string>
+    <string name="rt_yesterday_total">Yesterday total</string>
+    <string name="rt_sales_context">Sales · %1$s · Beijing UTC+8</string>
+    <string name="rt_work_context">Operations · %1$s · %2$s · vs yesterday total</string>
+    <string name="rt_work_basis">Count uses packed orders; efficiency follows overall order statistics.</string>
+    <string name="rt_new">New</string>
+    <string name="rt_flat">Unchanged</string>
+    <string name="rt_retry">Retry</string>
+    <string name="rt_access_lost">Live data access unavailable. Contact your administrator.</string>
+    <string name="rt_sales_delayed">Sales delayed; showing last successful data</string>
+    <string name="rt_sales_unavailable">Sales data temporarily unavailable</string>
+    <string name="rt_work_delayed">Operations delayed; showing last successful data</string>
+    <string name="rt_work_unavailable">Operations data temporarily unavailable</string>
+    <string name="rt_work_incomplete">Operations incomplete; showing the last complete snapshot</string>
+</resources>

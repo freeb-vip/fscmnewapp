@@ -1537,6 +1537,7 @@ private val localSearchAliases = mapOf(
     "notes" to listOf("笔记", "工作记录"),
     "tickets" to listOf("工单", "服务协同"),
     "documents" to listOf("文档", "文档中心"),
+    "realtime_data" to listOf("实时数据", "今日数据", "realtime", "real time", "live data"),
     "profit" to listOf("利润", "利润看板"),
     "receiving" to listOf("收货", "扫码入库", "仓库收货"),
     "product_management" to listOf("产品", "SKU", "SKU 管理"),
@@ -2401,6 +2402,7 @@ fun visibleMobileApps(
         .map(::applyLocalMobileAppMetadata)
         .distinctBy { it.key }
         .filter { it.visible }
+        .filter { it.key != "realtime_data" || canAccessRealtime(permissions, sessionMode) }
         .filter { it.key != "offline_shipping" || "mobile-app:offline-shipping" in permissionSet }
         .filter { it.key in implementedMobileAppKeys && it.key !in setOf("pda_settings", "edge_nodes") }
         .filter { app ->
@@ -2426,6 +2428,7 @@ internal val implementedMobileAppKeys = setOf(
     "inbound_management",
     "central_receiving",
     "profit",
+    "realtime_data",
     "product_management",
     "product_counting",
     "offline_shipping",
@@ -2544,6 +2547,7 @@ val defaultMobileApps = listOf(
         offlineDataScope = "namespace",
         offlineRequiredPermissions = listOf("mobile-app:product-counting"),
     ),
+    MobileAppEntry("realtime_data", "", "", "/pages/realtime-data/index", "mobile-app:realtime-data", "realtime-data", "monitoring", "#1677ff", sort = 51),
     MobileAppEntry("profit", "", "", "/pages/profit/index", "mobile-app:profit", "", "", "#52c41a", sort = 50),
     MobileAppEntry("product_management", "", "", "/pages/product/index", "mobile-app:product", "products", "", "#1890ff", sort = 60),
     MobileAppEntry("box_labels", "", "", "/pages/box-labels/index", "mobile-app:box-labels", "", "", "#0f766e", sort = 70),

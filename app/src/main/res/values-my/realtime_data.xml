@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="rt_title">အချိန်နှင့်တပြေးညီဒေတာ</string>
+    <string name="rt_description">ယနေ့ရောင်းအား၊ လုပ်ငန်းနှင့် အဆင့်များ</string>
+    <string name="rt_today">ယနေ့ဒေတာ</string>
+    <string name="rt_view_details">အသေးစိတ်ကြည့်ရန်</string>
+    <string name="rt_shops">ဆိုင်အဆင့်များ</string>
+    <string name="rt_products">ကုန်ပစ္စည်းအဆင့်များ</string>
+    <string name="rt_shop_basis">ရောင်းရငွေအလိုက် · မနေ့ကအချိန်တူနှိုင်းယှဉ်</string>
+    <string name="rt_product_link_basis">ရောင်းချအရေအတွက်အလိုက် ထိပ်ဆုံးကုန်ပစ္စည်းလင့်ခ် ၁၀ ခု</string>
+    <string name="rt_product_basis">ယနေ့အရောင်းအရေအတွက် ထိပ်ဆုံး ၁၀ ခု</string>
+    <string name="rt_waiting">မှန်ကန်သောဒေတာကို စောင့်နေသည်</string>
+    <string name="rt_updated">မွမ်းမံချိန် %1$s</string>
+    <string name="rt_no_ranking">အဆင့်ဒေတာ မရှိသေးပါ</string>
+    <string name="rt_source_limit">မူရင်းဒေတာကန့်သတ်ချက် %1$d ခု</string>
+    <string name="rt_updating">မွမ်းမံနေသည်</string>
+    <string name="rt_delayed">ဒေတာနှောင့်နှေးနေသည်</string>
+    <string name="rt_live">စောင့်ကြည့်နေသည်</string>
+    <string name="rt_select_account">ဒေတာအကောင့်ရွေးရန်</string>
+    <string name="rt_no_account">ခွင့်ပြုချက်ပြည့်စုံသောအကောင့် မရှိပါ</string>
+    <string name="rt_xinjian">Xinjian</string>
+    <string name="rt_sales">ယနေ့ရောင်းရငွေ</string>
+    <string name="rt_orders">ယနေ့အမှာစာများ</string>
+    <string name="rt_order_unit">အမှာစာ</string>
+    <string name="rt_piece_unit">ခု</string>
+    <string name="rt_quantity">ရောင်းချအရေအတွက်</string>
+    <string name="rt_work">ယနေ့ထုပ်ပိုးပြီး</string>
+    <string name="rt_efficiency">ယနေ့လုပ်အားထိရောက်မှု</string>
+    <string name="rt_efficiency_unit">အမှာစာ/လူ/နာရီ</string>
+    <string name="rt_previous_time">မနေ့က အချိန်တူ</string>
+    <string name="rt_previous_period">မနေ့က အချိန်ကာလတူ</string>
+    <string name="rt_yesterday_total">မနေ့က တစ်နေ့လုံး</string>
+    <string name="rt_sales_context">ရောင်းအား · %1$s · ပေကျင်း UTC+8</string>
+    <string name="rt_work_context">လုပ်ငန်း · %1$s · %2$s · မနေ့ကတစ်နေ့လုံးနှိုင်းယှဉ်</string>
+    <string name="rt_work_basis">ထုပ်ပိုးပြီးအမှာစာကိုရေတွက်ပြီး အမှာစာစာရင်း၏ စုစုပေါင်းလုပ်အားထိရောက်မှုကို အသုံးပြုသည်။</string>
+    <string name="rt_new">အသစ်</string>
+    <string name="rt_flat">မပြောင်းလဲ</string>
+    <string name="rt_retry">ထပ်ကြိုးစားရန်</string>
+    <string name="rt_access_lost">ဒေတာကြည့်ခွင့်မရှိပါ။ စီမံခန့်ခွဲသူကို ဆက်သွယ်ပါ။</string>
+    <string name="rt_sales_delayed">ရောင်းအားနှောင့်နှေး၍ နောက်ဆုံးအောင်မြင်ဒေတာကို ပြထားသည်</string>
+    <string name="rt_sales_unavailable">ရောင်းအားဒေတာ ယာယီမရနိုင်ပါ</string>
+    <string name="rt_work_delayed">လုပ်ငန်းဒေတာနှောင့်နှေး၍ နောက်ဆုံးအောင်မြင်ဒေတာကို ပြထားသည်</string>
+    <string name="rt_work_unavailable">လုပ်ငန်းဒေတာ ယာယီမရနိုင်ပါ</string>
+    <string name="rt_work_incomplete">လုပ်ငန်းဒေတာမပြည့်စုံသေး၍ နောက်ဆုံးပြည့်စုံဒေတာကို ပြထားသည်</string>
+</resources>

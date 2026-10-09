@@ -169,6 +169,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.google.samples.apps.nowinandroid.BuildConfig
@@ -196,16 +197,17 @@ import com.google.samples.apps.nowinandroid.fscm.data.ReceivingProductBusiness
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingScanItem
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingSession
 import com.google.samples.apps.nowinandroid.fscm.data.SearchDestination
-import com.google.samples.apps.nowinandroid.fscm.data.SessionMode
 import com.google.samples.apps.nowinandroid.fscm.data.SessionState
 import com.google.samples.apps.nowinandroid.fscm.data.ShopOverview
 import com.google.samples.apps.nowinandroid.fscm.data.Sku
 import com.google.samples.apps.nowinandroid.fscm.data.boxMarkPrintAvailability
+import com.google.samples.apps.nowinandroid.fscm.data.canAccessRealtime
 import com.google.samples.apps.nowinandroid.fscm.data.commonMobileApps
 import com.google.samples.apps.nowinandroid.fscm.data.formatAmount
 import com.google.samples.apps.nowinandroid.fscm.data.formatCount
 import com.google.samples.apps.nowinandroid.fscm.data.formatPercent
 import com.google.samples.apps.nowinandroid.fscm.data.hiddenMobileApps
+import com.google.samples.apps.nowinandroid.fscm.data.realtimeScope
 import com.google.samples.apps.nowinandroid.fscm.data.shortTime
 import com.google.samples.apps.nowinandroid.fscm.data.shownMobileApps
 import com.google.samples.apps.nowinandroid.fscm.data.toBusinessTypeCode
@@ -716,7 +718,7 @@ private enum class MainTab(@StringRes val titleRes: Int, val icon: ImageVector) 
 internal sealed interface FeatureRoute : Serializable {
     data object None : FeatureRoute
     data object WarehouseDetail : FeatureRoute
-    data object SalesDetail : FeatureRoute
+    data object RealtimeData : FeatureRoute
     data object DailyDetail : FeatureRoute
     data object Todos : FeatureRoute
     data class TodoDetail(val id: Long?) : FeatureRoute
@@ -791,6 +793,13 @@ private fun MainShell(
 ) {
     val rootViewModel: FscmRootViewModel = hiltViewModel()
     val workbenchViewModel: WorkbenchViewModel = hiltViewModel()
+    val realtimeViewModel: RealtimeDataViewModel = hiltViewModel()
+    val rawRealtimeState by realtimeViewModel.state.collectAsStateWithLifecycle()
+    val realtimeState = rawRealtimeState.takeIf { it.scope == session.realtimeScope() && canAccessRealtime(session.permissions, session.sessionMode) } ?: RealtimeUiState()
+    val searchState by workbenchViewModel.searchState.collectAsStateWithLifecycle()
+    val searchQuery by workbenchViewModel.searchQuery.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var homeSearchOpen by remember { mutableStateOf(false) }
     val presentation by workbenchViewModel.presentation.collectAsStateWithLifecycle()
     val presentationReady by workbenchViewModel.presentationReady.collectAsStateWithLifecycle()
     val warehouseState by workbenchViewModel.warehouse.collectAsStateWithLifecycle()
@@ -810,6 +819,46 @@ private fun MainShell(
     var featureRoute by rememberSaveable { mutableStateOf<FeatureRoute>(FeatureRoute.None) }
     var lastBackPressedAt by remember { mutableStateOf(0L) }
     val exitConfirmMessage = stringResource(R.string.exit_confirm)
+    val realtimeVisible = featureRoute == FeatureRoute.RealtimeData ||
+        featureRoute == FeatureRoute.None && selectedTab == MainTab.Workbench && presentationReady && presentation.style != "warehouse"
+    LaunchedEffect(session.realtimeScope(), session.permissions, realtimeVisible, featureRoute, lifecycleOwner) {
+        realtimeViewModel.bind(session)
+        if (realtimeVisible) lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { realtimeViewModel.follow() }
+    }
+    LaunchedEffect(session.realtimeScope(), session.permissions) {
+        homeSearchOpen = false
+        workbenchViewModel.clearSearch()
+    }
+    LaunchedEffect(workbenchViewModel) {
+        workbenchViewModel.searchNavigation.collect { destination ->
+            homeSearchOpen = false
+            openSearchDestination(context, destination, { featureRoute = it }) { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
+        }
+    }
+    if (featureRoute == FeatureRoute.None && selectedTab == MainTab.Workbench && presentation.style != "warehouse" &&
+        (homeSearchOpen || searchState.loading || searchState.data != null || searchState.error != null)
+    ) {
+        Dialog(onDismissRequest = {
+            homeSearchOpen = false
+            workbenchViewModel.clearSearch()
+        }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Box(Modifier.fillMaxSize().padding(vertical = 24.dp)) {
+                Column(Modifier.padding(16.dp).clip(RoundedCornerShape(16.dp)).background(SurfaceRaised).padding(16.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.common_search), modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                        IconButton(onClick = {
+                            homeSearchOpen = false
+                            workbenchViewModel.clearSearch()
+                        }) { Icon(Icons.Rounded.Close, stringResource(R.string.common_close)) }
+                    }
+                    WorkbenchSearchPanel(searchQuery, workbenchViewModel::search, workbenchViewModel::updateSearchQuery)
+                }
+                if (searchState.loading || searchState.data != null || searchState.error != null) {
+                    GlobalSearchResultsOverlay(searchState, { workbenchViewModel.clearSearch() }, workbenchViewModel::selectSearchHit)
+                }
+            }
+        }
+    }
 
     LaunchedEffect(session.user?.id, session.currentNamespace?.id, session.sessionMode) {
         if (session.isLoggedIn) {
@@ -859,6 +908,9 @@ private fun MainShell(
     if (featureRoute !is FeatureRoute.None) {
         FeatureScreen(
             workbenchViewModel = workbenchViewModel,
+            realtimeState = realtimeState,
+            onRealtimeRefresh = realtimeViewModel::refresh,
+            onRealtimeSelect = realtimeViewModel::select,
             settingsContent = {
                 ProfileScreen(
                     session = session, onLogout = onLogout, onSwitchNamespace = onSwitchNamespace,
@@ -931,12 +983,20 @@ private fun MainShell(
                         presentation = presentation,
                         usage = mobileAppUsage,
                         state = operationsState,
-                        onSales = { featureRoute = FeatureRoute.SalesDetail },
+                        realtimeState = realtimeState,
+                        onRealtime = { featureRoute = FeatureRoute.RealtimeData },
+                        onRealtimeSelect = realtimeViewModel::select,
+                        onSearch = {
+                            homeSearchOpen = true
+                            workbenchViewModel.load(session)
+                        },
                         onDaily = { featureRoute = FeatureRoute.DailyDetail },
                         onTodos = { featureRoute = FeatureRoute.Todos },
                         onTodo = { featureRoute = FeatureRoute.TodoDetail(it) },
-                        onRefresh = { workbenchViewModel.loadStyle(session, force = true) },
-                        onAccount = { workbenchViewModel.selectSalesSource(session, it) },
+                        onRefresh = {
+                            workbenchViewModel.loadStyle(session, force = true)
+                            realtimeViewModel.refresh()
+                        },
                         onOpenApp = { app ->
                             if (openAppEntry(context, app, { featureRoute = it }) { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }) {
                                 workbenchViewModel.recordMobileAppUsage(session, app.key)
@@ -948,6 +1008,10 @@ private fun MainShell(
                         pendingSyncCount = pendingSyncCount,
                         onOpenFeature = { featureRoute = it },
                         viewModel = workbenchViewModel,
+                        realtimeState = realtimeState,
+                        onRealtimeRefresh = realtimeViewModel::refresh,
+                        onRealtimeSelect = realtimeViewModel::select,
+                        onSearch = { homeSearchOpen = true },
                         displayPolicy = displayPolicy,
                     )
                 }
@@ -983,6 +1047,9 @@ private fun MainShell(
 @Composable
 private fun FeatureScreen(
     workbenchViewModel: WorkbenchViewModel,
+    realtimeState: RealtimeUiState,
+    onRealtimeRefresh: () -> Unit,
+    onRealtimeSelect: (String) -> Unit,
     settingsContent: @Composable () -> Unit,
     route: FeatureRoute,
     session: SessionState,
@@ -1037,7 +1104,7 @@ private fun FeatureScreen(
                     title = when (route) {
                         FeatureRoute.Profit -> stringResource(R.string.profit_dashboard)
                         FeatureRoute.WarehouseDetail -> stringResource(R.string.style_personal_detail)
-                        FeatureRoute.SalesDetail -> stringResource(R.string.style_today_sales)
+                        FeatureRoute.RealtimeData -> stringResource(R.string.rt_title)
                         FeatureRoute.DailyDetail -> stringResource(R.string.style_yesterday_daily)
                         FeatureRoute.Todos, is FeatureRoute.TodoDetail -> stringResource(R.string.style_todos)
                         FeatureRoute.ReceivingList -> stringResource(R.string.warehouse_receiving)
@@ -1157,7 +1224,7 @@ private fun FeatureScreen(
         Box(Modifier.padding(padding)) {
             when (route) {
                 FeatureRoute.WarehouseDetail -> WarehouseDetailScreen(warehouseState)
-                FeatureRoute.SalesDetail -> SalesDetailScreen(operationsState)
+                FeatureRoute.RealtimeData -> RealtimeDataScreen(realtimeState, onRealtimeSelect, onRealtimeRefresh)
                 FeatureRoute.DailyDetail -> DailyDetailScreen(operationsState)
                 FeatureRoute.Todos -> TodosScreen(
                     onCreate = { onNavigate(FeatureRoute.TodoDetail(null)) },
@@ -1260,25 +1327,17 @@ private fun WorkbenchScreen(
     pendingSyncCount: Int,
     onOpenFeature: (FeatureRoute) -> Unit,
     viewModel: WorkbenchViewModel,
+    realtimeState: RealtimeUiState,
+    onRealtimeRefresh: () -> Unit,
+    onRealtimeSelect: (String) -> Unit,
+    onSearch: () -> Unit,
     displayPolicy: FscmDisplayPolicy,
 ) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val searchState by viewModel.searchState.collectAsStateWithLifecycle()
-    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val mobileAppUsage by viewModel.mobileAppUsage.collectAsStateWithLifecycle()
     LaunchedEffect(session.user?.id, session.currentNamespace?.id, session.sessionMode) {
         if (session.isLoggedIn) viewModel.load(session)
-    }
-    LaunchedEffect(viewModel) {
-        viewModel.searchNavigation.collect { destination ->
-            openSearchDestination(
-                context = context,
-                destination = destination,
-                onOpenFeature = onOpenFeature,
-                showUnavailable = { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() },
-            )
-        }
     }
     val overview = state.data
     val allApps = visibleMobileApps(overview, session.permissions, session.sessionMode)
@@ -1306,6 +1365,7 @@ private fun WorkbenchScreen(
             override suspend fun onPreFling(available: Velocity): Velocity {
                 if (!state.loading && pullDistancePx >= refreshThresholdPx) {
                     viewModel.refresh(session)
+                    onRealtimeRefresh()
                 }
                 pullDistancePx = 0f
                 return Velocity.Zero
@@ -1320,15 +1380,19 @@ private fun WorkbenchScreen(
             verticalArrangement = Arrangement.spacedBy(displayPolicy.sectionSpacing()),
         ) {
             item {
-                WorkbenchHero(
-                    sessionMode = session.sessionMode,
-                    connectivityMode = session.connectivityMode,
-                    pendingSyncCount = pendingSyncCount,
-                    offlineExpiresAt = session.offlineLeaseExpiresAt,
-                    searchQuery = searchQuery,
-                    onSearch = { query -> viewModel.search(query) },
-                    onQueryChange = { query -> viewModel.updateSearchQuery(query) },
-                )
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(session.currentNamespace?.name.orEmpty(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    IconButton(onClick = onSearch) { Icon(Icons.Rounded.Search, stringResource(R.string.common_search), tint = BrandMain) }
+                }
+            }
+            if (session.isOffline) {
+                item {
+                    Text(stringResource(R.string.operation_offline_summary, pendingSyncCount, formatOfflineExpiry(session.offlineLeaseExpiresAt)), color = InkSoft)
+                    if (session.connectivityMode == ConnectivityMode.EdgeOnly) Text(stringResource(R.string.operation_edge_available), color = BrandMain)
+                }
+            }
+            if (realtimeState.allowed) {
+                item { RealtimeHomeCard(realtimeState, { onOpenFeature(FeatureRoute.RealtimeData) }, onRealtimeSelect, onRealtimeRefresh) }
             }
             state.error?.let { item { FscmErrorCard(it, onRetry = { viewModel.refresh(session) }) } }
             if (commonApps.isNotEmpty()) {
@@ -1378,25 +1442,11 @@ private fun WorkbenchScreen(
                 color = BrandMain,
             )
         }
-
-        if (searchState.loading || searchState.data != null || searchState.error != null) {
-            GlobalSearchResultsOverlay(
-                state = searchState,
-                onClose = { viewModel.clearSearch() },
-                onNavigate = { hit ->
-                    viewModel.selectSearchHit(hit)
-                },
-            )
-        }
     }
 }
 
 @Composable
-private fun WorkbenchHero(
-    sessionMode: SessionMode,
-    connectivityMode: ConnectivityMode,
-    pendingSyncCount: Int,
-    offlineExpiresAt: Long,
+private fun WorkbenchSearchPanel(
     searchQuery: String,
     onSearch: (String) -> Unit = {},
     onQueryChange: (String) -> Unit = {},
@@ -1434,23 +1484,6 @@ private fun WorkbenchHero(
             .background(Brush.linearGradient(listOf(BrandMain, BrandDeep)))
             .padding(12.dp),
     ) {
-        if (sessionMode == SessionMode.Offline) {
-            Text(
-                stringResource(R.string.operation_offline_summary, pendingSyncCount, formatOfflineExpiry(offlineExpiresAt)),
-                color = Color.White.copy(alpha = 0.86f),
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            if (connectivityMode == ConnectivityMode.EdgeOnly) {
-                Text(
-                    stringResource(R.string.operation_edge_available),
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Black,
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-        }
         SearchPanel(
             query = searchQuery,
             onScan = {
@@ -3027,6 +3060,7 @@ internal fun localAppTitleResource(key: String): Int? = when (key) {
     "receiving" -> R.string.local_app_receiving_title
     "inbound_management" -> R.string.local_app_inbound_management_title
     "central_receiving" -> R.string.local_app_central_receiving_title
+    "realtime_data" -> R.string.rt_title
     "profit" -> R.string.local_app_profit_title
     "product_management" -> R.string.local_app_product_management_title
     "offline_shipping" -> R.string.shipping_title
@@ -3050,6 +3084,7 @@ private fun localAppDescriptionResource(key: String): Int? = when (key) {
     "receiving" -> R.string.local_app_receiving_description
     "inbound_management" -> R.string.local_app_inbound_management_description
     "central_receiving" -> R.string.local_app_central_receiving_description
+    "realtime_data" -> R.string.rt_description
     "profit" -> R.string.local_app_profit_description
     "product_management" -> R.string.local_app_product_management_description
     "offline_shipping" -> R.string.shipping_description
@@ -3279,6 +3314,10 @@ private fun openAppEntry(
     onOpenFeature: (FeatureRoute) -> Unit,
     showUnavailable: (String) -> Unit,
 ) = when (app.key) {
+    "realtime_data" -> {
+        onOpenFeature(FeatureRoute.RealtimeData)
+        true
+    }
     "profit" -> {
         onOpenFeature(FeatureRoute.Profit)
         true

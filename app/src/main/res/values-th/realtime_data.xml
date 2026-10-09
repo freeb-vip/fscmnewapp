@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="rt_title">ข้อมูลเรียลไทม์</string>
+    <string name="rt_description">ยอดขาย งาน และอันดับวันนี้</string>
+    <string name="rt_today">ข้อมูลวันนี้</string>
+    <string name="rt_view_details">ดูรายละเอียด</string>
+    <string name="rt_shops">อันดับร้านค้า</string>
+    <string name="rt_products">อันดับสินค้า</string>
+    <string name="rt_shop_basis">เรียงตามยอดขาย · เทียบเวลาเดียวกันเมื่อวาน</string>
+    <string name="rt_product_link_basis">ลิงก์สินค้า 10 อันดับตามจำนวนขาย</string>
+    <string name="rt_product_basis">10 อันดับตามจำนวนขายวันนี้</string>
+    <string name="rt_waiting">กำลังรอข้อมูลที่ใช้ได้</string>
+    <string name="rt_updated">อัปเดต %1$s</string>
+    <string name="rt_no_ranking">ยังไม่มีข้อมูลอันดับ</string>
+    <string name="rt_source_limit">แหล่งข้อมูลส่งกลับสูงสุด %1$d รายการ</string>
+    <string name="rt_updating">กำลังอัปเดต</string>
+    <string name="rt_delayed">ข้อมูลล่าช้า</string>
+    <string name="rt_live">กำลังติดตาม</string>
+    <string name="rt_select_account">เลือกบัญชีข้อมูล</string>
+    <string name="rt_no_account">ไม่มีบัญชีที่ได้รับสิทธิ์ครบถ้วน</string>
+    <string name="rt_xinjian">Xinjian</string>
+    <string name="rt_sales">ยอดขายวันนี้</string>
+    <string name="rt_orders">คำสั่งซื้อวันนี้</string>
+    <string name="rt_order_unit">คำสั่งซื้อ</string>
+    <string name="rt_piece_unit">ชิ้น</string>
+    <string name="rt_quantity">จำนวนขาย</string>
+    <string name="rt_work">แพ็กแล้ววันนี้</string>
+    <string name="rt_efficiency">ประสิทธิภาพวันนี้</string>
+    <string name="rt_efficiency_unit">คำสั่งซื้อ/คน/ชั่วโมง</string>
+    <string name="rt_previous_time">เวลาเดียวกันเมื่อวาน</string>
+    <string name="rt_previous_period">ช่วงเวลาเดียวกันเมื่อวาน</string>
+    <string name="rt_yesterday_total">รวมเมื่อวาน</string>
+    <string name="rt_sales_context">ยอดขาย · %1$s · ปักกิ่ง UTC+8</string>
+    <string name="rt_work_context">งาน · %1$s · %2$s · เทียบรวมเมื่อวาน</string>
+    <string name="rt_work_basis">จำนวนใช้คำสั่งซื้อที่แพ็กแล้ว ประสิทธิภาพใช้สถิติคำสั่งซื้อรวม</string>
+    <string name="rt_new">เพิ่มใหม่</string>
+    <string name="rt_flat">ไม่เปลี่ยนแปลง</string>
+    <string name="rt_retry">ลองอีกครั้ง</string>
+    <string name="rt_access_lost">ไม่มีสิทธิ์ดูข้อมูล กรุณาติดต่อผู้ดูแล</string>
+    <string name="rt_sales_delayed">ยอดขายล่าช้า แสดงข้อมูลล่าสุดที่สำเร็จ</string>
+    <string name="rt_sales_unavailable">ข้อมูลยอดขายไม่พร้อมใช้งานชั่วคราว</string>
+    <string name="rt_work_delayed">ข้อมูลงานล่าช้า แสดงข้อมูลล่าสุดที่สำเร็จ</string>
+    <string name="rt_work_unavailable">ข้อมูลงานไม่พร้อมใช้งานชั่วคราว</string>
+    <string name="rt_work_incomplete">ข้อมูลงานยังไม่ครบ แสดงข้อมูลครบถ้วนล่าสุด</string>
+</resources>
