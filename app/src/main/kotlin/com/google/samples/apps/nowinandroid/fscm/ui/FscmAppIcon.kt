@@ -90,6 +90,7 @@ private fun appGlyphForKey(rawKey: String): AppGlyph? = when (rawKey.normalizedI
     "product_management" -> AppGlyph.Products
     "offline_shipping" -> AppGlyph.OfflineShipping
     "product_counting" -> AppGlyph.ProductCounting
+    "location_stocktakes" -> AppGlyph.ProductCounting
     "box_labels", "carton_management" -> AppGlyph.BoxLabels
     "supplier_orders" -> AppGlyph.SupplierOrders
     "manufacturer_payment_bills", "payment_bills" -> AppGlyph.ManufacturerPaymentBills

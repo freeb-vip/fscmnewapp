@@ -740,6 +740,7 @@ internal sealed interface FeatureRoute : Serializable {
     data object OfflineShippingList : FeatureRoute
     data class OfflineShippingDetail(val orderId: Long) : FeatureRoute
     data object ProductCountingList : FeatureRoute
+    data object LocationStocktakes : FeatureRoute
     data class ProductCountingDetail(val taskId: String) : FeatureRoute
     data class ProductSkuList(val productId: Long, val productName: String) : FeatureRoute
     data class SkuDetail(val idOrCode: String) : FeatureRoute
@@ -1119,6 +1120,7 @@ private fun FeatureScreen(
                         FeatureRoute.ProductManagement -> stringResource(R.string.feature_product_management)
                         FeatureRoute.OfflineShippingList, is FeatureRoute.OfflineShippingDetail -> stringResource(R.string.shipping_title)
                         FeatureRoute.ProductCountingList -> stringResource(R.string.feature_product_counting)
+                        FeatureRoute.LocationStocktakes -> stringResource(R.string.st_title)
                         is FeatureRoute.ProductCountingDetail -> stringResource(R.string.feature_product_counting)
                         is FeatureRoute.ProductSkuList -> route.productName
                         is FeatureRoute.SkuDetail -> stringResource(R.string.feature_sku_detail)
@@ -1264,6 +1266,7 @@ private fun FeatureScreen(
                     viewModel = requireNotNull(manufacturerPaymentBillDetailViewModel),
                 )
                 FeatureRoute.CameraScanner -> CameraScannerScreen(onBack = onBack, onResult = onScanResult)
+                FeatureRoute.LocationStocktakes -> LocationStocktakeScreen(session)
                 FeatureRoute.ProductManagement -> ProductManagementScreen(
                     onOpenSkuDetail = { onNavigate(FeatureRoute.SkuDetail(it)) },
                 )
@@ -3063,6 +3066,7 @@ internal fun localAppTitleResource(key: String): Int? = when (key) {
     "product_management" -> R.string.local_app_product_management_title
     "offline_shipping" -> R.string.shipping_title
     "product_counting" -> R.string.local_app_product_counting_title
+    "location_stocktakes" -> R.string.st_title
     "box_labels", "carton_management" -> R.string.local_app_box_labels_title
     "supplier_orders" -> R.string.local_app_supplier_orders_title
     "purchase_approvals" -> R.string.local_app_purchase_approvals_title
@@ -3087,6 +3091,7 @@ private fun localAppDescriptionResource(key: String): Int? = when (key) {
     "product_management" -> R.string.local_app_product_management_description
     "offline_shipping" -> R.string.shipping_description
     "product_counting" -> R.string.local_app_product_counting_description
+    "location_stocktakes" -> R.string.st_description
     "box_labels", "carton_management" -> R.string.local_app_box_labels_description
     "supplier_orders" -> R.string.local_app_supplier_orders_description
     "purchase_approvals" -> R.string.local_app_purchase_approvals_description
@@ -3350,6 +3355,10 @@ private fun openAppEntry(
     }
     "product_counting" -> {
         onOpenFeature(FeatureRoute.ProductCountingList)
+        true
+    }
+    "location_stocktakes" -> {
+        onOpenFeature(FeatureRoute.LocationStocktakes)
         true
     }
     "box_labels", "carton_management" -> {
