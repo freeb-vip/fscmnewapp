@@ -26,10 +26,16 @@ import org.robolectric.RuntimeEnvironment
 import kotlin.test.assertEquals
 
 internal fun removeCollectionMetadataColumns(db: SupportSQLiteDatabase) {
+    removeSkuFoldedCode(db)
     db.execSQL("ALTER TABLE local_sku_catalog DROP COLUMN syncedAt")
     listOf("firstSkuCode", "firstSkuName", "firstProductCode", "firstProductName", "firstProductId", "isMixed").forEach {
         db.execSQL("ALTER TABLE local_inbound_snapshots DROP COLUMN $it")
     }
+}
+
+internal fun removeSkuFoldedCode(db: SupportSQLiteDatabase) {
+    db.execSQL("DROP INDEX index_local_sku_catalog_userId_namespaceId_foldedCode")
+    db.execSQL("ALTER TABLE local_sku_catalog DROP COLUMN foldedCode")
 }
 
 @RunWith(RobolectricTestRunner::class)
@@ -50,7 +56,7 @@ class InboundCollectionMigrationTest {
             old.openHelper.writableDatabase.version = 17
             old.close()
             val migrated = Room.databaseBuilder(context, FscmDatabase::class.java, name).allowMainThreadQueries()
-                .addMigrations(FscmDatabaseModule.MIGRATION_17_18, FscmDatabaseModule.MIGRATION_18_19, FscmDatabaseModule.MIGRATION_19_20).build()
+                .addMigrations(FscmDatabaseModule.MIGRATION_17_18, FscmDatabaseModule.MIGRATION_18_19, FscmDatabaseModule.MIGRATION_19_20, FscmDatabaseModule.MIGRATION_20_21).build()
             try {
                 assertEquals(before, migrated.localInboundDao().itemsForSession(7, 9, 11))
                 val snapshot = migrated.localInboundDao().snapshots(7, 9, 11).single()

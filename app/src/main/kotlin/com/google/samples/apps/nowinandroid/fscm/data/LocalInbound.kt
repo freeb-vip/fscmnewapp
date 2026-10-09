@@ -994,7 +994,7 @@ internal fun calculateInboundDraftMetrics(details: List<InboundDraftBoxDetail>):
     val skuItems = details.flatMap(InboundDraftBoxDetail::skuItems)
     return InboundDraftMetrics(
         boxCount = details.size,
-        skuCount = skuItems.map { it.skuCode.trim().uppercase(Locale.ROOT) }.filter(String::isNotBlank).distinct().size,
+        skuCount = skuItems.map { normalizeCatalogCode(it.skuCode) }.filter(String::isNotBlank).distinct().size,
         totalQuantity = skuItems.sumOf { it.quantity ?: 0 },
         quantityComplete =
         details.isNotEmpty() &&
@@ -1025,6 +1025,8 @@ enum class InboundClientError {
     LocationInactive,
     LocationWarehouseMismatch,
     SkuCacheMiss,
+    SkuAmbiguous,
+    SkuServerUpgradeRequired,
     TargetWarehouseMissing,
     SessionComplete,
     BatchNotFound,

@@ -671,6 +671,8 @@ internal fun Throwable.inboundUiText(): UiText = when (this) {
             InboundClientError.LocationNotFound -> R.string.inbound_location_not_found
             InboundClientError.LocationInactive -> R.string.inbound_location_inactive
             InboundClientError.SkuCacheMiss -> R.string.inbound_sku_cache_miss
+            InboundClientError.SkuAmbiguous -> R.string.inbound_sku_ambiguous
+            InboundClientError.SkuServerUpgradeRequired -> R.string.inbound_sku_server_upgrade_required
             InboundClientError.LocationWarehouseMismatch -> R.string.inbound_location_warehouse_mismatch
             InboundClientError.TargetWarehouseMissing -> R.string.inbound_target_warehouse_missing
             InboundClientError.SessionComplete -> R.string.inbound_session_already_complete

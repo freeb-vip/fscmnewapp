@@ -183,4 +183,6 @@
     <string name="inbound_location_cache_status">库位 %1$d 条 · 更新于 %2$s</string>
     <string name="inbound_sku_cache_status">SKU %1$d 条 · 更新于 %2$s</string>
     <string name="inbound_reference_never_synced">尚未同步</string>
+    <string name="inbound_sku_ambiguous">SKU %1$s 存在多个匹配，请按原始大小写扫描或输入。</string>
+    <string name="inbound_sku_server_upgrade_required">中心服务器不支持原码 SKU 查询，请升级服务器。</string>
 </resources>

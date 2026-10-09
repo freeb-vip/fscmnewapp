@@ -263,7 +263,7 @@ class AutoPurchaseReceivingTest {
             removeCollectionMetadataColumns(old.openHelper.writableDatabase)
             old.openHelper.writableDatabase.version = 16
             old.close()
-            val migrated = Room.databaseBuilder(context, FscmDatabase::class.java, name).allowMainThreadQueries().addMigrations(FscmDatabaseModule.MIGRATION_16_17, FscmDatabaseModule.MIGRATION_17_18, FscmDatabaseModule.MIGRATION_18_19, FscmDatabaseModule.MIGRATION_19_20).build()
+            val migrated = Room.databaseBuilder(context, FscmDatabase::class.java, name).allowMainThreadQueries().addMigrations(FscmDatabaseModule.MIGRATION_16_17, FscmDatabaseModule.MIGRATION_17_18, FscmDatabaseModule.MIGRATION_18_19, FscmDatabaseModule.MIGRATION_19_20, FscmDatabaseModule.MIGRATION_20_21).build()
             try {
                 val kept = migrated.autoReceiptDao().scan("old:false:kept")!!
                 assertEquals("KEPT", json.decodeFromString<LocalInboundItemEntity>(kept.scanJson).labelCode)

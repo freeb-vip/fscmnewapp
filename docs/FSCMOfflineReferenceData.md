@@ -1,6 +1,6 @@
 # 入库基础资料离线识别
 
-库位和 SKU 以中心服务器为准，本地有效期均为两小时。有效缓存直接读取；在线缺失或过期时向中心精确查询，SKU 合并成批量查询，等待上限五秒。显式离线时读取已有缓存；联网请求遇到网络、服务或登录续期暂时不可用时可以回退已有缓存。中心明确返回库位不存在、停用或仓库不匹配时清除对应旧记录；明确缺失的 SKU 同样清除，不能继续使用旧名称。没有库位缓存且无法联网核验时提示核验失败，不提示中心已确认不存在。权限失败、登录失效、歧义或响应异常不会作为离线命中处理。
+库位和 SKU 以中心服务器为准，本地有效期均为两小时。有效缓存直接读取；在线缺失或过期时向中心查询，SKU 合并成批量查询，等待上限五秒。SKU 保留原始大小写：先精确匹配，无精确匹配时仅接受唯一大小写候选。显式离线时读取已有缓存；联网请求遇到网络、服务或登录续期暂时不可用时可以回退已有缓存。不完整局部 SKU 缓存不能证明候选唯一，仅可精确匹配。中心明确返回库位不存在、停用或仓库不匹配时清除对应旧记录；明确缺失的 SKU 同样清除，不能继续使用旧名称。没有库位缓存且无法联网核验时提示核验失败，不提示中心已确认不存在。权限失败、登录失效、歧义或响应异常不会作为离线命中处理。
 
 箱码仍由本地二维码、映射、当前单据快照及同仓跨单目录识别。未命中或归属有歧义时，提示同步后重扫，不创建未知库位批次或未知跨单任务。已有历史 locationId=0 草稿在同步时补做校验。
 
@@ -11,9 +11,11 @@
 - Room 18→19 新增 `local_sku_catalog` 与 `reference_cache_meta`；19→20 新增 SKU 单条同步时间 `syncedAt`，旧值默认为 0，在线使用前重新核验。保留现有草稿、待上传记录及缓存。
 - 库位与 SKU 每两小时后台检查更新；登录、切换账号/工作空间、回到前台、网络恢复及进入入库会话触发异步过期检查。周期任务受 Android 系统调度影响，不保证精确到点执行。沿用原任务名称并使用 UPDATE，将旧安装的 24 小时任务更新为两小时。
 - APP 入库页手动同步同时强制更新基础资料和当前单据；“更新离线资料”入口也强制更新。任务按账号、工作空间去重，刷新互斥，不取消正在运行的下载。业务同步与资料同步分别记录结果，任一失败都会反馈。
-- SKU 编码规范化后按账号、工作空间建立主键；定向查询最多每批 400 条，不再从旧盘点索引或箱码名称覆盖中心身份资料。单条查询不延长全量快照有效期。
+- SKU 原始编码去除首尾空白后按账号、工作空间建立主键，保留大小写；另存大写检索字段 foldedCode 及范围索引。定向解析最多每批 400 条，不从旧盘点索引或箱码名称覆盖中心身份资料。局部查询不延长全量快照有效期。
+- Room 20→21 仅清除旧 SKU 缓存及其同步标记，再新增 foldedCode 及索引；旧缓存已丢失大小写，不能伪造原码。草稿、待上传、库位和箱码资料保留。更新后重新下载 SKU 资料。
+- 完整候选组通过 `reference_cache_meta` 中 `sku_group:<大写编码>` 保存完整性、数量和核验时间，组内所有候选与标记事务替换；明确缺失清空旧组，歧义保留全部身份并在无法精确命中时提示具体编码。缓存读取也使用事务，避免读取替换前后的混合资料。完整快照替换清理局部标记。
 - 箱码映射与单据归属属于业务资料，保留独立更新频率。全局箱码快照的成功时间与局部单据更新分开记录。
-- 下载结束并通过分页检查才事务替换数据。中断、重复/倒退游标、异常空页及缺失记录保留旧缓存；成功全量替换清除删除项。
+- 下载结束并通过分页、SKU ID 及精确编码唯一性检查才事务替换数据。大小写不同的编码分别保存，不再导致整批失败。中断、重复/倒退游标、异常空页及缺失记录保留旧缓存；成功全量替换清除删除项。
 - 缓存完整性、数量、最后成功同步时间持久化并显示在入库页。基础资料更新错误独立显示具体原因；失败保留旧缓存，已有缓存仍可按上述离线规则使用。
 - 商品名称与规格用于展示；箱内数量始终来自原始箱唛或箱码映射，商品资料不提供替代数量。
 
@@ -22,13 +24,13 @@
 所有请求遵循中心 `code/data/msg` 响应包装，附带当前登录及工作空间请求头，并在落库前复核账号/空间未切换。
 
 - `GET /api/mobile/app/catalog/skus/snapshot?after_id=0&limit=500`：全量 SKU 身份快照。每项包含 `id,sku_code,sku_name,spec,product_id,product_code,product_name`，不包含价格、成本。原盘点快照接口保留。
-- `POST /api/mobile/app/catalog/skus/lookup`：请求 `{"codes":["SKU-A"]}`，返回 `items` 与 `missing_codes`。校验响应覆盖所有请求编码、无重复或冲突后，事务更新并清理缺失项。
+- `POST /api/mobile/app/catalog/skus/resolve`：请求 `{"codes":["Sku-A"]}`，返回 results，每项含 requested_code、status（matched / missing / ambiguous）、candidates；匹配时另有 matched_sku_id。校验请求覆盖、候选身份、组内一致性及匹配结果后按组事务替换。Map 返回键仍是去空白的请求原码，即使唯一候选的大小写不同也不会丢失匹配。旧 lookup 保留供旧 App 使用，新 App 不调用它。
 - `GET /api/mobile/app/catalog/locations/snapshot?after_id=0&limit=500`：当前绑定仓库有效库位，按 ID 游标分页；替代原带库存聚合的库位选项查询。
 - `GET /api/mobile/app/catalog/locations/resolve?warehouse_code=WH&code=A-01`：中心精确核验。不存在、停用、仓库不匹配业务码分别为 42244、42245、42246。库位查询不触发 BigSeller/APIMix 同步。
 
 两个全量快照均包含 `items,next_after_id,has_more`。中心权限与仓库配置边界保持不变；BigSeller 新库位应先进入中心库位表，APP 再从中心读取。
 
-部署顺序：先发布中心新增接口，再发布 App。旧中心返回 404 时显示中心接口需升级；已有缓存可在有效期内或显式离线时使用。中心无需数据库迁移，App 自动执行 Room 19→20 迁移。
+部署顺序：先发布中心新增接口，再发布 App。新 resolve 在旧中心返回 404 时显示需升级，不静默回退旧匹配接口。中心无需数据库迁移，App 自动执行 Room 20→21 迁移。真正无法唯一匹配时，四语提示包含原请求编码及具体冲突编码，要求按原始大小写扫描或输入。
 
 ## 验证
 
@@ -37,6 +39,30 @@ Android：运行 `:app:testDemoDebugUnitTest`、`:app:spotlessKotlinCheck`、`:a
 后端：`go test ./services ./handlers ./routes/modules -run '^TestMobileCatalog' -count=1`。设置 `FSCM_TEST_POSTGRES_DSN` 后，服务测试在隔离 PostgreSQL schema 内验证分页、namespace 隔离、软删除和非法参数；路由测试验证入库权限无需盘点权限、无权限/未登录拒绝。
 
 设备验收需准备真实业务数据，分别验证：两小时内缓存命中不联网；中心新增库位在本地缺失时可直接识别；缓存过期后采用中心更新；中心删除/停用后拒绝旧身份；断网但仍在线登录时回退缓存；APP 手动同步更新资料；后台更新不清除待上传记录。记录有效缓存扫描 P50/P95（目标 P95 ≤ 200ms），中心查询单独统计。本地构建或模拟测试不能替代手持设备性能验收。
+
+## SKU 大小写修复：文件与验证（2026-10-09）
+
+本次 Android 文件（Kotlin 路径均在 `app/src/main/kotlin/com/google/samples/apps/nowinandroid/fscm/` 下）：
+
+- `data/LocalSkuCatalog.kt`：原码主键、检索索引、完整候选解析校验、候选组事务替换、精确优先匹配及旧服务器提示。
+- `data/FscmDatabase.kt`：注册 Room 20→21，仅重建 SKU 缓存。
+- `data/LocalInbound.kt`：保持原码计数和返回索引，增加歧义及服务器升级错误类型。
+- `ui/InboundManagementViewModels.kt`：上述错误映射到翻译资源。
+- `app/src/main/res/{values,values-b+zh+Hans,values-th,values-my}/strings_inbound.xml`：中、英、泰、缅提示。
+- `app/src/test/kotlin/.../fscm/data/SkuCatalogResolutionTest.kt`：跨页变体、精确与唯一兜底、局部缓存、完整响应校验、删除候选、事务回滚、用户/空间隔离、升级保留业务数据。
+- 同目录 `ReferenceCatalogRefreshTest.kt`：候选组更新与 19→21 升级；`InboundCollectionMigrationTest.kt`、`AutoPurchaseReceivingTest.kt`：原有升级链追加 20→21；`OfflineReferenceCacheTest.kt`：原码与检索键区别；`LocalInboundTest.kt`：大小写不同的 SKU 分别计数。
+- `app/src/test/kotlin/.../fscm/ui/InboundErrorTextTest.kt`：歧义详情及升级提示映射。
+- 本文及 `docs/FSCMInboundSyncPerformance.md`：缓存规则、发布顺序及验收记录。
+
+实际验证：
+
+- `.\gradlew.bat :app:spotlessKotlinCheck :app:testDemoDebugUnitTest :app:assembleDemoDebug '-Pkotlin.incremental=false' --no-build-cache --continue --console=plain`：通过；364 项测试，0 失败、0 错误、0 跳过。开发包位于 `app/build/outputs/apk/demo/debug/app-demo-debug.apk`。
+- 初次运行的两项升级用例遇到 Windows 临时数据库路径过长；缩短用例名称后通过，保留全部数据校验断言。JDK 25 与现有 JaCoCo 的兼容告警仍存在，不据此声称覆盖率已验证。
+- 中心 PostgreSQL、handler 和权限测试通过，详见中心 `docs/features/mobile-offline-catalog.md`。默认 fscm 前后端挂载当前工作区，后端热重载成功；健康检查、前端页面和代理 API 返回 200，新接口未登录返回 401。
+- `adb devices` 无设备；尚未执行实机“更新离线资料”、同步数量/时间显示及连续扫码验收，也未发布生产环境。联网期间切换工作空间的设备时序场景仍待实机验收；自动化已验证缓存用户/空间隔离。
+- 两仓库 `git diff --check` 通过。保留已有 `LocationStocktakeScreen.kt` 库位盘点红色/加粗修改；本轮未修改中心 SKU 或库存，无方案偏离。
+
+设备验收：先部署新中心，再安装新 App，执行“更新离线资料”；确认成功数量和时间，再分别识别 `B13-single-Brown` 与 `B13-single-brown`，确认各自身份；输入 `B13-SINGLE-BROWN` 应列出冲突并拒绝任选身份。同时验证升级后草稿及待上传记录仍在。
 
 ## 两小时中心资料调整：文件与验证（2026-10-08）
 

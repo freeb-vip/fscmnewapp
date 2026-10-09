@@ -112,7 +112,8 @@ class OfflineReferenceCacheTest {
         validateSkuSnapshotPage(MobileSkuSnapshotPage(listOf(row), 10, true), 0)
         assertFailsWith<IllegalStateException> { validateSkuSnapshotPage(MobileSkuSnapshotPage(listOf(row), 10, true), 10) }
         assertFailsWith<IllegalStateException> { validateSkuSnapshotPage(MobileSkuSnapshotPage(listOf(row, row)), 0) }
-        assertEquals("SKU-A", normalizeCatalogCode(" sku-a "))
+        assertEquals("sku-a", normalizeCatalogCode(" sku-a "))
+        assertEquals("SKU-A", foldCatalogCode(" sku-a "))
     }
 
     @Test

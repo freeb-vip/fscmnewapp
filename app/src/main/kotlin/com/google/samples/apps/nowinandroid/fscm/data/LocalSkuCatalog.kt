@@ -19,10 +19,12 @@ package com.google.samples.apps.nowinandroid.fscm.data
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.withTransaction
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -36,7 +38,7 @@ import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
-@Entity(tableName = "local_sku_catalog", primaryKeys = ["userId", "namespaceId", "code"])
+@Entity(tableName = "local_sku_catalog", primaryKeys = ["userId", "namespaceId", "code"], indices = [Index(value = ["userId", "namespaceId", "foldedCode"])])
 data class LocalSkuCatalogEntity(
     val userId: Long,
     val namespaceId: Long,
@@ -48,6 +50,7 @@ data class LocalSkuCatalogEntity(
     val productCode: String,
     val productName: String,
     @ColumnInfo(defaultValue = "0") val syncedAt: Long = 0,
+    @ColumnInfo(defaultValue = "''") val foldedCode: String = foldCatalogCode(code),
 )
 
 @Entity(tableName = "reference_cache_meta", primaryKeys = ["userId", "namespaceId", "kind"])
@@ -65,6 +68,12 @@ interface LocalSkuCatalogDao {
     @Query("SELECT * FROM local_sku_catalog WHERE userId = :user AND namespaceId = :namespace AND code IN (:codes)")
     suspend fun find(user: Long, namespace: Long, codes: List<String>): List<LocalSkuCatalogEntity>
 
+    @Query("SELECT * FROM local_sku_catalog WHERE userId = :user AND namespaceId = :namespace AND foldedCode IN (:codes)")
+    suspend fun candidates(user: Long, namespace: Long, codes: List<String>): List<LocalSkuCatalogEntity>
+
+    @Query("SELECT * FROM reference_cache_meta WHERE userId = :user AND namespaceId = :namespace AND kind IN (:kinds)")
+    suspend fun metas(user: Long, namespace: Long, kinds: List<String>): List<ReferenceCacheMeta>
+
     @Query("SELECT * FROM reference_cache_meta WHERE userId = :user AND namespaceId = :namespace AND kind = :kind")
     suspend fun meta(user: Long, namespace: Long, kind: String): ReferenceCacheMeta?
 
@@ -77,18 +86,23 @@ interface LocalSkuCatalogDao {
     @Query("DELETE FROM local_sku_catalog WHERE userId = :user AND namespaceId = :namespace")
     suspend fun deleteScope(user: Long, namespace: Long)
 
-    @Query("DELETE FROM local_sku_catalog WHERE userId = :user AND namespaceId = :namespace AND code IN (:codes)")
-    suspend fun deleteCodes(user: Long, namespace: Long, codes: List<String>)
+    @Query("DELETE FROM local_sku_catalog WHERE userId = :user AND namespaceId = :namespace AND foldedCode IN (:codes)")
+    suspend fun deleteGroups(user: Long, namespace: Long, codes: List<String>)
+
+    @Query("DELETE FROM reference_cache_meta WHERE userId = :user AND namespaceId = :namespace AND kind LIKE 'sku_group:%'")
+    suspend fun deleteGroupMeta(user: Long, namespace: Long)
 
     @Transaction
-    suspend fun applyLookup(user: Long, namespace: Long, codes: List<String>, rows: List<LocalSkuCatalogEntity>) {
-        deleteCodes(user, namespace, codes)
+    suspend fun applyResolvedGroups(user: Long, namespace: Long, rows: List<LocalSkuCatalogEntity>, groups: List<ReferenceCacheMeta>) {
+        deleteGroups(user, namespace, groups.map { it.kind.removePrefix("sku_group:") })
         insert(rows)
+        groups.forEach { saveMeta(it) }
     }
 
     @Transaction
     suspend fun replace(rows: List<LocalSkuCatalogEntity>, meta: ReferenceCacheMeta) {
         deleteScope(meta.userId, meta.namespaceId)
+        deleteGroupMeta(meta.userId, meta.namespaceId)
         insert(rows)
         saveMeta(meta)
     }
@@ -137,16 +151,78 @@ internal fun Throwable.referenceSyncMessage(): String = when {
 internal data class MobileSkuLookupRequest(val codes: List<String>)
 
 @Serializable
-internal data class MobileSkuLookupResult(
-    val items: List<MobileSkuSnapshotItem> = emptyList(),
-    @SerialName("missing_codes") val missingCodes: List<String> = emptyList(),
+internal data class MobileSkuResolution(
+    @SerialName("requested_code") val requestedCode: String,
+    val status: String,
+    @SerialName("matched_sku_id") val matchedSkuId: Long? = null,
+    val candidates: List<MobileSkuSnapshotItem>,
 )
 
-internal fun normalizeCatalogCode(code: String): String = code.trim().uppercase(Locale.ROOT)
+@Serializable
+internal data class MobileSkuResolveResult(val results: List<MobileSkuResolution>)
+
+internal fun normalizeCatalogCode(code: String): String = code.trim()
+internal fun foldCatalogCode(code: String): String = normalizeCatalogCode(code).uppercase(Locale.ROOT)
+
+internal fun validateSkuResolutionResult(result: MobileSkuResolveResult, requested: List<String>): Map<String, List<MobileSkuSnapshotItem>> {
+    check(result.results.map { it.requestedCode }.toSet() == requested.toSet() && result.results.size == requested.size) { "SKU 查询响应不完整" }
+    val groups = mutableMapOf<String, List<MobileSkuSnapshotItem>>()
+    for (resolution in result.results) {
+        val key = foldCatalogCode(resolution.requestedCode)
+        val candidates = resolution.candidates.sortedBy { it.id }
+        check(candidates.all { it.id > 0 && it.productId > 0 && it.productCode.isNotBlank() && it.skuCode.isNotBlank() && foldCatalogCode(it.skuCode) == key }) { "SKU 查询身份无效" }
+        check(candidates.distinctBy { it.id }.size == candidates.size) { "SKU 查询身份重复" }
+        val exact = candidates.filter { normalizeCatalogCode(it.skuCode) == resolution.requestedCode }
+        val match = exact.singleOrNull() ?: candidates.singleOrNull()?.takeIf { exact.isEmpty() }
+        val status = if (match != null) {
+            "matched"
+        } else if (candidates.isEmpty()) {
+            "missing"
+        } else {
+            "ambiguous"
+        }
+        check(resolution.status == status && resolution.matchedSkuId == match?.id) { "SKU 查询匹配结果无效" }
+        check(groups[key] == null || groups[key] == candidates) { "SKU 查询候选不一致" }
+        check(candidates.distinctBy { normalizeCatalogCode(it.skuCode) }.size == candidates.size) { "SKU 原始编码重复：${resolution.requestedCode}" }
+        groups[key] = candidates
+    }
+    check(groups.values.flatten().distinctBy { it.id }.size == groups.values.sumOf { it.size }) { "SKU 查询身份重复" }
+    return groups
+}
+
+internal data class SkuCatalogCache(val rows: List<LocalSkuCatalogEntity>, val metadata: List<ReferenceCacheMeta>) {
+    private val groups = rows.groupBy { it.foldedCode }
+    private val metas = metadata.associateBy { it.kind }
+
+    fun isFresh(code: String): Boolean {
+        val candidates = groups[foldCatalogCode(code)].orEmpty()
+        val exact = candidates.singleOrNull { it.code == code }
+        if (exact != null && referenceDataIsFresh(exact.syncedAt)) return true
+        val groupMeta = metas["sku_group:${foldCatalogCode(code)}"]
+        if (groupMeta?.complete == true && groupMeta.totalCount == candidates.size && referenceDataIsFresh(groupMeta.refreshedAt)) return true
+        val all = metas["skus"]
+        return all?.complete == true && referenceDataIsFresh(all.refreshedAt) && candidates.isNotEmpty() && candidates.all { referenceDataIsFresh(it.syncedAt) }
+    }
+
+    fun resolve(code: String): LocalSkuCatalogEntity? {
+        val candidates = groups[foldCatalogCode(code)].orEmpty()
+        candidates.singleOrNull { it.code == code }?.let { return it }
+        if (candidates.size > 1) throw InboundClientException(InboundClientError.SkuAmbiguous, "$code (${candidates.map { it.code }.sorted().joinToString(" / ")})")
+        val groupMeta = metas["sku_group:${foldCatalogCode(code)}"]
+        val complete = metas["skus"]?.complete == true || (groupMeta?.complete == true && groupMeta.totalCount == candidates.size)
+        return candidates.singleOrNull()?.takeIf { complete }
+    }
+}
+
+internal fun validateSkuSnapshot(rows: List<LocalSkuCatalogEntity>) {
+    check(rows.distinctBy { it.skuId }.size == rows.size) { "SKU 快照身份重复" }
+    val duplicate = rows.groupingBy { it.code }.eachCount().entries.firstOrNull { it.value > 1 }
+    check(duplicate == null) { "SKU 原始编码重复：${duplicate?.key}" }
+}
 
 internal fun validateSkuSnapshotPage(page: MobileSkuSnapshotPage, after: Long) {
     check(page.items.zipWithNext().all { (a, b) -> a.id < b.id }) { "SKU 分页顺序异常" }
-    check(page.items.all { it.id > after && it.skuCode.isNotBlank() && it.productCode.isNotBlank() }) { "SKU 快照记录无效" }
+    check(page.items.all { it.id > after && it.productId > 0 && it.skuCode.isNotBlank() && it.productCode.isNotBlank() }) { "SKU 快照记录无效" }
     check(!page.hasMore || (page.items.isNotEmpty() && page.nextAfterId == page.items.last().id)) { "SKU 快照未下载完整" }
 }
 
@@ -165,42 +241,44 @@ class LocalSkuCatalogRepository @Inject constructor(
         val normalized = codes.map(::normalizeCatalogCode).filter(String::isNotBlank).distinct()
         val user = session.user?.id ?: 0
         val namespace = session.currentNamespace?.id ?: 0
-        var rows = normalized.chunked(400).flatMap { dao.find(user, namespace, it) }.associateBy { it.code }
-        if (!session.isOffline && normalized.any { !referenceDataIsFresh(rows[it]?.syncedAt ?: 0) }) {
+        suspend fun readCache(): SkuCatalogCache = database.withTransaction {
+            val folded = normalized.map(::foldCatalogCode).distinct()
+            SkuCatalogCache(
+                folded.chunked(400).flatMap { dao.candidates(user, namespace, it) },
+                (listOf("skus") + folded.map { "sku_group:$it" }).chunked(400).flatMap { dao.metas(user, namespace, it) },
+            )
+        }
+        var cache = readCache()
+        if (!session.isOffline && normalized.any { !cache.isFresh(it) }) {
             try {
                 withTimeoutOrNull(REFERENCE_LOOKUP_TIMEOUT_MS) {
                     mutex.withLock {
                         checkScope(user, namespace)
-                        val latest = normalized.chunked(400).flatMap { dao.find(user, namespace, it) }.associateBy { it.code }
-                        normalized.filter { !referenceDataIsFresh(latest[it]?.syncedAt ?: 0) }.chunked(400).forEach { requested ->
-                            val result: MobileSkuLookupResult = api.post(
-                                "mobile/app/catalog/skus/lookup",
+                        val latest = readCache()
+                        normalized.filter { !latest.isFresh(it) }.chunked(400).forEach { requested ->
+                            val result: MobileSkuResolveResult = api.post(
+                                "mobile/app/catalog/skus/resolve",
                                 headers = inboundScopeHeaders(user, namespace),
                                 body = Json.encodeToJsonElement(MobileSkuLookupRequest(requested)),
                             )
-                            val returned = result.items.map { normalizeCatalogCode(it.skuCode) }
-                            val missing = result.missingCodes.map(::normalizeCatalogCode)
-                            check(
-                                returned.distinct().size == returned.size && missing.distinct().size == missing.size &&
-                                    returned.toSet().intersect(missing.toSet()).isEmpty() && (returned + missing).toSet() == requested.toSet() &&
-                                    result.items.all { it.id > 0 && it.productId > 0 && it.productCode.isNotBlank() },
-                            ) { "SKU 查询响应不完整" }
+                            val groups = validateSkuResolutionResult(result, requested)
                             val now = System.currentTimeMillis()
-                            val updates = result.items.map { it.toEntity(user, namespace, now) }
+                            val updates = groups.values.flatten().map { it.toEntity(user, namespace, now) }
                             checkScope(user, namespace)
-                            dao.applyLookup(user, namespace, requested, updates)
+                            dao.applyResolvedGroups(user, namespace, updates, groups.map { (key, items) -> ReferenceCacheMeta(user, namespace, "sku_group:$key", true, items.size, now) })
                         }
                     }
                     true
                 } ?: throw IOException("中心服务器 SKU 查询超时")
             } catch (error: Exception) {
+                if (error is FscmApiException && error.statusCode == 404) throw InboundClientException(InboundClientError.SkuServerUpgradeRequired)
                 if (!error.canUseReferenceCache()) throw error
             }
             checkScope(user, namespace)
-            rows = normalized.chunked(400).flatMap { dao.find(user, namespace, it) }.associateBy { it.code }
+            cache = readCache()
         }
         checkScope(user, namespace)
-        return rows.filterValues { it.skuId > 0 }
+        return normalized.mapNotNull { code -> cache.resolve(code)?.takeIf { it.skuId > 0 }?.let { code to it } }.toMap()
     }
 
     private suspend fun checkScope(user: Long, namespace: Long) {
@@ -238,7 +316,7 @@ class LocalSkuCatalogRepository @Inject constructor(
             rows += page.items.map { it.toEntity(user, namespace, System.currentTimeMillis()) }
             after = page.nextAfterId
         } while (page.hasMore)
-        check(rows.distinctBy { it.code }.size == rows.size) { "SKU 编码存在歧义" }
+        validateSkuSnapshot(rows)
         val current = sessionStore.current()
         check(current.user?.id == user && current.currentNamespace?.id == namespace) { "工作空间已切换" }
         dao.replace(rows, ReferenceCacheMeta(user, namespace, "skus", true, rows.size, System.currentTimeMillis()))

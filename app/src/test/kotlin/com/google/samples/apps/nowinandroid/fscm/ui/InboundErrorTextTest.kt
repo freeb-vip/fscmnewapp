@@ -26,6 +26,14 @@ import kotlin.test.assertEquals
 
 class InboundErrorTextTest {
     @Test
+    fun skuAmbiguityPreservesOriginalCodeAndUpgradeIsExplicit() {
+        val error = text(InboundClientError.SkuAmbiguous, "B13-SINGLE-BROWN")
+        assertEquals(R.string.inbound_sku_ambiguous, error.id)
+        assertEquals(listOf("B13-SINGLE-BROWN"), error.args)
+        assertEquals(R.string.inbound_sku_server_upgrade_required, text(InboundClientError.SkuServerUpgradeRequired).id)
+    }
+
+    @Test
     fun centerLocationRejectionDoesNotClaimOnlyTheLocalCacheIsMissing() {
         val error = FscmApiException("missing", 422, Json.parseToJsonElement("""{"code":42244}"""))
         assertEquals(R.string.inbound_location_center_not_found, (error.inboundUiText() as UiText.Resource).id)

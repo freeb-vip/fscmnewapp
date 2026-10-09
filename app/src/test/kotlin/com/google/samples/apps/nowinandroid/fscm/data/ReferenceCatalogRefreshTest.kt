@@ -69,10 +69,10 @@ class ReferenceCatalogRefreshTest {
         try {
             val dao = db.localSkuCatalogDao()
             val a = LocalSkuCatalogEntity(1, 2, "A", 10, "Old", "", 1, "P", "Product", 100)
-            val b = a.copy(code = "B", skuId = 11)
+            val b = a.copy(code = "B", skuId = 11, foldedCode = "B")
             dao.replace(listOf(a, b), ReferenceCacheMeta(1, 2, "skus", true, 2, 100))
             dao.insert(listOf(a.copy(userId = 3)))
-            dao.applyLookup(1, 2, listOf("A", "B"), listOf(a.copy(name = "Center", syncedAt = 200)))
+            dao.applyResolvedGroups(1, 2, listOf(a.copy(name = "Center", syncedAt = 200)), listOf(ReferenceCacheMeta(1, 2, "sku_group:A", true, 1, 200), ReferenceCacheMeta(1, 2, "sku_group:B", true, 0, 200)))
             assertEquals("Center", dao.find(1, 2, listOf("A")).single().name)
             assertTrue(dao.find(1, 2, listOf("B")).isEmpty())
             assertEquals("Old", dao.find(3, 2, listOf("A")).single().name)
@@ -83,7 +83,7 @@ class ReferenceCatalogRefreshTest {
     }
 
     @Test
-    fun migration20PreservesSkuDraftAndPendingRecords() = runBlocking {
+    fun migration19To21KeepsPendingData() = runBlocking {
         val context = RuntimeEnvironment.getApplication()
         val name = "reference-migration-${java.util.UUID.randomUUID()}"
         val old = Room.databaseBuilder(context, FscmDatabase::class.java, name).allowMainThreadQueries().build()
@@ -93,12 +93,13 @@ class ReferenceCatalogRefreshTest {
             old.localInboundDao().insertBatch(LocalInboundBatchEntity("draft", 1, 2, 3, "A-01", 10))
             old.localInboundDao().insertItem(LocalInboundItemEntity("pending", "done", 1, 2, 3, 4, "BOX", "BOX", "A-01", status = "pending"))
             old.openHelper.writableDatabase.execSQL("ALTER TABLE local_sku_catalog DROP COLUMN syncedAt")
+            removeSkuFoldedCode(old.openHelper.writableDatabase)
             old.openHelper.writableDatabase.version = 19
             old.close()
             val migrated = Room.databaseBuilder(context, FscmDatabase::class.java, name).allowMainThreadQueries()
-                .addMigrations(FscmDatabaseModule.MIGRATION_19_20).build()
+                .addMigrations(FscmDatabaseModule.MIGRATION_19_20, FscmDatabaseModule.MIGRATION_20_21).build()
             try {
-                assertEquals(row, migrated.localSkuCatalogDao().find(1, 2, listOf("A")).single())
+                assertTrue(migrated.localSkuCatalogDao().find(1, 2, listOf("A")).isEmpty())
                 assertEquals("draft", migrated.localInboundDao().batch("draft")?.status)
                 assertEquals("pending", migrated.localInboundDao().itemsForSession(1, 2, 3).single().status)
             } finally {

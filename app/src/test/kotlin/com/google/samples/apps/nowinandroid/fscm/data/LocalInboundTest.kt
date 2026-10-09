@@ -338,6 +338,8 @@ class LocalInboundTest {
             )
 
         assertEquals(InboundDraftMetrics(2, 2, 5, false), calculateInboundDraftMetrics(details))
+        val variants = listOf(InboundDraftBoxDetail(item("BOX-C", InboundItemStatus.Draft), listOf(InboundSkuQuantity("B13-single-Brown", 3), InboundSkuQuantity("B13-single-brown", 2))))
+        assertEquals(InboundDraftMetrics(1, 2, 5, true), calculateInboundDraftMetrics(variants))
     }
 
     @Test

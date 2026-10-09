@@ -356,7 +356,7 @@ interface LocalReceivingDao {
         LocalSkuCatalogEntity::class,
         ReferenceCacheMeta::class,
     ],
-    version = 20,
+    version = 21,
     exportSchema = false,
 )
 abstract class FscmDatabase : RoomDatabase() {
@@ -420,6 +420,7 @@ object FscmDatabaseModule {
                     MIGRATION_17_18,
                     MIGRATION_18_19,
                     MIGRATION_19_20,
+                    MIGRATION_20_21,
                 )
                 .build()
         } finally {
@@ -687,6 +688,16 @@ object FscmDatabaseModule {
             db.execSQL("UPDATE `product_count_entries` SET `skuItemsJson` = COALESCE((SELECT json_group_array(json_object('sku_code', value, 'quantity', NULL, 'quantity_source', 'unknown')) FROM json_each(`skuCodesJson`)), '[]')")
             db.execSQL("UPDATE `product_count_entries` SET `sequenceNo` = rowid WHERE `sequenceNo` = 0")
             db.execSQL("DELETE FROM `pending_sync_operations` WHERE `module` = 'product_counting'")
+        }
+    }
+
+    internal val MIGRATION_20_21 = object : Migration(20, 21) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // Original casing cannot be reconstructed from the old uppercase cache.
+            db.execSQL("DELETE FROM local_sku_catalog")
+            db.execSQL("DELETE FROM reference_cache_meta WHERE kind = 'skus' OR kind LIKE 'sku_group:%'")
+            db.execSQL("ALTER TABLE local_sku_catalog ADD COLUMN foldedCode TEXT NOT NULL DEFAULT ''")
+            db.execSQL("CREATE INDEX index_local_sku_catalog_userId_namespaceId_foldedCode ON local_sku_catalog(userId, namespaceId, foldedCode)")
         }
     }
 
