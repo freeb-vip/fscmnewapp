@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="warehouse_summary_title">ယနေ့ ဂိုဒေါင်တစ်ခုလုံး၏ အလုပ်</string>
+    <string name="warehouse_summary_count">ယနေ့ အလုပ်အရေအတွက်</string>
+    <string name="warehouse_summary_efficiency">တစ်ဦးတစ်နာရီ အလုပ်နှုန်း</string>
+    <string name="warehouse_summary_yesterday">မနေ့က %1$s</string>
+    <string name="warehouse_summary_as_of">%1$s အထိ</string>
+    <string name="warehouse_summary_basis">မနေ့က နေ့စဉ်အလုပ်အစီရင်ခံစာနှင့် နှိုင်းယှဉ်ခြင်း</string>
+    <string name="warehouse_summary_missing">ယနေ့စာရင်း မစုဆောင်းရသေးပါ</string>
+    <string name="warehouse_summary_offline">အော့ဖ်လိုင်း သိမ်းထားသောအချက်အလက်</string>
+    <string name="warehouse_summary_delayed">အပ်ဒိတ်မအောင်မြင်ပါ၊ သိမ်းထားသောအချက်အလက်ကို ပြထားသည်</string>
     <string name="style_my_work">ယနေ့ ကျွန်ုပ်၏အလုပ်</string>
     <string name="style_work_count">လုပ်ဆောင်ပြီး အော်ဒါ</string>
     <string name="style_efficiency">တစ်နာရီလျှင် အော်ဒါ</string>

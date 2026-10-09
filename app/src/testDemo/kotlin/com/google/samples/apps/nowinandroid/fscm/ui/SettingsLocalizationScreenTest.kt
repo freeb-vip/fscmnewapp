@@ -84,7 +84,7 @@ class SettingsLocalizationScreenTest {
         var opened = ""
         compose.setContent {
             LocalizedContent {
-                WarehouseStyleScreen(SessionState(), presentation, LoadState(), 0, {}, {}, {}, { opened = it.key })
+                WarehouseStyleScreen(SessionState(), presentation, LoadState(), {}, {}, { opened = it.key })
             }
         }
         assertAppTitlesAcrossLocales()

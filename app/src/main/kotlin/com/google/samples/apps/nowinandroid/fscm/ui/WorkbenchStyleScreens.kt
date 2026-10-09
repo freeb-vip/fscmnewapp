@@ -22,8 +22,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -54,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.fscm.data.MobileAppEntry
 import com.google.samples.apps.nowinandroid.fscm.data.MobileAppUsage
@@ -77,9 +78,7 @@ internal fun WarehouseStyleScreen(
     session: SessionState,
     presentation: WorkbenchPresentation,
     state: LoadState<WarehouseWorkbench>,
-    pendingSyncCount: Int,
     onProfile: () -> Unit,
-    onDetail: () -> Unit,
     onRefresh: () -> Unit,
     onOpenApp: (MobileAppEntry) -> Unit,
 ) {
@@ -87,10 +86,10 @@ internal fun WarehouseStyleScreen(
         .filterNot { it.key in setOf("todos", "notes", "tickets") }
     val pinned = orderedWarehouseHomeApps(catalog, presentation.homeAppKeys)
     val other = catalog.filterNot { app -> pinned.any { it.key == app.key } }
-    val columns = if (LocalConfiguration.current.screenWidthDp < 360 || LocalDensity.current.fontScale >= 1.3f) 1 else 2
+    val apps = (pinned + other).distinctBy { it.key }
     PullToRefreshBox(isRefreshing = state.loading, onRefresh = onRefresh) {
         LazyColumn(
-            modifier = Modifier.background(workbenchBackground),
+            modifier = Modifier.fillMaxSize().background(workbenchBackground),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -106,48 +105,12 @@ internal fun WarehouseStyleScreen(
                 }
             }
             item {
-                StyleCard(onClick = onDetail) {
-                    Text(stringResource(R.string.style_my_work), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(12.dp))
-                    val metric = state.data?.metric
-                    if (metric == null) {
-                        Text(
-                            if (state.loading) {
-                                stringResource(R.string.connecting_fscm)
-                            } else if (state.data?.status == "missing") {
-                                stringResource(R.string.style_no_work_data)
-                            } else {
-                                stringResource(R.string.style_data_unavailable)
-                            },
-                        )
-                    } else {
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            StyleMetric(stringResource(R.string.style_work_count), if (metric.available == true) metric.count.toString() else "—", Modifier.weight(1f))
-                            StyleMetric(stringResource(R.string.style_efficiency), if (metric.efficiencyAvailable == true) "%.1f".format(metric.efficiency) else "—", Modifier.weight(1f))
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Text("${stringResource(R.string.style_person_hours)} · ${"%.1f".format(metric.personHours)} h", style = MaterialTheme.typography.bodySmall)
-                    }
-                    state.data?.let { Text("${it.date} · ${it.timezone}", style = MaterialTheme.typography.bodySmall) }
-                }
+                WarehouseSummaryCard(state, session.isOffline, onRefresh)
             }
-            if (pendingSyncCount > 0) {
-                item { Text(stringResource(R.string.style_pending_sync, pendingSyncCount), color = MaterialTheme.colorScheme.error) }
-            }
-            item { Text(stringResource(R.string.style_common_work), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-            items(pinned.chunked(columns)) { pair ->
+            items(apps.chunked(2), key = { pair -> pair.joinToString("|") { it.key } }) { pair ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    pair.forEach { app -> WarehouseAppTile(app, Modifier.weight(1f), onOpenApp) }
-                    if (columns == 2 && pair.size == 1) Spacer(Modifier.weight(1f))
-                }
-            }
-            if (other.isNotEmpty()) {
-                item { Text(stringResource(R.string.style_other_apps), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-                items(other.chunked(columns)) { pair ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        pair.forEach { app -> WarehouseAppTile(app, Modifier.weight(1f), onOpenApp) }
-                        if (columns == 2 && pair.size == 1) Spacer(Modifier.weight(1f))
-                    }
+                    pair.forEach { app -> WarehouseAppTile(app, Modifier.weight(1f), onOpenApp, large = true) }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
         }
@@ -155,10 +118,10 @@ internal fun WarehouseStyleScreen(
 }
 
 @Composable
-private fun WarehouseAppTile(app: MobileAppEntry, modifier: Modifier, onOpen: (MobileAppEntry) -> Unit) {
+private fun WarehouseAppTile(app: MobileAppEntry, modifier: Modifier, onOpen: (MobileAppEntry) -> Unit, large: Boolean = false) {
     Card(
         onClick = { onOpen(app) },
-        modifier = modifier.heightIn(min = 108.dp),
+        modifier = modifier.heightIn(min = if (large) 120.dp else 108.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         shape = RoundedCornerShape(16.dp),
     ) {
@@ -167,28 +130,15 @@ private fun WarehouseAppTile(app: MobileAppEntry, modifier: Modifier, onOpen: (M
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            FscmAppIcon(app, size = 48)
-            Text(localizedAppTitle(app), maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-        }
-    }
-}
-
-@Composable
-internal fun WarehouseDetailScreen(state: LoadState<WarehouseWorkbench>) {
-    val data = state.data
-    LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item {
-            StyleCard {
-                Text(stringResource(R.string.style_personal_detail), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("${data?.date.orEmpty()} · ${data?.timezone.orEmpty()}")
-                data?.metric?.let { metric ->
-                    StyleMetric(stringResource(R.string.style_work_count), if (metric.available == true) metric.count.toString() else "—")
-                    StyleMetric(stringResource(R.string.style_efficiency), if (metric.efficiencyAvailable == true) "%.1f".format(metric.efficiency) else "—")
-                } ?: Text(stringResource(R.string.style_no_work_data))
-            }
-        }
-        items(data?.operations?.toList().orEmpty()) { (code, metric) ->
-            StyleCard { StyleMetric(code, if (metric.available) metric.count.toString() else "—") }
+            FscmAppIcon(app, size = if (large) 56 else 48)
+            Text(
+                localizedAppTitle(app),
+                maxLines = if (large) Int.MAX_VALUE else 2,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = if (large) 20.sp else MaterialTheme.typography.bodyLarge.fontSize,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }

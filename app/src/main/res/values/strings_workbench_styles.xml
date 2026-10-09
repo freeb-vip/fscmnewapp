@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="warehouse_summary_title">Warehouse work today</string>
+    <string name="warehouse_summary_count">Work count today</string>
+    <string name="warehouse_summary_efficiency">Work per person-hour</string>
+    <string name="warehouse_summary_yesterday">Yesterday %1$s</string>
+    <string name="warehouse_summary_as_of">As of %1$s</string>
+    <string name="warehouse_summary_basis">Compared with yesterday’s daily report</string>
+    <string name="warehouse_summary_missing">Today’s statistics have not been collected</string>
+    <string name="warehouse_summary_offline">Offline cache</string>
+    <string name="warehouse_summary_delayed">Update failed; showing cached data</string>
     <string name="style_my_work">My work today</string>
     <string name="style_work_count">Work orders</string>
     <string name="style_efficiency">Orders per person-hour</string>

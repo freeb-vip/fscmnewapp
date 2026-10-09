@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="warehouse_summary_title">งานทั้งคลังวันนี้</string>
+    <string name="warehouse_summary_count">จำนวนงานวันนี้</string>
+    <string name="warehouse_summary_efficiency">งานต่อคนต่อชั่วโมง</string>
+    <string name="warehouse_summary_yesterday">เมื่อวาน %1$s</string>
+    <string name="warehouse_summary_as_of">ข้อมูลถึง %1$s</string>
+    <string name="warehouse_summary_basis">เทียบกับรายงานงานเมื่อวาน</string>
+    <string name="warehouse_summary_missing">ยังไม่ได้รวบรวมสถิติวันนี้</string>
+    <string name="warehouse_summary_offline">ข้อมูลออฟไลน์</string>
+    <string name="warehouse_summary_delayed">อัปเดตไม่สำเร็จ แสดงข้อมูลที่บันทึกไว้</string>
     <string name="style_my_work">งานของฉันวันนี้</string>
     <string name="style_work_count">ออเดอร์ที่ทำ</string>
     <string name="style_efficiency">ออเดอร์ต่อชั่วโมงทำงาน</string>

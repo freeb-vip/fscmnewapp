@@ -19,8 +19,11 @@ package com.google.samples.apps.nowinandroid.fscm.data
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.time.Instant
+import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -43,6 +46,7 @@ data class WarehouseMetric(
 
 @Serializable
 data class WarehouseWorkbench(
+    val scope: String = "personal",
     val date: String = "",
     val timezone: String = "",
     @SerialName("captured_at") val capturedAt: String = "",
@@ -50,7 +54,36 @@ data class WarehouseWorkbench(
     val reason: String = "",
     val metric: WarehouseMetric? = null,
     val operations: Map<String, WarehouseOperationMetric> = emptyMap(),
+    @SerialName("yesterday_date") val yesterdayDate: String = "",
+    @SerialName("yesterday_captured_at") val yesterdayCapturedAt: String = "",
+    @SerialName("yesterday_metric") val yesterdayMetric: WarehouseMetric? = null,
+    @SerialName("comparison_available") val comparisonAvailable: Boolean = false,
+    @Transient val cached: Boolean = false,
 )
+
+internal fun WarehouseWorkbench.forCurrentBusinessDate(now: Instant = Instant.now()): WarehouseWorkbench {
+    val today = runCatching { now.atZone(ZoneId.of(timezone)).toLocalDate() }.getOrNull()
+        ?: return copy(metric = null, yesterdayMetric = null, comparisonAvailable = false)
+    if (date == today.toString()) return this
+    val previous = today.minusDays(1).toString()
+    return copy(
+        date = today.toString(),
+        status = "missing",
+        capturedAt = "",
+        metric = null,
+        yesterdayDate = previous,
+        yesterdayCapturedAt = capturedAt.takeIf { date == previous }.orEmpty(),
+        yesterdayMetric = metric.takeIf { date == previous },
+        comparisonAvailable = false,
+    )
+}
+
+internal fun warehouseChangePercent(current: Double?, previous: Double?): Double? {
+    if (current == null || previous == null || !current.isFinite() || !previous.isFinite() || previous <= 0) return null
+    return ((current - previous) / previous * 100).takeIf { it.isFinite() }
+}
+
+internal fun canReadWarehouseSummary(session: SessionState): Boolean = "order_statistics" in session.permissions
 
 @Serializable
 data class WarehouseOperationMetric(
@@ -194,7 +227,37 @@ class WorkbenchStyleRepository @Inject constructor(
         }
     }
 
-    suspend fun warehouse(): WarehouseWorkbench = api.get("mobile/app/workbench/warehouse")
+    suspend fun cachedWarehouse(session: SessionState): WarehouseWorkbench? {
+        if (!canReadWarehouseSummary(session)) return WarehouseWorkbench(scope = "workspace", status = "no_permission")
+        return offlineCacheDao.find(session.user?.id ?: 0, session.currentNamespace?.id ?: 0, "warehouse_summary_v1")
+            ?.let { runCatching { json.decodeFromString<WarehouseWorkbench>(it.payload) }.getOrNull() }
+            ?.takeIf { it.scope == "workspace" }
+            ?.copy(cached = true)
+            ?.forCurrentBusinessDate()
+    }
+
+    suspend fun warehouse(session: SessionState): WarehouseWorkbench {
+        if (!canReadWarehouseSummary(session)) return WarehouseWorkbench(scope = "workspace", status = "no_permission")
+        val fresh = try {
+            api.get<WarehouseWorkbench>("mobile/app/workbench/warehouse-summary")
+        } catch (error: FscmApiException) {
+            if (error.statusCode != 401 && error.statusCode != 403) throw error
+            WarehouseWorkbench(scope = "workspace", status = "no_permission")
+        }
+        val active = sessionStore.current()
+        if (active.user?.id == session.user?.id && active.currentNamespace?.id == session.currentNamespace?.id) {
+            offlineCacheDao.upsert(
+                OfflineCacheEntity(
+                    userId = session.user?.id ?: 0,
+                    namespaceId = session.currentNamespace?.id ?: 0,
+                    cacheKey = "warehouse_summary_v1",
+                    payload = json.encodeToString(fresh),
+                    updatedAt = System.currentTimeMillis(),
+                ),
+            )
+        }
+        return fresh
+    }
 
     suspend fun operations(): OperationsWorkbench = api.get(
         "mobile/app/workbench/operations",

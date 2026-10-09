@@ -718,7 +718,6 @@ private enum class MainTab(@StringRes val titleRes: Int, val icon: ImageVector) 
 
 internal sealed interface FeatureRoute : Serializable {
     data object None : FeatureRoute
-    data object WarehouseDetail : FeatureRoute
     data object RealtimeData : FeatureRoute
     data object DailyDetail : FeatureRoute
     data object Todos : FeatureRoute
@@ -968,9 +967,7 @@ private fun MainShell(
                         session = session,
                         presentation = presentation,
                         state = warehouseState,
-                        pendingSyncCount = pendingSyncCount,
                         onProfile = { selectedTab = MainTab.Profile },
-                        onDetail = { featureRoute = FeatureRoute.WarehouseDetail },
                         onRefresh = { workbenchViewModel.loadStyle(session, force = true) },
                         onOpenApp = { app ->
                             if (openAppEntry(context, app, { featureRoute = it }) { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }) {
@@ -1057,7 +1054,6 @@ private fun FeatureScreen(
     onOpenReceivingDetail: (Long) -> Unit,
     onScanResult: (String) -> Unit = {},
 ) {
-    val warehouseState by workbenchViewModel.warehouse.collectAsStateWithLifecycle()
     val operationsState by workbenchViewModel.operations.collectAsStateWithLifecycle()
     val receivingDetailId = (route as? FeatureRoute.ReceivingDetail)?.id
     val receivingDetailViewModel: ReceivingDetailViewModel? =
@@ -1102,7 +1098,6 @@ private fun FeatureScreen(
                 FscmTopBar(
                     title = when (route) {
                         FeatureRoute.Profit -> stringResource(R.string.profit_dashboard)
-                        FeatureRoute.WarehouseDetail -> stringResource(R.string.style_personal_detail)
                         FeatureRoute.RealtimeData -> stringResource(R.string.rt_title)
                         FeatureRoute.DailyDetail -> stringResource(R.string.style_yesterday_daily)
                         FeatureRoute.Todos, is FeatureRoute.TodoDetail -> stringResource(R.string.style_todos)
@@ -1223,7 +1218,6 @@ private fun FeatureScreen(
     ) { padding ->
         Box(Modifier.padding(padding)) {
             when (route) {
-                FeatureRoute.WarehouseDetail -> WarehouseDetailScreen(warehouseState)
                 FeatureRoute.RealtimeData -> RealtimeDataScreen(realtimeState, onRealtimeSelect, onRealtimeRefresh)
                 FeatureRoute.DailyDetail -> DailyDetailScreen(operationsState)
                 FeatureRoute.Todos -> TodosScreen(

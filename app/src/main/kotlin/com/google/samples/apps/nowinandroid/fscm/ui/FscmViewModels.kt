@@ -473,23 +473,25 @@ class WorkbenchViewModel @Inject constructor(
             if (styleSessionKey != key) return@launch
             _presentation.value = presentation
             _presentationReady.value = true
-            if (session.isOffline) return@launch
             when (presentation.style) {
-                "warehouse" -> loadWarehouse(key)
-                "operations" -> loadOperations(key)
+                "warehouse" -> loadWarehouse(key, session)
+                "operations" -> if (!session.isOffline) loadOperations(key)
             }
         }
     }
 
-    private suspend fun loadWarehouse(key: String) {
-        _warehouse.value = _warehouse.value.copy(loading = true)
+    private suspend fun loadWarehouse(key: String, session: SessionState) {
         try {
-            val data = styleRepository.warehouse()
+            val cached = styleRepository.cachedWarehouse(session)
+            if (styleSessionKey != key) return
+            _warehouse.value = LoadState(loading = !session.isOffline, data = cached)
+            if (session.isOffline) return
+            val data = styleRepository.warehouse(session)
             if (styleSessionKey == key) _warehouse.value = LoadState(data = data)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
-            if (styleSessionKey == key) _warehouse.value = LoadState(error = error.toUiText(R.string.load_home_failed))
+            if (styleSessionKey == key) _warehouse.value = _warehouse.value.copy(loading = false, error = error.toUiText(R.string.load_home_failed))
         }
     }
 

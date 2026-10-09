@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="warehouse_summary_title">今日全仓作业</string>
+    <string name="warehouse_summary_count">今日作业数</string>
+    <string name="warehouse_summary_efficiency">今日人效</string>
+    <string name="warehouse_summary_yesterday">昨日 %1$s</string>
+    <string name="warehouse_summary_as_of">截至 %1$s</string>
+    <string name="warehouse_summary_basis">较昨日作业日报</string>
+    <string name="warehouse_summary_missing">今日统计尚未采集</string>
+    <string name="warehouse_summary_offline">离线缓存</string>
+    <string name="warehouse_summary_delayed">更新失败，保留缓存</string>
     <string name="style_my_work">我的今日作业</string>
     <string name="style_work_count">作业订单</string>
     <string name="style_efficiency">每人时订单</string>
