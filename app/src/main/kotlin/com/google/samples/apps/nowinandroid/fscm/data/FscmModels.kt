@@ -19,7 +19,6 @@ package com.google.samples.apps.nowinandroid.fscm.data
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 enum class SessionMode {
@@ -253,83 +252,6 @@ data class MobileRoleProfitSummary(
     @SerialName("total_gmv") val totalGmv: Double = 0.0,
     @SerialName("total_orders") val totalOrders: Int = 0,
     @SerialName("profit_margin") val profitMargin: Double = 0.0,
-)
-
-@Serializable
-data class ProfitOverview(
-    val audience: String = "",
-    val permissions: List<String> = emptyList(),
-    val summary: ProfitSummary = ProfitSummary(),
-    val shops: List<ShopOverview> = emptyList(),
-    val trend: ShopTrendResponse? = null,
-)
-
-@Serializable
-data class ProfitSummary(
-    @SerialName("total_profit") val totalProfit: Double = 0.0,
-    @SerialName("avg_profit_margin") val avgProfitMargin: Double = 0.0,
-    @SerialName("ad_spend_ratio") val adSpendRatio: Double = 0.0,
-    @SerialName("product_cost_ratio") val productCostRatio: Double = 0.0,
-    @SerialName("shipping_costs_ratio") val shippingCostsRatio: Double = 0.0,
-    @SerialName("commission_ratio") val commissionRatio: Double = 0.0,
-    @SerialName("total_orders") val totalOrders: Int = 0,
-    @SerialName("total_gmv") val totalGmv: Double = 0.0,
-    @SerialName("avg_commission") val avgCommission: Double = 0.0,
-)
-
-@Serializable
-data class ShopOverview(
-    @SerialName("shop_id") val shopId: Long = 0,
-    @SerialName("shop_name") val shopName: String = "",
-    val platform: String = "",
-    val profit: Double = 0.0,
-    @SerialName("profit_margin") val profitMargin: Double = 0.0,
-    @SerialName("gross_sales") val grossSales: Double = 0.0,
-    @SerialName("total_orders") val totalOrders: Int = 0,
-    @SerialName("latest_report_date") val latestReportDate: String = "",
-)
-
-@Serializable
-data class ShopTrendResponse(
-    val metric: String = "profit",
-    val granularity: String = "auto",
-    val buckets: List<String> = emptyList(),
-    val series: List<ShopTrendSeries> = emptyList(),
-    val ranking: List<ShopTrendRank> = emptyList(),
-    @SerialName("truncated_count") val truncatedCount: Int = 0,
-)
-
-@Serializable
-data class ShopTrendSeries(
-    @SerialName("shop_id") val shopId: Long = 0,
-    @SerialName("shop_name") val shopName: String = "",
-    val values: List<Double> = emptyList(),
-)
-
-@Serializable
-data class ShopTrendRank(
-    @SerialName("shop_id") val shopId: Long = 0,
-    @SerialName("shop_name") val shopName: String = "",
-    val platform: String = "",
-    val rank: Int = 0,
-    val value: Double = 0.0,
-    val latest: Double = 0.0,
-    val share: Double = 0.0,
-)
-
-@Serializable
-data class ProfitShopDetail(
-    val shop: ShopDetail? = null,
-    val reports: List<JsonElement> = emptyList(),
-    val total: Long = 0,
-)
-
-@Serializable
-data class ShopDetail(
-    val id: Long = 0,
-    val name: String = "",
-    val platform: String = "",
-    @SerialName("is_followed") val isFollowed: Boolean = false,
 )
 
 @Serializable

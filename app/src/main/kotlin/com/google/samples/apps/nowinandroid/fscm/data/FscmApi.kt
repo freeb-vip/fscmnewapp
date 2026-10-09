@@ -140,6 +140,11 @@ class FscmApiClient @Inject constructor(
         headers: Map<String, String> = emptyMap(),
     ): T = send(auth) { api.get(path, params, headers) }
 
+    suspend inline fun <reified T> getWithQuery(
+        path: String,
+        params: List<Pair<String, String>>,
+    ): T = get(fscmRepeatedQueryPath(path, params))
+
     suspend inline fun <reified T> post(
         path: String,
         headers: Map<String, String>,

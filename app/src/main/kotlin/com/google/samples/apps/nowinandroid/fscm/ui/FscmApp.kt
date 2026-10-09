@@ -91,7 +91,6 @@ import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Workspaces
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -193,20 +192,15 @@ import com.google.samples.apps.nowinandroid.fscm.data.MobileAppEntry
 import com.google.samples.apps.nowinandroid.fscm.data.MobileAppUsage
 import com.google.samples.apps.nowinandroid.fscm.data.MobileWorkbenchOverview
 import com.google.samples.apps.nowinandroid.fscm.data.NamespaceProfile
-import com.google.samples.apps.nowinandroid.fscm.data.ProfitOverview
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingProductBusiness
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingScanItem
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingSession
 import com.google.samples.apps.nowinandroid.fscm.data.SearchDestination
 import com.google.samples.apps.nowinandroid.fscm.data.SessionState
-import com.google.samples.apps.nowinandroid.fscm.data.ShopOverview
 import com.google.samples.apps.nowinandroid.fscm.data.Sku
 import com.google.samples.apps.nowinandroid.fscm.data.boxMarkPrintAvailability
 import com.google.samples.apps.nowinandroid.fscm.data.canAccessRealtime
 import com.google.samples.apps.nowinandroid.fscm.data.commonMobileApps
-import com.google.samples.apps.nowinandroid.fscm.data.formatAmount
-import com.google.samples.apps.nowinandroid.fscm.data.formatCount
-import com.google.samples.apps.nowinandroid.fscm.data.formatPercent
 import com.google.samples.apps.nowinandroid.fscm.data.hiddenMobileApps
 import com.google.samples.apps.nowinandroid.fscm.data.realtimeScope
 import com.google.samples.apps.nowinandroid.fscm.data.shortTime
@@ -1054,6 +1048,10 @@ private fun FeatureScreen(
     onOpenReceivingDetail: (Long) -> Unit,
     onScanResult: (String) -> Unit = {},
 ) {
+    if (route == FeatureRoute.Profit) {
+        OperatingDailyScreen(session, onBack)
+        return
+    }
     val operationsState by workbenchViewModel.operations.collectAsStateWithLifecycle()
     val receivingDetailId = (route as? FeatureRoute.ReceivingDetail)?.id
     val receivingDetailViewModel: ReceivingDetailViewModel? =
@@ -1097,7 +1095,7 @@ private fun FeatureScreen(
             if (route != FeatureRoute.CameraScanner) {
                 FscmTopBar(
                     title = when (route) {
-                        FeatureRoute.Profit -> stringResource(R.string.profit_dashboard)
+                        FeatureRoute.Profit -> stringResource(R.string.od_title)
                         FeatureRoute.RealtimeData -> stringResource(R.string.rt_title)
                         FeatureRoute.DailyDetail -> stringResource(R.string.style_yesterday_daily)
                         FeatureRoute.Todos, is FeatureRoute.TodoDetail -> stringResource(R.string.style_todos)
@@ -1225,7 +1223,7 @@ private fun FeatureScreen(
                     onOpen = { onNavigate(FeatureRoute.TodoDetail(it)) },
                 )
                 is FeatureRoute.TodoDetail -> TodoDetailScreen(id = route.id, onBack = onBack)
-                FeatureRoute.Profit -> ProfitScreen(session)
+                FeatureRoute.Profit -> Unit
                 FeatureRoute.ReceivingList -> WarehouseReceivingScreen(onOpenReceivingDetail)
                 is FeatureRoute.ReceivingDetail -> ReceivingDetailScreen(
                     route.id,
@@ -2339,100 +2337,6 @@ private fun NamespaceRow(
             Text(namespace.role.ifBlank { namespace.roleCode }, color = InkSoft, style = MaterialTheme.typography.labelMedium)
         }
         if (selected) Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = Success)
-    }
-}
-
-@Composable
-private fun ProfitScreen(
-    session: SessionState,
-    viewModel: ProfitViewModel = hiltViewModel(),
-) {
-    val state by viewModel.state.collectAsStateWithLifecycle()
-    LaunchedEffect(session.permissions) { viewModel.load(session.permissions) }
-    val data = state.data
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        item {
-            PageTitle(stringResource(R.string.profit_dashboard), stringResource(R.string.profit_description))
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("profit" to stringResource(R.string.profit_metric_profit), "gmv" to "GMV", "orders" to stringResource(R.string.profit_metric_orders)).forEach { (metric, label) ->
-                    AssistChip(
-                        onClick = { viewModel.setMetric(metric, session.permissions) },
-                        label = { Text(label) },
-                        leadingIcon = if (state.metric == metric) ({ Icon(Icons.Rounded.CheckCircle, contentDescription = null, Modifier.size(16.dp)) }) else null,
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = if (state.metric == metric) BrandSoft else Color.White,
-                            labelColor = if (state.metric == metric) BrandDeep else InkStrong,
-                            leadingIconContentColor = BrandMain,
-                        ),
-                        border = BorderStroke(1.dp, if (state.metric == metric) BrandMain.copy(alpha = 0.30f) else StrokeSoft),
-                    )
-                }
-            }
-        }
-        if (state.loading) item { LinearLoadingCard(stringResource(R.string.profit_loading)) }
-        state.error?.let { item { FscmErrorCard(it) { viewModel.load(session.permissions) } } }
-        if (data != null) {
-            item { ProfitSummaryCards(data) }
-            item { ShopRanking(data.shops) }
-        }
-    }
-}
-
-@Composable
-private fun ProfitSummaryCards(data: ProfitOverview) {
-    val summary = data.summary
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
-        modifier = Modifier.height(210.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        userScrollEnabled = false,
-    ) {
-        item { MetricCard(stringResource(R.string.profit_total_gmv), formatAmount(summary.totalGmv), BrandMain) }
-        item { MetricCard(stringResource(R.string.profit_total_profit), formatAmount(summary.totalProfit), if (summary.totalProfit >= 0) Success else Danger) }
-        item { MetricCard(stringResource(R.string.profit_margin), formatPercent(summary.avgProfitMargin), BrandDeep) }
-        item { MetricCard(stringResource(R.string.profit_order_count), formatCount(summary.totalOrders), Warning) }
-    }
-}
-
-@Composable
-private fun MetricCard(title: String, value: String, color: Color) {
-    FscmCard {
-        Text(title, color = InkSoft)
-        Spacer(Modifier.height(8.dp))
-        Text(value, color = color, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black, maxLines = 1)
-    }
-}
-
-@Composable
-private fun ShopRanking(shops: List<ShopOverview>) {
-    FscmCard {
-        SectionHeader(stringResource(R.string.profit_shop_ranking), stringResource(R.string.profit_shop_count, shops.size))
-        shops.sortedByDescending { it.profit }.take(10).forEachIndexed { index, shop ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(32.dp).clip(CircleShape).background(if (index < 3) BrandMain else Color(0xFFE6F4FF)), contentAlignment = Alignment.Center) {
-                    Text("${index + 1}", color = if (index < 3) Color.White else BrandMain, fontWeight = FontWeight.Bold)
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(shop.shopName, color = InkStrong, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(stringResource(R.string.profit_shop_line, shop.platform, formatAmount(shop.grossSales), shop.totalOrders), color = InkSoft, style = MaterialTheme.typography.labelMedium)
-                }
-                Text(formatAmount(shop.profit), color = if (shop.profit >= 0) Success else Danger, fontWeight = FontWeight.Black)
-            }
-        }
-        if (shops.isEmpty()) Text(stringResource(R.string.profit_no_data), color = InkSoft, modifier = Modifier.padding(vertical = 16.dp))
     }
 }
 

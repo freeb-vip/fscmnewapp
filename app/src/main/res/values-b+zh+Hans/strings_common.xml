@@ -87,7 +87,7 @@
     <string name="local_app_documents_title">文档</string><string name="local_app_documents_description">文档中心</string>
     <string name="local_app_receiving_title">仓库收货</string><string name="local_app_receiving_description">扫码入库</string>
     <string name="local_app_central_receiving_title">集运收货</string><string name="local_app_central_receiving_description">集运仓扫码收货</string>
-    <string name="local_app_profit_title">利润</string><string name="local_app_profit_description">利润看板</string>
+    <string name="local_app_profit_title">运营日报</string><string name="local_app_profit_description">经营汇总、店铺概览与排行榜</string>
     <string name="local_app_product_management_title">产品管理</string><string name="local_app_product_management_description">SKU 信息维护</string>
     <string name="local_app_box_labels_title">箱唛管理</string><string name="local_app_box_labels_description">箱唛全链路查询</string>
     <string name="local_app_supplier_orders_title">厂家订单</string><string name="local_app_supplier_orders_description">生产与发货进度</string>

@@ -364,7 +364,7 @@ class FscmDataTest {
 
         val apps = visibleMobileApps(
             overview = overview,
-            permissions = emptyList(),
+            permissions = listOf("mobile-app:profit", "operating-profit-daily"),
         )
 
         assertEquals(
@@ -385,7 +385,7 @@ class FscmDataTest {
             ),
         )
 
-        val apps = visibleMobileApps(overview, permissions = emptyList())
+        val apps = visibleMobileApps(overview, permissions = listOf("mobile-app:profit", "operating-profit-daily"))
 
         assertTrue(apps.all { it.key in implementedMobileAppKeys })
         assertTrue(apps.any { it.key == "profit" })

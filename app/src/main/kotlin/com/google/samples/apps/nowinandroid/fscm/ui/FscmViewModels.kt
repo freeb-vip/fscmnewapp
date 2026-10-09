@@ -60,8 +60,6 @@ import com.google.samples.apps.nowinandroid.fscm.data.OfflineSyncRepository
 import com.google.samples.apps.nowinandroid.fscm.data.OfflineSyncScheduler
 import com.google.samples.apps.nowinandroid.fscm.data.OperationsWorkbench
 import com.google.samples.apps.nowinandroid.fscm.data.ProductRepository
-import com.google.samples.apps.nowinandroid.fscm.data.ProfitOverview
-import com.google.samples.apps.nowinandroid.fscm.data.ProfitRepository
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingRepository
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingScanItem
 import com.google.samples.apps.nowinandroid.fscm.data.ReceivingSession
@@ -80,7 +78,6 @@ import com.google.samples.apps.nowinandroid.fscm.data.isKnownMappedBoxLabel
 import com.google.samples.apps.nowinandroid.fscm.data.isReceivingComplete
 import com.google.samples.apps.nowinandroid.fscm.data.samePrintContent
 import com.google.samples.apps.nowinandroid.fscm.data.toBusinessTypeCode
-import com.google.samples.apps.nowinandroid.fscm.data.todayRange
 import com.google.samples.apps.nowinandroid.fscm.data.withReceivedScan
 import com.google.samples.apps.nowinandroid.fscm.data.withoutPendingScan
 import com.google.samples.apps.nowinandroid.fscm.device.ReceivingScanFeedback
@@ -642,60 +639,6 @@ class WorkbenchViewModel @Inject constructor(
                 searchNavigationChannel.send(it)
             }
         }
-    }
-}
-
-data class ProfitUiState(
-    val loading: Boolean = false,
-    val data: ProfitOverview? = null,
-    val error: UiText? = null,
-    val audience: String = "employee",
-    val platform: String = "all",
-    val metric: String = "profit",
-    val startDate: String = todayRange().first,
-    val endDate: String = todayRange().second,
-)
-
-@HiltViewModel
-class ProfitViewModel @Inject constructor(
-    private val profitRepository: ProfitRepository,
-) : ViewModel() {
-    private val _state = MutableStateFlow(ProfitUiState())
-    val state = _state.asStateFlow()
-
-    fun load(permissions: List<String>) {
-        val audience = if ("profit-report:boss" in permissions) "boss" else "employee"
-        if ("profit-report:boss" !in permissions && "profit-report:employee" !in permissions) {
-            _state.value = ProfitUiState(error = UiText.Resource(R.string.no_permission_profit))
-            return
-        }
-        viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null, audience = audience) }
-            val current = _state.value
-            runCatching {
-                profitRepository.overview(
-                    audience = audience,
-                    startDate = current.startDate,
-                    endDate = current.endDate,
-                    platform = current.platform,
-                    metric = current.metric,
-                )
-            }.onSuccess { data ->
-                _state.update { it.copy(loading = false, data = data) }
-            }.onFailure { error ->
-                _state.update { it.copy(loading = false, error = error.toUiText(R.string.load_profit_failed)) }
-            }
-        }
-    }
-
-    fun setMetric(metric: String, permissions: List<String>) {
-        _state.update { it.copy(metric = metric) }
-        load(permissions)
-    }
-
-    fun setPlatform(platform: String, permissions: List<String>) {
-        _state.update { it.copy(platform = platform) }
-        load(permissions)
     }
 }
 

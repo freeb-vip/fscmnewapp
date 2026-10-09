@@ -22,8 +22,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.FactCheck
-import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.Assessment
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.ConfirmationNumber
 import androidx.compose.material.icons.rounded.DeviceHub
@@ -110,7 +110,7 @@ private fun appGlyphForToken(rawToken: String): AppGlyph? = when (rawToken.norma
     "inbound_management", "inbound" -> AppGlyph.InboundManagement
     "central_receiving", "consolidation", "hub" -> AppGlyph.CentralReceiving
     "monitoring", "realtime_data" -> AppGlyph.RealtimeData
-    "profit", "chart", "trending" -> AppGlyph.Profit
+    "profit", "daily_report", "chart", "trending" -> AppGlyph.Profit
     "product", "products", "inventory" -> AppGlyph.Products
     "product_counting", "counting", "stocktake" -> AppGlyph.ProductCounting
     "box", "carton", "box_labels", "qr" -> AppGlyph.BoxLabels
@@ -135,7 +135,7 @@ private fun AppGlyph.imageVector(): ImageVector = when (this) {
     AppGlyph.InboundManagement -> Icons.Rounded.MoveToInbox
     AppGlyph.CentralReceiving -> Icons.Rounded.Hub
     AppGlyph.RealtimeData -> Icons.Rounded.QueryStats
-    AppGlyph.Profit -> Icons.AutoMirrored.Rounded.TrendingUp
+    AppGlyph.Profit -> Icons.Rounded.Assessment
     AppGlyph.Products -> Icons.Rounded.Inventory2
     AppGlyph.OfflineShipping -> Icons.Rounded.LocalShipping
     AppGlyph.ProductCounting -> Icons.AutoMirrored.Rounded.FactCheck

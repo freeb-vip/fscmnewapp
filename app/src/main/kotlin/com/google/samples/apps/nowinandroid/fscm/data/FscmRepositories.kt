@@ -1538,7 +1538,7 @@ private val localSearchAliases = mapOf(
     "tickets" to listOf("工单", "服务协同"),
     "documents" to listOf("文档", "文档中心"),
     "realtime_data" to listOf("实时数据", "今日数据", "realtime", "real time", "live data"),
-    "profit" to listOf("利润", "利润看板"),
+    "profit" to listOf("运营日报", "店铺概览", "排行榜", "利润", "利润看板"),
     "receiving" to listOf("收货", "扫码入库", "仓库收货"),
     "product_management" to listOf("产品", "SKU", "SKU 管理"),
     "box_labels" to listOf("箱唛", "箱唛管理"),
@@ -1550,44 +1550,6 @@ private val localSearchAliases = mapOf(
     "edge_nodes" to listOf("边缘节点", "边缘服务", "服务节点", "局域网探测"),
     "label_print" to listOf("标签打印", "字符打印", "条码打印", "打印标签"),
 )
-
-@Singleton
-class ProfitRepository @Inject constructor(
-    private val api: FscmApiClient,
-) {
-    suspend fun overview(
-        audience: String,
-        startDate: String,
-        endDate: String,
-        platform: String,
-        metric: String,
-    ): ProfitOverview {
-        val params = buildMap {
-            put("audience", audience)
-            put("start_date", startDate)
-            put("end_date", endDate)
-            put("metric", metric)
-            put("granularity", "auto")
-            put("top_n", "8")
-            if (platform != "all") put("platform", platform)
-        }
-        return api.get("mobile/app/profit/overview", params)
-    }
-
-    suspend fun shopDetail(
-        shopId: Long,
-        audience: String,
-        startDate: String,
-        endDate: String,
-    ): ProfitShopDetail = api.get(
-        "mobile/app/profit/shops/$shopId",
-        mapOf(
-            "audience" to audience,
-            "start_date" to startDate,
-            "end_date" to endDate,
-        ),
-    )
-}
 
 @Singleton
 class ReceivingRepository @Inject constructor(
@@ -2403,6 +2365,7 @@ fun visibleMobileApps(
         .distinctBy { it.key }
         .filter { it.visible }
         .filter { it.key != "realtime_data" || canAccessRealtime(permissions, sessionMode) }
+        .filter { it.key != "profit" || (sessionMode == SessionMode.Online && "mobile-app:profit" in permissionSet && "operating-profit-daily" in permissionSet) }
         .filter { it.key != "offline_shipping" || "mobile-app:offline-shipping" in permissionSet }
         .filter { it.key in implementedMobileAppKeys && it.key !in setOf("pda_settings", "edge_nodes") }
         .filter { app ->
@@ -2560,7 +2523,7 @@ val defaultMobileApps = listOf(
         offlineRequiredPermissions = listOf("mobile-app:product-counting"),
     ),
     MobileAppEntry("realtime_data", "", "", "/pages/realtime-data/index", "mobile-app:realtime-data", "realtime-data", "monitoring", "#1677ff", sort = 51),
-    MobileAppEntry("profit", "", "", "/pages/profit/index", "mobile-app:profit", "", "", "#52c41a", sort = 50),
+    MobileAppEntry("profit", "", "", "/pages/profit/index", "mobile-app:profit", "operating-profit-daily", "daily_report", "#1677ff", sort = 50),
     MobileAppEntry("product_management", "", "", "/pages/product/index", "mobile-app:product", "products", "", "#1890ff", sort = 60),
     MobileAppEntry("box_labels", "", "", "/pages/box-labels/index", "mobile-app:box-labels", "", "", "#0f766e", sort = 70),
     MobileAppEntry("label_print", "", "", "/pages/print/label", "mobile-app:product", "products", "", "#52c41a", sort = 73),

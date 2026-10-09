@@ -87,7 +87,7 @@
     <string name="local_app_documents_title">စာရွက်စာတမ်းများ</string><string name="local_app_documents_description">စာရွက်စာတမ်း စင်တာ</string>
     <string name="local_app_receiving_title">ဂိုဒေါင် ကုန်လက်ခံမှု</string><string name="local_app_receiving_description">စကင်ဖတ်၍ ဂိုဒေါင်သို့သွင်းရန်</string>
     <string name="local_app_central_receiving_title">ပေါင်းစည်းပို့ဆောင်ရေး လက်ခံမှု</string><string name="local_app_central_receiving_description">ပေါင်းစည်းဂိုဒေါင်တွင် စကင်ဖတ်လက်ခံရန်</string>
-    <string name="local_app_profit_title">အမြတ်</string><string name="local_app_profit_description">အမြတ် ဒက်ရှ်ဘုတ်</string>
+    <string name="local_app_profit_title">နေ့စဉ်လုပ်ငန်းအစီရင်ခံစာ</string><string name="local_app_profit_description">လုပ်ငန်းအကျဉ်းချုပ်၊ ဆိုင်နှင့်အဆင့်များ</string>
     <string name="local_app_product_management_title">ကုန်ပစ္စည်း စီမံခန့်ခွဲမှု</string><string name="local_app_product_management_description">SKU အချက်အလက် ထိန်းသိမ်းမှု</string>
     <string name="local_app_box_labels_title">ကုန်ပုံး အညွှန်းများ</string><string name="local_app_box_labels_description">ကုန်ပုံးအညွှန်း လုပ်ငန်းစဉ်တစ်လျှောက် ရှာဖွေမှု</string>
     <string name="local_app_supplier_orders_title">ထုတ်လုပ်သူ အမှာစာများ</string><string name="local_app_supplier_orders_description">ထုတ်လုပ်မှုနှင့် ပို့ဆောင်မှု အခြေအနေ</string>

@@ -87,7 +87,7 @@
     <string name="local_app_documents_title">Documents</string><string name="local_app_documents_description">Document center</string>
     <string name="local_app_receiving_title">Warehouse Receiving</string><string name="local_app_receiving_description">Scan into warehouse</string>
     <string name="local_app_central_receiving_title">Consolidation Receiving</string><string name="local_app_central_receiving_description">Scan receiving at consolidation warehouse</string>
-    <string name="local_app_profit_title">Profit</string><string name="local_app_profit_description">Profit dashboard</string>
+    <string name="local_app_profit_title">Operating daily report</string><string name="local_app_profit_description">Business summary, shops and rankings</string>
     <string name="local_app_product_management_title">Product Management</string><string name="local_app_product_management_description">Maintain SKU information</string>
     <string name="local_app_box_labels_title">Carton Labels</string><string name="local_app_box_labels_description">End-to-end carton label lookup</string>
     <string name="local_app_supplier_orders_title">Supplier Orders</string><string name="local_app_supplier_orders_description">Production and shipping progress</string>

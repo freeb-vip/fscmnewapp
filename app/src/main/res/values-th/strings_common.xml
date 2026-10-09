@@ -87,7 +87,7 @@
     <string name="local_app_documents_title">เอกสาร</string><string name="local_app_documents_description">ศูนย์เอกสาร</string>
     <string name="local_app_receiving_title">รับสินค้าเข้าคลัง</string><string name="local_app_receiving_description">สแกนเข้าคลัง</string>
     <string name="local_app_central_receiving_title">รับสินค้ารวมขนส่ง</string><string name="local_app_central_receiving_description">สแกนรับที่คลังรวมขนส่ง</string>
-    <string name="local_app_profit_title">กำไร</string><string name="local_app_profit_description">แดชบอร์ดกำไร</string>
+    <string name="local_app_profit_title">รายงานการดำเนินงานรายวัน</string><string name="local_app_profit_description">สรุปธุรกิจ ภาพรวมร้านและอันดับ</string>
     <string name="local_app_product_management_title">จัดการสินค้า</string><string name="local_app_product_management_description">ดูแลข้อมูล SKU</string>
     <string name="local_app_box_labels_title">ฉลากกล่อง</string><string name="local_app_box_labels_description">ค้นหาฉลากกล่องตลอดกระบวนการ</string>
     <string name="local_app_supplier_orders_title">คำสั่งซื้อผู้ผลิต</string><string name="local_app_supplier_orders_description">ความคืบหน้าการผลิตและจัดส่ง</string>
