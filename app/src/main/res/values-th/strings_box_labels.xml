@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="box_label_show_code_qr">แสดงคิวอาร์โค้ดของรหัสฉลากกล่อง %1$s</string>
+    <string name="box_label_code_qr_title">คิวอาร์โค้ดรหัสฉลากกล่อง</string>
+    <string name="box_label_code_qr_description">คิวอาร์โค้ดของรหัสฉลากกล่อง %1$s</string>
+    <string name="box_label_code_qr_hint">ใช้อุปกรณ์อีกเครื่องสแกนคิวอาร์โค้ดนี้</string>
+    <string name="box_label_code_qr_error">ไม่สามารถสร้างคิวอาร์โค้ดได้ คัดลอกหรือป้อนรหัสฉลากกล่องด้านล่าง</string>
+</resources>

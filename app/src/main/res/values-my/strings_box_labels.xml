@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="box_label_show_code_qr">ပုံးတံဆိပ် %1$s ၏ QR ကုဒ်ကို ပြရန်</string>
+    <string name="box_label_code_qr_title">ပုံးတံဆိပ်ကုဒ်၏ QR ကုဒ်</string>
+    <string name="box_label_code_qr_description">ပုံးတံဆိပ် %1$s ၏ QR ကုဒ်</string>
+    <string name="box_label_code_qr_hint">ဤ QR ကုဒ်ကို အခြားစက်တစ်လုံးဖြင့် စကင်ဖတ်ပါ</string>
+    <string name="box_label_code_qr_error">QR ကုဒ် မဖန်တီးနိုင်ပါ။ အောက်ပါပုံးတံဆိပ်ကုဒ်ကို ကူးယူပါ သို့မဟုတ် ကိုယ်တိုင်ရိုက်ထည့်ပါ။</string>
+</resources>

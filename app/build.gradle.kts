@@ -208,6 +208,7 @@ dependencies {
     implementation(libs.retrofit.kotlin.serialization)
     implementation(libs.escpos.printer)
     implementation(libs.sqlcipher)
+    implementation(libs.zxing.core)
 
     ksp(libs.hilt.compiler)
     ksp(libs.hilt.ext.compiler)

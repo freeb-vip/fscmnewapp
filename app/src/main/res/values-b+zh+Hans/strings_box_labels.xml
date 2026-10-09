@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="box_label_show_code_qr">查看箱唛 %1$s 的二维码</string>
+    <string name="box_label_code_qr_title">箱唛编码二维码</string>
+    <string name="box_label_code_qr_description">箱唛 %1$s 的二维码</string>
+    <string name="box_label_code_qr_hint">请使用另一台设备扫描此二维码</string>
+    <string name="box_label_code_qr_error">二维码生成失败，可复制或手动输入下方箱唛编码。</string>
+</resources>

@@ -47,8 +47,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -78,10 +81,23 @@ internal fun BoxLabelManagementContent(
         previousQuery = state.query
     }
     var camera by remember { mutableStateOf(false) }
+    var qrCode by rememberSaveable(state.detailId) { mutableStateOf<String?>(null) }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val showQrCode: (String) -> Unit = { code ->
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+        qrCode = code
+    }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { camera = it }
-    DisposableEffect(lifecycleOwner, state.detailId) {
-        if (state.detailId == null) viewModel.registerScanner(lifecycleOwner, viewModel::resolve)
-        onDispose { if (state.detailId == null) viewModel.unregisterScanner() }
+    DisposableEffect(lifecycleOwner, state.detailId, qrCode) {
+        val ownsScanner = state.detailId == null || qrCode != null
+        if (ownsScanner) {
+            viewModel.registerScanner(lifecycleOwner) { code ->
+                if (qrCode == null) viewModel.resolve(code)
+            }
+        }
+        onDispose { if (ownsScanner) viewModel.unregisterScanner() }
     }
     LaunchedEffect(initialCode) { viewModel.loadInitialCode(initialCode) }
     BackHandler(enabled = state.detailId != null) { viewModel.closeDetail() }
@@ -111,7 +127,7 @@ internal fun BoxLabelManagementContent(
                 state.boxLabel?.let { label ->
                     item {
                         FscmCard(Modifier.fillMaxWidth()) {
-                            Text(label.labelCode, style = MaterialTheme.typography.titleLarge)
+                            BoxLabelCodeButton(label.labelCode, showQrCode, style = MaterialTheme.typography.titleLarge)
                             StatusChip(label.statusLabel.ifBlank { label.status }, MaterialTheme.colorScheme.primary)
                             if (state.lastScannedCode.isNotBlank() && state.searchInfo?.resolvedVia in listOf("adjustment_alias", "jifeng_mapping")) {
                                 Text(if (state.searchInfo?.resolvedVia == "jifeng_mapping") "由极风码定位当前箱唛：${state.lastScannedCode}" else "由旧码解析至当前箱唛：${state.lastScannedCode}")
@@ -232,7 +248,7 @@ internal fun BoxLabelManagementContent(
                     items(state.labels, key = BoxLabel::id) { label ->
                         var expanded by remember(label.id) { mutableStateOf(false) }
                         FscmCard(Modifier.fillMaxWidth().clickable { viewModel.openDetail(label.id) }) {
-                            Text(label.labelCode, fontWeight = FontWeight.Bold)
+                            BoxLabelCodeButton(label.labelCode, showQrCode)
                             StatusChip(label.statusLabel.ifBlank { label.status }, MaterialTheme.colorScheme.primary)
                             val skus = label.skuItems.sortedByDescending { it.displaySkuCode.startsWith(state.query, ignoreCase = true) || it.displayProductCode.startsWith(state.query, ignoreCase = true) }
                             if (label.isMixed) Text("混箱 · ${skus.size} 个 SKU")
@@ -253,6 +269,7 @@ internal fun BoxLabelManagementContent(
             }
         }
     }
+    qrCode?.let { code -> BoxLabelCodeDialog(code = code, onDismiss = { qrCode = null }) }
     if (state.printDialogVisible) {
         BoxMarkPrintDialog(
             state.boxMarkOptions,

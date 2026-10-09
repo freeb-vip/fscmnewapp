@@ -17,6 +17,22 @@
 
 验收命令：`./gradlew.bat :app:testDemoDebugUnitTest :app:spotlessKotlinCheck assembleDemoDebug`。真机需额外验证四个底部 Tab、小屏中文、相机/PDA 输入、列表返回位置、收货扫码及真实节点打印。
 
+## 箱唛编码二维码（2026-10-09）
+
+列表和详情页的箱唛编码可点击，编码旁增加二维码图标。点击后弹出黑白二维码及可选择复制的原始编码，扫码内容就是所点击的 `labelCode`，保留大小写，不拼接 SKU、数量、打印载荷或链接。列表卡片其余区域仍打开详情。弹窗支持关闭按钮、返回键及点击外部关闭；显示期间清除输入焦点、隐藏键盘并暂停列表扫码，关闭后恢复。
+
+- `BoxLabelManagementScreen.kt`：两个编码入口、弹窗状态、扫码监听及输入焦点处理。
+- `BoxLabelCodeDialog.kt`：编码按钮、原生弹窗、本地二维码生成；白底黑码、四模块静区及无插值显示，内容较多时可滚动。
+- `app/src/main/res/{values,values-b+zh+Hans,values-th,values-my}/strings_box_labels.xml`：中、英、泰、缅文案。
+- `app/build.gradle.kts`、`gradle/libs.versions.toml`：声明 [ZXing core 3.5.4](https://github.com/zxing/zxing/releases/tag/zxing-3.5.4) 编码依赖；`app/dependencies/prodReleaseRuntimeClasspath.txt` 追加对应基线条目。本地生成不需要网络，也不调用打印服务。
+- `BoxLabelCodeQrTest.kt`：将生成的实际位图解码，验证原码、大小写、中文、长编码、白色边界和空编码拒绝。
+
+二维码可从当前已加载的箱唛信息生成；生成失败时保留可复制原码并显示错误。此改动不修改箱唛或库存数据。
+
+验证限制：`adb devices` 无设备，尚未进行真实手机/PDA 扫描屏幕二维码和小屏交互验收。额外执行 `:app:dependencyGuard` 发现既有 prodRelease 基线与当前 Camera、Firebase、SQLite、ML Kit 等依赖树不一致；本次仅加入 ZXing 基线条目，未整体重建无关依赖基线。该检查仍失败，详情保留在本地 `.artifacts/box-label-qr-dependencies.log`。
+
+实际验证：`.\gradlew.bat :app:spotlessKotlinCheck :app:spotlessKtsCheck :app:testDemoDebugUnitTest :app:assembleDemoDebug '-Pkotlin.incremental=false' --no-build-cache --max-workers=1 --continue --console=plain` 通过。366 项测试，0 失败、0 错误、0 跳过；新增的二维码位图解码测试通过。开发包为 `app/build/outputs/apk/demo/debug/app-demo-debug.apk`。首轮构建因本机 classes.jar 被占用失败，停止 Gradle daemon 后串行重跑成功。现有 JDK 25 / JaCoCo 兼容告警仍在，不作为覆盖率结论。四语资源 XML 解析与 `git diff --check` 通过；保留此前 SKU 大小写修复和库位盘点字体修改。
+
 
 ## 本次验证（2026-09-06）
 
