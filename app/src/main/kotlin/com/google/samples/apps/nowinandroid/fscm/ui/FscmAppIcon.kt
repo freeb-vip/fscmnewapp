@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.Factory
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Inventory2
+import androidx.compose.material.icons.rounded.LocalShipping
 import androidx.compose.material.icons.rounded.MoveToInbox
 import androidx.compose.material.icons.rounded.NoteAlt
 import androidx.compose.material.icons.rounded.Print
@@ -60,6 +61,7 @@ internal enum class AppGlyph {
     Profit,
     Products,
     ProductCounting,
+    OfflineShipping,
     BoxLabels,
     SupplierOrders,
     ManufacturerPaymentBills,
@@ -83,6 +85,7 @@ private fun appGlyphForKey(rawKey: String): AppGlyph? = when (rawKey.normalizedI
     "central_receiving" -> AppGlyph.CentralReceiving
     "profit" -> AppGlyph.Profit
     "product_management" -> AppGlyph.Products
+    "offline_shipping" -> AppGlyph.OfflineShipping
     "product_counting" -> AppGlyph.ProductCounting
     "box_labels", "carton_management" -> AppGlyph.BoxLabels
     "supplier_orders" -> AppGlyph.SupplierOrders
@@ -128,6 +131,7 @@ private fun AppGlyph.imageVector(): ImageVector = when (this) {
     AppGlyph.CentralReceiving -> Icons.Rounded.Hub
     AppGlyph.Profit -> Icons.AutoMirrored.Rounded.TrendingUp
     AppGlyph.Products -> Icons.Rounded.Inventory2
+    AppGlyph.OfflineShipping -> Icons.Rounded.LocalShipping
     AppGlyph.ProductCounting -> Icons.AutoMirrored.Rounded.FactCheck
     AppGlyph.BoxLabels -> Icons.Rounded.QrCode2
     AppGlyph.SupplierOrders -> Icons.Rounded.Factory

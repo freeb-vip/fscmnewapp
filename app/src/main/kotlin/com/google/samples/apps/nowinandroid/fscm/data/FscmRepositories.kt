@@ -2401,6 +2401,7 @@ fun visibleMobileApps(
         .map(::applyLocalMobileAppMetadata)
         .distinctBy { it.key }
         .filter { it.visible }
+        .filter { it.key != "offline_shipping" || "mobile-app:offline-shipping" in permissionSet }
         .filter { it.key in implementedMobileAppKeys && it.key !in setOf("pda_settings", "edge_nodes") }
         .filter { app ->
             sessionMode == SessionMode.Online ||
@@ -2427,6 +2428,7 @@ internal val implementedMobileAppKeys = setOf(
     "profit",
     "product_management",
     "product_counting",
+    "offline_shipping",
     "box_labels",
     "supplier_orders",
     "manufacturer_payment_bills",
@@ -2469,6 +2471,7 @@ private fun MobileAppEntry.hasOfflinePermissions(permissionSet: Set<String>): Bo
 private val offlineImplementedAppKeys = setOf("receiving", "inbound_management", "central_receiving", "product_counting")
 
 val defaultMobileApps = listOf(
+    MobileAppEntry(key = "offline_shipping", title = "", description = "", path = "/pages/offline-shipping/index", permission = "mobile-app:offline-shipping", icon = "local_shipping", color = "#1677ff", sort = 49),
     MobileAppEntry(
         key = "inbound_management",
         title = "",

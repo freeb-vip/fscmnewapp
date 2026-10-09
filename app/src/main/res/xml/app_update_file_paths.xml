@@ -21,4 +21,5 @@
     <cache-path
         name="payment_attachments"
         path="payment-attachments/" />
+    <files-path name="offline_shipping" path="offline-shipping/" />
 </paths>

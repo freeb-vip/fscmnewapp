@@ -62,6 +62,9 @@ annotation class FscmJson
 
 interface FscmRetrofitApi {
     @GET
+    suspend fun download(@Url url: String, @HeaderMap headers: Map<String, String>): Response<okhttp3.ResponseBody>
+
+    @GET
     suspend fun get(
         @Url url: String,
         @QueryMap params: Map<String, String> = emptyMap(),
@@ -89,13 +92,14 @@ interface FscmRetrofitApi {
     ): Response<JsonElement>
 
     @DELETE
-    suspend fun delete(@Url url: String): Response<JsonElement>
+    suspend fun delete(@Url url: String, @HeaderMap headers: Map<String, String> = emptyMap()): Response<JsonElement>
 
     @Multipart
     @POST
     suspend fun upload(
         @Url url: String,
         @Part file: MultipartBody.Part,
+        @HeaderMap headers: Map<String, String> = emptyMap(),
     ): Response<JsonElement>
 }
 
@@ -159,13 +163,37 @@ class FscmApiClient @Inject constructor(
     suspend inline fun <reified T> delete(
         path: String,
         auth: Boolean = true,
-    ): T = send(auth) { api.delete(path) }
+        headers: Map<String, String> = emptyMap(),
+    ): T = send(auth) { api.delete(path, headers) }
 
     suspend inline fun <reified T> upload(
         path: String,
         file: MultipartBody.Part,
         auth: Boolean = true,
-    ): T = send(auth) { api.upload(path, file) }
+        headers: Map<String, String> = emptyMap(),
+    ): T = send(auth) { api.upload(path, file, headers) }
+
+    suspend fun download(path: String, headers: Map<String, String>): ByteArray {
+        var response = api.download(path, headers)
+        if (response.code() == 401) {
+            response.errorBody()?.close()
+            when (refreshSession(response.raw().request.header("Authorization")?.removePrefix("Bearer "))) {
+                SessionRefreshResult.Refreshed, SessionRefreshResult.AlreadyCurrent -> response = api.download(path, headers)
+                SessionRefreshResult.Rejected -> throw SessionExpiredException()
+                SessionRefreshResult.Unavailable -> throw SessionRefreshUnavailableException()
+            }
+        }
+        if (response.code() == 401) {
+            response.errorBody()?.close()
+            sessionStore.clear()
+            throw SessionExpiredException()
+        }
+        if (!response.isSuccessful) {
+            response.errorBody()?.close()
+            throw FscmApiException("Download failed", response.code())
+        }
+        return response.body()?.use { it.bytes() } ?: throw java.io.IOException("Empty download")
+    }
 
     suspend inline fun <reified T> send(
         auth: Boolean,

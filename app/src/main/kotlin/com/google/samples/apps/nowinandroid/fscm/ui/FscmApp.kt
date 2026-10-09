@@ -734,6 +734,8 @@ internal sealed interface FeatureRoute : Serializable {
     data class ManufacturerPaymentBillDetail(val id: Long) : FeatureRoute
     data object CameraScanner : FeatureRoute
     data object ProductManagement : FeatureRoute
+    data object OfflineShippingList : FeatureRoute
+    data class OfflineShippingDetail(val orderId: Long) : FeatureRoute
     data object ProductCountingList : FeatureRoute
     data class ProductCountingDetail(val taskId: String) : FeatureRoute
     data class ProductSkuList(val productId: Long, val productName: String) : FeatureRoute
@@ -761,6 +763,7 @@ private fun FeatureRoute.parentRoute(): FeatureRoute = when (this) {
     is FeatureRoute.SupplierOrderDetail -> returnToPaymentBillId?.let { FeatureRoute.ManufacturerPaymentBillDetail(it) }
         ?: FeatureRoute.SupplierOrders
     is FeatureRoute.ManufacturerPaymentBillDetail -> FeatureRoute.ManufacturerPaymentBills
+    is FeatureRoute.OfflineShippingDetail -> FeatureRoute.OfflineShippingList
     is FeatureRoute.ProductCountingDetail -> FeatureRoute.ProductCountingList
     is FeatureRoute.ProductSkuList,
     is FeatureRoute.SkuDetail,
@@ -1049,6 +1052,7 @@ private fun FeatureScreen(
                         FeatureRoute.ManufacturerPaymentBills -> stringResource(R.string.feature_manufacturer_payment_bills)
                         is FeatureRoute.ManufacturerPaymentBillDetail -> stringResource(R.string.feature_manufacturer_payment_bill_detail)
                         FeatureRoute.ProductManagement -> stringResource(R.string.feature_product_management)
+                        FeatureRoute.OfflineShippingList, is FeatureRoute.OfflineShippingDetail -> stringResource(R.string.shipping_title)
                         FeatureRoute.ProductCountingList -> stringResource(R.string.feature_product_counting)
                         is FeatureRoute.ProductCountingDetail -> stringResource(R.string.feature_product_counting)
                         is FeatureRoute.ProductSkuList -> route.productName
@@ -1198,6 +1202,11 @@ private fun FeatureScreen(
                 FeatureRoute.ProductManagement -> ProductManagementScreen(
                     onOpenSkuDetail = { onNavigate(FeatureRoute.SkuDetail(it)) },
                 )
+                FeatureRoute.OfflineShippingList -> OfflineShippingListScreen(
+                    scopeKey = "${session.user?.id}-${session.currentNamespace?.id}",
+                    onOpen = { onNavigate(FeatureRoute.OfflineShippingDetail(it)) },
+                )
+                is FeatureRoute.OfflineShippingDetail -> OfflineShippingDetailScreen(route.orderId, "${session.user?.id}-${session.currentNamespace?.id}")
                 FeatureRoute.ProductCountingList -> ProductCountingTaskListScreen(
                     onOpenTask = { onNavigate(FeatureRoute.ProductCountingDetail(it)) },
                 )
@@ -3020,6 +3029,7 @@ internal fun localAppTitleResource(key: String): Int? = when (key) {
     "central_receiving" -> R.string.local_app_central_receiving_title
     "profit" -> R.string.local_app_profit_title
     "product_management" -> R.string.local_app_product_management_title
+    "offline_shipping" -> R.string.shipping_title
     "product_counting" -> R.string.local_app_product_counting_title
     "box_labels", "carton_management" -> R.string.local_app_box_labels_title
     "supplier_orders" -> R.string.local_app_supplier_orders_title
@@ -3042,6 +3052,7 @@ private fun localAppDescriptionResource(key: String): Int? = when (key) {
     "central_receiving" -> R.string.local_app_central_receiving_description
     "profit" -> R.string.local_app_profit_description
     "product_management" -> R.string.local_app_product_management_description
+    "offline_shipping" -> R.string.shipping_description
     "product_counting" -> R.string.local_app_product_counting_description
     "box_labels", "carton_management" -> R.string.local_app_box_labels_description
     "supplier_orders" -> R.string.local_app_supplier_orders_description
@@ -3294,6 +3305,10 @@ private fun openAppEntry(
     }
     "product_management" -> {
         onOpenFeature(FeatureRoute.ProductManagement)
+        true
+    }
+    "offline_shipping" -> {
+        onOpenFeature(FeatureRoute.OfflineShippingList)
         true
     }
     "product_counting" -> {
