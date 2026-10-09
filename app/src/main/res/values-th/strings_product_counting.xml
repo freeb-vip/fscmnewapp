@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="product_counting_delete">ลบงาน</string>
+    <string name="product_counting_delete_title">ลบงานนับที่ยังว่างนี้หรือไม่?</string>
+    <string name="product_counting_delete_message">ยังไม่ได้สแกนสินค้า งานนี้จะถูกนำออกจากรายการ</string>
+    <string name="product_counting_delete_not_allowed">สถานะงานเปลี่ยนไปและไม่สามารถลบได้ หากมีข้อมูลการสแกน ให้กดจบการนับ</string>
     <string name="local_app_product_counting_title">ตรวจนับสินค้า</string>
     <string name="local_app_product_counting_description">นับจำนวนกล่องของสินค้าเดียวกันอย่างรวดเร็ว</string>
     <string name="feature_product_counting">ตรวจนับสินค้า</string>

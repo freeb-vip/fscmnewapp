@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="product_counting_delete">删除任务</string>
+    <string name="product_counting_delete_title">删除空清点任务？</string>
+    <string name="product_counting_delete_message">此任务尚未扫描任何产品，删除后将从任务列表移除。</string>
+    <string name="product_counting_delete_not_allowed">任务状态已变化，无法删除。已有扫描记录的任务请点击“完成清点”。</string>
     <string name="local_app_product_counting_title">产品清点</string>
     <string name="local_app_product_counting_description">快速清点同一产品的箱数</string>
     <string name="feature_product_counting">产品清点</string>

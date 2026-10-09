@@ -118,7 +118,14 @@ data class SkuProductIndexEntity(
 data class ProductCountTaskSummary(
     @Embedded val task: ProductCountTaskEntity,
     val boxCount: Int,
+    val scanRecordCount: Int = boxCount,
 )
+
+internal fun ProductCountTaskSummary.canDeleteEmptyTask(): Boolean =
+    scanRecordCount == 0 && boxCount == 0 && task.status == ProductCountTaskStatus.InProgress.value &&
+        task.remoteId == 0L && task.serverRevision == 0L && task.serverCount == 0 &&
+        task.uploadedAt == 0L && task.lastUploadId.isEmpty() && task.productCode.isEmpty() &&
+        task.uploadStatus == ProductCountUploadStatus.Local.value
 
 enum class ProductCountTaskStatus(val value: String) {
     InProgress("in_progress"),
@@ -176,7 +183,9 @@ interface ProductCountingDao {
             WHERE e.userId = t.userId AND e.namespaceId = t.namespaceId
               AND e.taskClientId = t.clientTaskId AND e.resetGeneration = t.resetGeneration
               AND e.syncStatus NOT IN ('conflict', 'rejected')
-          ) AS boxCount
+          ) AS boxCount,
+          (SELECT COUNT(*) FROM product_count_entries e
+           WHERE e.userId = t.userId AND e.namespaceId = t.namespaceId AND e.taskClientId = t.clientTaskId) AS scanRecordCount
         FROM product_count_tasks t
         WHERE t.userId = :userId AND t.namespaceId = :namespaceId
         ORDER BY t.updatedAt DESC
@@ -192,7 +201,9 @@ interface ProductCountingDao {
             WHERE e.userId = t.userId AND e.namespaceId = t.namespaceId
               AND e.taskClientId = t.clientTaskId AND e.resetGeneration = t.resetGeneration
               AND e.syncStatus NOT IN ('conflict', 'rejected')
-          ) AS boxCount
+          ) AS boxCount,
+          (SELECT COUNT(*) FROM product_count_entries e
+           WHERE e.userId = t.userId AND e.namespaceId = t.namespaceId AND e.taskClientId = t.clientTaskId) AS scanRecordCount
         FROM product_count_tasks t
         WHERE t.userId = :userId AND t.namespaceId = :namespaceId AND t.clientTaskId = :taskId
         LIMIT 1
@@ -212,6 +223,32 @@ interface ProductCountingDao {
 
     @Query("SELECT * FROM product_count_tasks WHERE userId = :userId AND namespaceId = :namespaceId AND clientTaskId = :taskId LIMIT 1")
     suspend fun task(userId: Long, namespaceId: Long, taskId: String): ProductCountTaskEntity?
+
+    // One conditional statement makes the empty check atomic with deletion, including old generations.
+    @Query(
+        """
+        DELETE FROM product_count_tasks
+        WHERE userId = :userId AND namespaceId = :namespaceId AND clientTaskId = :taskId
+          AND editorDeviceId = :deviceId AND status = 'in_progress'
+          AND remoteId = 0 AND serverRevision = 0 AND serverCount = 0 AND uploadedAt = 0
+          AND lastUploadId = '' AND productCode = '' AND uploadStatus = 'local'
+          AND NOT EXISTS (SELECT 1 FROM product_count_entries e
+              WHERE e.userId = :userId AND e.namespaceId = :namespaceId AND e.taskClientId = :taskId)
+        """,
+    )
+    suspend fun deleteEmptyTask(userId: Long, namespaceId: Long, taskId: String, deviceId: String): Int
+
+    @Query(
+        """
+        UPDATE product_count_tasks SET status = 'completed', completedAt = :now,
+          revision = revision + 1, syncStatus = 'pending', lastSyncError = '', updatedAt = :now
+        WHERE userId = :userId AND namespaceId = :namespaceId AND clientTaskId = :taskId
+          AND editorDeviceId = :deviceId AND status = 'in_progress' AND uploadStatus != 'uploading'
+          AND EXISTS (SELECT 1 FROM product_count_entries e
+              WHERE e.userId = :userId AND e.namespaceId = :namespaceId AND e.taskClientId = :taskId)
+        """,
+    )
+    suspend fun completeTask(userId: Long, namespaceId: Long, taskId: String, deviceId: String, now: Long): Int
 
     @Query(
         """
@@ -665,7 +702,15 @@ class ProductCountingRepository @Inject constructor(
         return changed
     }
 
-    suspend fun complete(taskId: String): Boolean = updateTaskStatus(taskId, ProductCountTaskStatus.Completed)
+    suspend fun deleteEmptyTask(taskId: String): Boolean = scanMutex.withLock {
+        val scope = scope()
+        dao.deleteEmptyTask(scope.userId, scope.namespaceId, taskId, deviceIdentityManager.deviceId()) > 0
+    }
+
+    suspend fun complete(taskId: String): Boolean = scanMutex.withLock {
+        val scope = scope()
+        dao.completeTask(scope.userId, scope.namespaceId, taskId, deviceIdentityManager.deviceId(), System.currentTimeMillis()) > 0
+    }
 
     suspend fun reopen(taskId: String): Boolean {
         val scope = scope()

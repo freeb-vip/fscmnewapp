@@ -40,6 +40,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.QrCodeScanner
@@ -95,6 +96,7 @@ import com.google.samples.apps.nowinandroid.fscm.data.ProductCountSyncStatus
 import com.google.samples.apps.nowinandroid.fscm.data.ProductCountTaskStatus
 import com.google.samples.apps.nowinandroid.fscm.data.ProductCountTaskSummary
 import com.google.samples.apps.nowinandroid.fscm.data.ProductCountUploadStatus
+import com.google.samples.apps.nowinandroid.fscm.data.canDeleteEmptyTask
 import com.google.samples.apps.nowinandroid.fscm.device.PdaPermissions
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerInputMode
 import com.google.samples.apps.nowinandroid.fscm.ui.components.FscmCard
@@ -143,7 +145,12 @@ fun ProductCountingTaskListScreen(
                 }
             } else {
                 items(state.visibleTasks, key = { it.task.clientTaskId }) { task ->
-                    ProductCountingTaskCard(task, onClick = { onOpenTask(task.task.clientTaskId) })
+                    ProductCountingTaskCard(
+                        task,
+                        onClick = { onOpenTask(task.task.clientTaskId) },
+                        onDelete = if (viewModel.canDelete(task)) ({ viewModel.requestDelete(task) }) else null,
+                        deleting = state.deletingTaskId == task.task.clientTaskId,
+                    )
                 }
             }
         }
@@ -162,6 +169,7 @@ fun ProductCountingTaskListScreen(
             text = { Text(stringResource(R.string.product_counting_new_task)) },
         )
     }
+    if (state.pendingDelete != null) ProductCountingDeleteDialog(viewModel::confirmDelete, viewModel::dismissDelete)
 }
 
 @Composable
@@ -195,8 +203,8 @@ private fun ProductCountingFilters(
 }
 
 @Composable
-private fun ProductCountingTaskCard(task: ProductCountTaskSummary, onClick: () -> Unit) {
-    FscmCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+private fun ProductCountingTaskCard(task: ProductCountTaskSummary, onClick: () -> Unit, onDelete: (() -> Unit)?, deleting: Boolean) {
+    FscmCard(modifier = Modifier.fillMaxWidth().clickable(enabled = !deleting, onClick = onClick)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier.size(44.dp).background(FscmBrandSoft, RoundedCornerShape(8.dp)),
@@ -242,12 +250,20 @@ private fun ProductCountingTaskCard(task: ProductCountTaskSummary, onClick: () -
             )
             ProductCountingUploadChip(task.task.uploadStatus)
         }
+        if (onDelete != null) {
+            TextButton(onClick = onDelete, enabled = !deleting, modifier = Modifier.align(Alignment.End)) {
+                Icon(Icons.Rounded.DeleteOutline, contentDescription = null, tint = FscmDanger)
+                Spacer(Modifier.size(4.dp))
+                Text(stringResource(R.string.product_counting_delete), color = FscmDanger)
+            }
+        }
     }
 }
 
 @Composable
 fun ProductCountingTaskDetailScreen(
     taskId: String,
+    onDeleted: () -> Unit,
     viewModel: ProductCountingDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -261,12 +277,13 @@ fun ProductCountingTaskDetailScreen(
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> showCamera = granted }
 
     LaunchedEffect(taskId) { viewModel.load(taskId) }
+    LaunchedEffect(state.deleted) { if (state.deleted) onDeleted() }
     DisposableEffect(lifecycleOwner, state.editable) {
         if (state.editable) viewModel.registerScanner(lifecycleOwner)
         onDispose { if (state.editable) viewModel.unregisterScanner() }
     }
-    LaunchedEffect(state.processing, state.pendingDuplicate, broadcastMode, state.editable) {
-        if (!state.processing && state.pendingDuplicate == null && !broadcastMode && state.editable) {
+    LaunchedEffect(state.processing, state.pendingDuplicate, state.deleteConfirmationVisible, broadcastMode, state.editable) {
+        if (!state.processing && state.pendingDuplicate == null && !state.deleteConfirmationVisible && !broadcastMode && state.editable) {
             focusRequester.requestFocus()
         }
     }
@@ -372,26 +389,29 @@ fun ProductCountingTaskDetailScreen(
                         enabled = !state.processing && uploadStatus != ProductCountUploadStatus.Uploading.value,
                     ) { Text(stringResource(R.string.product_counting_reopen)) }
                 } else {
+                    val deleteEmptyTask = state.task?.canDeleteEmptyTask() == true
                     Button(
-                        onClick = viewModel::complete,
+                        onClick = if (deleteEmptyTask) viewModel::requestDelete else viewModel::complete,
                         modifier = Modifier.fillMaxWidth().height(52.dp),
-                        enabled = !state.processing && (state.task?.boxCount ?: 0) > 0 && state.editable,
-                        colors = ButtonDefaults.buttonColors(containerColor = FscmBrandMain),
+                        enabled = !state.processing && state.pendingScans == 0 && state.pendingDuplicate == null &&
+                            (deleteEmptyTask || (state.task?.scanRecordCount ?: 0) > 0) && state.editable,
+                        colors = ButtonDefaults.buttonColors(containerColor = if (deleteEmptyTask) FscmDanger else FscmBrandMain),
                         shape = RoundedCornerShape(8.dp),
                     ) {
                         if (state.processing) {
                             CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
                         } else {
-                            Icon(Icons.Rounded.CheckCircle, contentDescription = null)
+                            Icon(if (deleteEmptyTask) Icons.Rounded.DeleteOutline else Icons.Rounded.CheckCircle, contentDescription = null)
                         }
                         Spacer(Modifier.size(8.dp))
-                        Text(stringResource(R.string.product_counting_finish))
+                        Text(stringResource(if (deleteEmptyTask) R.string.product_counting_delete else R.string.product_counting_finish))
                     }
                 }
             }
         }
     }
 
+    if (state.deleteConfirmationVisible) ProductCountingDeleteDialog(viewModel::confirmDelete, viewModel::dismissDelete)
     state.pendingDuplicate?.let { duplicate ->
         AlertDialog(
             onDismissRequest = {},
@@ -421,6 +441,19 @@ fun ProductCountingTaskDetailScreen(
             },
         )
     }
+}
+
+@Composable
+private fun ProductCountingDeleteDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.product_counting_delete_title)) },
+        text = { Text(stringResource(R.string.product_counting_delete_message)) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text(stringResource(R.string.product_counting_delete), color = FscmDanger) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
+    )
 }
 
 @Composable

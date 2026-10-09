@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="product_counting_delete">Delete task</string>
+    <string name="product_counting_delete_title">Delete this empty counting task?</string>
+    <string name="product_counting_delete_message">No products have been scanned. This task will be removed from the list.</string>
+    <string name="product_counting_delete_not_allowed">The task has changed and cannot be deleted. Use Finish counting if it has scan records.</string>
     <string name="local_app_product_counting_title">Product counting</string>
     <string name="local_app_product_counting_description">Count boxes for one product quickly</string>
     <string name="feature_product_counting">Product counting</string>

@@ -31,6 +31,7 @@ import com.google.samples.apps.nowinandroid.fscm.data.ProductCountingOnlineRequi
 import com.google.samples.apps.nowinandroid.fscm.data.ProductCountingProductMissingException
 import com.google.samples.apps.nowinandroid.fscm.data.ProductCountingRepository
 import com.google.samples.apps.nowinandroid.fscm.data.ProductCountingUnrecognizedException
+import com.google.samples.apps.nowinandroid.fscm.data.canDeleteEmptyTask
 import com.google.samples.apps.nowinandroid.fscm.device.ReceivingScanFeedback
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerManager
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerRuntimeState
@@ -58,6 +59,8 @@ data class ProductCountingListUiState(
     val filter: ProductCountingTaskFilter = ProductCountingTaskFilter.InProgress,
     val loading: Boolean = true,
     val creating: Boolean = false,
+    val pendingDelete: ProductCountTaskSummary? = null,
+    val deletingTaskId: String? = null,
     val error: UiText? = null,
 ) {
     val visibleTasks: List<ProductCountTaskSummary>
@@ -117,6 +120,29 @@ class ProductCountingListViewModel @Inject constructor(
                 .onFailure { error -> _state.update { it.copy(creating = false, error = error.asUiText()) } }
         }
     }
+
+    fun canDelete(task: ProductCountTaskSummary): Boolean = repository.isCurrentEditor(task) && task.canDeleteEmptyTask()
+
+    fun requestDelete(task: ProductCountTaskSummary) {
+        if (canDelete(task) && _state.value.deletingTaskId == null) _state.update { it.copy(pendingDelete = task) }
+    }
+
+    fun dismissDelete() {
+        _state.update { it.copy(pendingDelete = null) }
+    }
+
+    fun confirmDelete() {
+        val task = _state.value.pendingDelete ?: return
+        if (_state.value.deletingTaskId != null) return
+        _state.update { it.copy(pendingDelete = null, deletingTaskId = task.task.clientTaskId, error = null) }
+        viewModelScope.launch {
+            runCatching { repository.deleteEmptyTask(task.task.clientTaskId) }
+                .onSuccess { deleted ->
+                    _state.update { it.copy(deletingTaskId = null, error = if (deleted) null else UiText.Resource(R.string.product_counting_delete_not_allowed)) }
+                }
+                .onFailure { error -> _state.update { it.copy(deletingTaskId = null, error = error.asUiText()) } }
+        }
+    }
 }
 
 data class ProductCountingDetailUiState(
@@ -129,6 +155,10 @@ data class ProductCountingDetailUiState(
     val success: UiText? = null,
     val pendingDuplicate: ProductCountResolvedLabel? = null,
     val resetConfirmationVisible: Boolean = false,
+    val deleteConfirmationVisible: Boolean = false,
+    val taskActionRunning: Boolean = false,
+    val pendingScans: Int = 0,
+    val deleted: Boolean = false,
 )
 
 @HiltViewModel
@@ -153,7 +183,13 @@ class ProductCountingDetailViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            for (rawCode in scanQueue) processScan(rawCode)
+            for (rawCode in scanQueue) {
+                try {
+                    processScan(rawCode)
+                } finally {
+                    _state.update { it.copy(pendingScans = (it.pendingScans - 1).coerceAtLeast(0)) }
+                }
+            }
         }
     }
 
@@ -170,7 +206,7 @@ class ProductCountingDetailViewModel @Inject constructor(
                         _state.update {
                             it.copy(
                                 task = task,
-                                loading = task == null,
+                                loading = task == null && !it.deleted,
                                 editable = task?.let(repository::isCurrentEditor) == true &&
                                     task.task.status == ProductCountTaskStatus.InProgress.value,
                             )
@@ -192,13 +228,14 @@ class ProductCountingDetailViewModel @Inject constructor(
     fun submit(rawCode: String) {
         val scanCode = rawCode.trim()
         if (scanCode.isBlank()) return
+        val current = _state.value
+        if (current.taskActionRunning || current.deleteConfirmationVisible || current.resetConfirmationVisible || current.deleted) return
         val now = System.currentTimeMillis()
         if (scanCode == lastSubmittedScanCode && now - lastSubmittedScanAtMillis in 0..SCAN_EVENT_DEDUP_WINDOW_MS) {
             return
         }
         lastSubmittedScanCode = scanCode
         lastSubmittedScanAtMillis = now
-        val current = _state.value
         if (!current.editable) {
             scanFeedback.failure()
             _state.update { it.copy(error = UiText.Resource(R.string.product_counting_read_only_error)) }
@@ -209,9 +246,10 @@ class ProductCountingDetailViewModel @Inject constructor(
             _state.update { it.copy(error = UiText.Resource(R.string.product_counting_resolve_duplicate_first)) }
             return
         }
+        _state.update { it.copy(pendingScans = it.pendingScans + 1) }
         if (!scanQueue.trySend(rawCode).isSuccess) {
             scanFeedback.failure()
-            _state.update { it.copy(error = UiText.Resource(R.string.product_counting_queue_full)) }
+            _state.update { it.copy(pendingScans = it.pendingScans - 1, error = UiText.Resource(R.string.product_counting_queue_full)) }
         }
     }
 
@@ -231,7 +269,7 @@ class ProductCountingDetailViewModel @Inject constructor(
     }
 
     fun requestReset() {
-        if (_state.value.editable && !_state.value.processing) {
+        if (_state.value.editable && canChangeTask() && !_state.value.deleteConfirmationVisible) {
             _state.update { it.copy(resetConfirmationVisible = true) }
         }
     }
@@ -246,14 +284,16 @@ class ProductCountingDetailViewModel @Inject constructor(
     }
 
     private fun resetTask() {
+        if (!canChangeTask()) return
         val taskId = loadedTaskId
+        _state.update { it.copy(processing = true, taskActionRunning = true, error = null, success = null, pendingDuplicate = null) }
         viewModelScope.launch {
-            _state.update { it.copy(processing = true, error = null, success = null, pendingDuplicate = null) }
             runCatching { repository.reset(taskId) }
                 .onSuccess { changed ->
                     _state.update {
                         it.copy(
                             processing = false,
+                            taskActionRunning = false,
                             entries = if (changed) emptyList() else it.entries,
                             success = if (changed) UiText.Resource(R.string.product_counting_reset_done) else null,
                             error = if (changed) null else UiText.Resource(R.string.product_counting_reset_failed),
@@ -265,19 +305,53 @@ class ProductCountingDetailViewModel @Inject constructor(
     }
 
     fun complete() {
-        if ((_state.value.task?.boxCount ?: 0) <= 0) return
+        if (!_state.value.editable || (_state.value.task?.scanRecordCount ?: 0) <= 0) return
         changeStatus(repository::complete, R.string.product_counting_completed_message)
     }
 
-    fun upload() {
+    fun requestDelete() {
+        if (_state.value.editable && _state.value.task?.canDeleteEmptyTask() == true && canChangeTask()) {
+            _state.update { it.copy(deleteConfirmationVisible = true) }
+        }
+    }
+
+    fun dismissDelete() {
+        _state.update { it.copy(deleteConfirmationVisible = false) }
+    }
+
+    fun confirmDelete() {
+        if (!_state.value.deleteConfirmationVisible || !canChangeTask()) return
         val taskId = loadedTaskId
+        _state.update { it.copy(deleteConfirmationVisible = false, processing = true, taskActionRunning = true, error = null, success = null) }
         viewModelScope.launch {
-            _state.update { it.copy(processing = true, error = null, success = null) }
+            runCatching { repository.deleteEmptyTask(taskId) }
+                .onSuccess { deleted ->
+                    _state.update {
+                        it.copy(
+                            processing = false,
+                            taskActionRunning = false,
+                            deleted = deleted,
+                            loading = false,
+                            editable = if (deleted) false else it.editable,
+                            error = if (deleted) null else UiText.Resource(R.string.product_counting_delete_not_allowed),
+                        )
+                    }
+                }
+                .onFailure(::handleFailure)
+        }
+    }
+
+    fun upload() {
+        if (!canChangeTask()) return
+        val taskId = loadedTaskId
+        _state.update { it.copy(processing = true, taskActionRunning = true, error = null, success = null) }
+        viewModelScope.launch {
             runCatching { repository.upload(taskId) }
                 .onSuccess { response ->
                     _state.update {
                         it.copy(
                             processing = false,
+                            taskActionRunning = false,
                             success = UiText.Resource(
                                 if (response.validationWarnings.isEmpty()) {
                                     R.string.product_counting_upload_success
@@ -357,7 +431,7 @@ class ProductCountingDetailViewModel @Inject constructor(
 
     private fun handleFailure(error: Throwable) {
         scanFeedback.failure()
-        _state.update { it.copy(processing = false, error = error.asUiText()) }
+        _state.update { it.copy(processing = false, taskActionRunning = false, error = error.asUiText()) }
     }
 
     private fun failWith(message: Int) {
@@ -371,14 +445,16 @@ class ProductCountingDetailViewModel @Inject constructor(
     }
 
     private fun changeStatus(operation: suspend (String) -> Boolean, successMessage: Int) {
+        if (!canChangeTask() || _state.value.deleteConfirmationVisible || _state.value.resetConfirmationVisible) return
         val taskId = loadedTaskId
+        _state.update { it.copy(processing = true, taskActionRunning = true, error = null, success = null) }
         viewModelScope.launch {
-            _state.update { it.copy(processing = true, error = null, success = null) }
             runCatching { operation(taskId) }
                 .onSuccess { changed ->
                     _state.update {
                         it.copy(
                             processing = false,
+                            taskActionRunning = false,
                             success = if (changed) UiText.Resource(successMessage) else null,
                             error = if (changed) null else UiText.Resource(R.string.product_counting_status_change_failed),
                         )
@@ -387,6 +463,9 @@ class ProductCountingDetailViewModel @Inject constructor(
                 .onFailure(::handleFailure)
         }
     }
+
+    private fun canChangeTask(): Boolean =
+        !_state.value.processing && _state.value.pendingScans == 0 && _state.value.pendingDuplicate == null && !_state.value.deleted
 }
 
 private fun Throwable.asUiText(): UiText = when (this) {

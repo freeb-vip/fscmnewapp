@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="product_counting_delete">တာဝန်ဖျက်ရန်</string>
+    <string name="product_counting_delete_title">ဤအလွတ်ရေတွက်တာဝန်ကို ဖျက်မလား။</string>
+    <string name="product_counting_delete_message">ကုန်ပစ္စည်းတစ်ခုမျှ စကင်မဖတ်ရသေးပါ။ ဤတာဝန်ကို စာရင်းမှ ဖယ်ရှားပါမည်။</string>
+    <string name="product_counting_delete_not_allowed">တာဝန်အခြေအနေ ပြောင်းလဲသွားသဖြင့် ဖျက်၍မရပါ။ စကင်မှတ်တမ်းရှိပါက ရေတွက်ခြင်းပြီးဆုံးရန်ကို နှိပ်ပါ။</string>
     <string name="local_app_product_counting_title">ကုန်ပစ္စည်း ရေတွက်ခြင်း</string>
     <string name="local_app_product_counting_description">ကုန်ပစ္စည်းတစ်မျိုး၏ သေတ္တာအရေအတွက်ကို လျင်မြန်စွာ ရေတွက်ပါ</string>
     <string name="feature_product_counting">ကုန်ပစ္စည်း ရေတွက်ခြင်း</string>

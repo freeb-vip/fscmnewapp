@@ -1272,6 +1272,7 @@ private fun FeatureScreen(
                 )
                 is FeatureRoute.ProductCountingDetail -> ProductCountingTaskDetailScreen(
                     taskId = route.taskId,
+                    onDeleted = { onNavigate(FeatureRoute.ProductCountingList) },
                     viewModel = requireNotNull(productCountingDetailViewModel),
                 )
                 is FeatureRoute.ProductSkuList -> ProductManagementScreen(
