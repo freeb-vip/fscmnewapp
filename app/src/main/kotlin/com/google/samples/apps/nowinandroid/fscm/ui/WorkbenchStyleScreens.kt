@@ -51,6 +51,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.google.samples.apps.nowinandroid.R
@@ -167,7 +168,7 @@ private fun WarehouseAppTile(app: MobileAppEntry, modifier: Modifier, onOpen: (M
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             FscmAppIcon(app, size = 48)
-            Text(app.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+            Text(localizedAppTitle(app), maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
         }
     }
 }

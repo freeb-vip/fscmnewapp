@@ -94,6 +94,7 @@ import com.google.samples.apps.nowinandroid.fscm.ui.FscmAppIcon
 import com.google.samples.apps.nowinandroid.fscm.ui.WorkbenchViewModel
 import com.google.samples.apps.nowinandroid.fscm.ui.components.FscmBadge
 import com.google.samples.apps.nowinandroid.fscm.ui.components.FscmCard
+import com.google.samples.apps.nowinandroid.fscm.ui.localizedAppTitle
 
 @Composable
 fun WorkbenchScreen(
@@ -354,7 +355,7 @@ private fun AppGrid(
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    app.title,
+                    localizedAppTitle(app),
                     color = FscmInkStrong,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 2,

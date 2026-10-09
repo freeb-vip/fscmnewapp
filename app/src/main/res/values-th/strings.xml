@@ -54,6 +54,7 @@
     <string name="product_load_failed">โหลดสินค้าไม่สำเร็จ</string>
 
     <string name="settings_language">ภาษาของแอป</string>
+    <string name="settings_more">การตั้งค่าเพิ่มเติม</string>
     <string name="settings_display_mode">การแสดงผล</string>
     <string name="display_mode_full">โหมดเต็ม</string>
     <string name="display_mode_compact">โหมดกะทัดรัด</string>

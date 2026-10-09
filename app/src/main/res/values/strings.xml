@@ -38,6 +38,7 @@
     <string name="product_load_failed">Unable to load products</string>
 
     <string name="settings_language">Language</string>
+    <string name="settings_more">More settings</string>
     <string name="settings_display_mode">Display mode</string>
     <string name="display_mode_full">Full mode</string>
     <string name="display_mode_compact">Compact mode</string>

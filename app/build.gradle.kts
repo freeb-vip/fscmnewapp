@@ -227,6 +227,7 @@ dependencies {
     testDemoImplementation(libs.androidx.navigation.testing)
     testDemoImplementation(libs.robolectric)
     testDemoImplementation(libs.roborazzi)
+    testDemoImplementation(libs.androidx.compose.ui.test)
 
     androidTestImplementation(libs.androidx.test.espresso.core)
     androidTestImplementation(libs.androidx.test.core)

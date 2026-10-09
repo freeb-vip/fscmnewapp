@@ -54,6 +54,7 @@
     <string name="product_load_failed">ကုန်ပစ္စည်းများ ဖွင့်မရပါ</string>
 
     <string name="settings_language">အက်ပ်ဘာသာစကား</string>
+    <string name="settings_more">နောက်ထပ် ဆက်တင်များ</string>
     <string name="settings_display_mode">ပြသမှု ဆက်တင်များ</string>
     <string name="display_mode_full">အပြည့်မုဒ်</string>
     <string name="display_mode_compact">ကျစ်လစ်မုဒ်</string>

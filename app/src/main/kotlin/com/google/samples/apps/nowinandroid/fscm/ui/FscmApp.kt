@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -912,12 +913,10 @@ private fun MainShell(
             onRealtimeRefresh = realtimeViewModel::refresh,
             onRealtimeSelect = realtimeViewModel::select,
             settingsContent = {
-                ProfileScreen(
-                    session = session, onLogout = onLogout, onSwitchNamespace = onSwitchNamespace,
-                    language = language, onUpdateLanguage = onUpdateLanguage,
-                    displayMode = displayMode, onUpdateDisplayMode = onUpdateDisplayMode,
-                    onCheckForUpdate = onCheckForUpdate, terminalFindState = terminalFindState,
-                    displayPolicy = displayPolicy, settingsOnly = true, onOpenFeature = { featureRoute = it },
+                MoreSettingsScreen(
+                    terminalFindState = terminalFindState,
+                    displayPolicy = displayPolicy,
+                    onOpenFeature = { featureRoute = it },
                 )
             },
             route = featureRoute,
@@ -1036,7 +1035,6 @@ private fun MainShell(
                     displayMode = displayMode,
                     onUpdateDisplayMode = onUpdateDisplayMode,
                     onCheckForUpdate = onCheckForUpdate,
-                    terminalFindState = terminalFindState,
                     displayPolicy = displayPolicy,
                 )
             }
@@ -1127,7 +1125,7 @@ private fun FeatureScreen(
                         is FeatureRoute.BoxLabelDetail -> stringResource(R.string.feature_box_label_detail)
                         FeatureRoute.CartonManagement -> stringResource(R.string.feature_box_label_management)
                         FeatureRoute.PdaMode -> stringResource(R.string.feature_pda_scan_mode)
-                        FeatureRoute.AppSettings -> stringResource(R.string.app_settings_title)
+                        FeatureRoute.AppSettings -> stringResource(R.string.settings_more)
                         FeatureRoute.PdaSettings -> stringResource(R.string.feature_pda_settings)
                         FeatureRoute.EdgeNodes -> stringResource(R.string.feature_edge_nodes)
                         is FeatureRoute.EdgeNodeDetail -> stringResource(R.string.feature_edge_nodes)
@@ -1978,8 +1976,7 @@ private fun MessageRow(
 }
 
 @Composable
-private fun ProfileScreen(
-    settingsOnly: Boolean = false,
+internal fun ProfileScreen(
     onOpenFeature: (FeatureRoute) -> Unit,
     session: SessionState,
     onLogout: () -> Unit,
@@ -1989,7 +1986,6 @@ private fun ProfileScreen(
     displayMode: DisplayMode,
     onUpdateDisplayMode: (DisplayMode) -> Unit,
     onCheckForUpdate: () -> Unit,
-    terminalFindState: TerminalFindState,
     displayPolicy: FscmDisplayPolicy,
 ) {
     var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
@@ -1999,114 +1995,69 @@ private fun ProfileScreen(
         contentPadding = displayPolicy.pageContentPadding(),
         verticalArrangement = Arrangement.spacedBy(displayPolicy.sectionSpacing()),
     ) {
-        if (!settingsOnly) {
-            item {
-                FscmCard(padding = displayPolicy.cardPadding(), containerColor = BrandDeep) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(if (displayPolicy.isCompact) 52.dp else 58.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Rounded.Person, contentDescription = null, tint = Color.White)
-                        }
-                        Spacer(Modifier.width(14.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(session.user?.name?.ifBlank { session.user.username } ?: stringResource(R.string.profile_fallback_user), color = Color.White, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleLarge)
-                            Text(session.effectiveRole.ifBlank { stringResource(R.string.profile_mobile_role) }, color = Color.White.copy(alpha = 0.72f))
-                        }
+        item {
+            FscmCard(padding = displayPolicy.cardPadding(), containerColor = BrandDeep) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(if (displayPolicy.isCompact) 52.dp else 58.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.Person, contentDescription = null, tint = Color.White)
                     }
-                }
-            }
-            item {
-                FscmCard(padding = displayPolicy.cardPadding()) {
-                    Text(stringResource(R.string.profile_workspace), color = InkStrong, fontWeight = FontWeight.Black)
-                    Spacer(Modifier.height(10.dp))
-                    session.namespaces.forEach { namespace ->
-                        NamespaceRow(namespace, selected = namespace.id == session.currentNamespace?.id, onSwitchNamespace)
-                    }
-                }
-            }
-            item {
-                FscmCard(modifier = Modifier.clickable { onOpenFeature(FeatureRoute.AppSettings) }, padding = displayPolicy.cardPadding()) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.app_settings_title), Modifier.weight(1f), color = InkStrong, fontWeight = FontWeight.Bold)
-                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = InkSoft)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(session.user?.name?.ifBlank { session.user.username } ?: stringResource(R.string.profile_fallback_user), color = Color.White, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleLarge)
+                        Text(session.effectiveRole.ifBlank { stringResource(R.string.profile_mobile_role) }, color = Color.White.copy(alpha = 0.72f))
                     }
                 }
             }
         }
-        if (settingsOnly) {
-            item {
-                FscmCard(padding = displayPolicy.cardPadding()) {
-                    TextButton(onClick = { onOpenFeature(FeatureRoute.PdaSettings) }, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.feature_pda_settings))
-                    }
-                    TextButton(onClick = { onOpenFeature(FeatureRoute.EdgeNodes) }, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.feature_edge_nodes))
-                    }
-                }
-            }
-            item {
-                FscmCard(modifier = Modifier.clickable { showLanguageDialog = true }, padding = displayPolicy.cardPadding()) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(stringResource(R.string.settings_language), color = InkStrong, fontWeight = FontWeight.Black)
-                            Text(languageLabel(language), color = InkSoft, style = MaterialTheme.typography.bodySmall)
-                        }
-                        Icon(
-                            Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                            contentDescription = stringResource(R.string.settings_language),
-                            tint = InkSoft,
-                        )
-                    }
-                }
-            }
-            item {
-                FscmCard(modifier = Modifier.clickable { showDisplayModeDialog = true }, padding = displayPolicy.cardPadding()) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(stringResource(R.string.settings_display_mode), color = InkStrong, fontWeight = FontWeight.Black)
-                            Text(displayModeLabel(displayMode), color = InkSoft, style = MaterialTheme.typography.bodySmall)
-                        }
-                        Icon(
-                            Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                            contentDescription = stringResource(R.string.settings_display_mode),
-                            tint = InkSoft,
-                        )
-                    }
-                }
-            }
-            item {
-                TerminalFindSettingsCard(terminalFindState, displayPolicy)
-            }
-            item {
-                FscmCard(modifier = Modifier.clickable(onClick = onCheckForUpdate), padding = displayPolicy.cardPadding()) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(stringResource(R.string.app_update), color = InkStrong, fontWeight = FontWeight.Black)
-                            Text(
-                                stringResource(
-                                    R.string.app_update_current_version,
-                                    BuildConfig.VERSION_NAME,
-                                    BuildConfig.VERSION_CODE,
-                                ),
-                                color = InkSoft,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        Icon(Icons.Rounded.Refresh, contentDescription = stringResource(R.string.app_update), tint = BrandMain)
-                    }
+        item {
+            FscmCard(modifier = Modifier.fillMaxWidth(), padding = displayPolicy.cardPadding()) {
+                Text(stringResource(R.string.profile_workspace), color = InkStrong, fontWeight = FontWeight.Black)
+                Spacer(Modifier.height(10.dp))
+                session.namespaces.forEach { namespace ->
+                    NamespaceRow(namespace, selected = namespace.id == session.currentNamespace?.id, onSwitchNamespace)
                 }
             }
         }
-        if (!settingsOnly) {
-            item {
-                OutlinedButton(
-                    onClick = onLogout,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger),
-                    border = BorderStroke(1.dp, Danger.copy(alpha = 0.32f)),
-                ) {
-                    Text(stringResource(R.string.profile_logout))
-                }
+        item {
+            SettingsNavigationCard(
+                title = stringResource(R.string.settings_language),
+                subtitle = languageLabel(language),
+                displayPolicy = displayPolicy,
+                onClick = { showLanguageDialog = true },
+            )
+        }
+        item {
+            SettingsNavigationCard(
+                title = stringResource(R.string.settings_display_mode),
+                subtitle = displayModeLabel(displayMode),
+                displayPolicy = displayPolicy,
+                onClick = { showDisplayModeDialog = true },
+            )
+        }
+        item {
+            SettingsNavigationCard(
+                title = stringResource(R.string.app_update),
+                subtitle = stringResource(R.string.app_update_current_version, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
+                displayPolicy = displayPolicy,
+                onClick = onCheckForUpdate,
+            )
+        }
+        item {
+            SettingsNavigationCard(
+                title = stringResource(R.string.settings_more),
+                displayPolicy = displayPolicy,
+                onClick = { onOpenFeature(FeatureRoute.AppSettings) },
+            )
+        }
+        item {
+            OutlinedButton(
+                onClick = onLogout,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger),
+                border = BorderStroke(1.dp, Danger.copy(alpha = 0.32f)),
+            ) {
+                Text(stringResource(R.string.profile_logout))
             }
         }
     }
@@ -2194,6 +2145,53 @@ private fun ProfileScreen(
 }
 
 @Composable
+private fun SettingsNavigationCard(
+    title: String,
+    displayPolicy: FscmDisplayPolicy,
+    onClick: () -> Unit,
+    subtitle: String? = null,
+) {
+    FscmCard(modifier = Modifier.clickable(onClick = onClick), padding = displayPolicy.cardPadding()) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, color = InkStrong, fontWeight = FontWeight.Bold)
+                subtitle?.let { Text(it, color = InkSoft, style = MaterialTheme.typography.bodySmall) }
+            }
+            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = InkSoft)
+        }
+    }
+}
+
+@Composable
+internal fun MoreSettingsScreen(
+    terminalFindState: TerminalFindState,
+    displayPolicy: FscmDisplayPolicy,
+    onOpenFeature: (FeatureRoute) -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = displayPolicy.pageContentPadding(),
+        verticalArrangement = Arrangement.spacedBy(displayPolicy.sectionSpacing()),
+    ) {
+        item {
+            SettingsNavigationCard(
+                title = stringResource(R.string.feature_pda_settings),
+                displayPolicy = displayPolicy,
+                onClick = { onOpenFeature(FeatureRoute.PdaSettings) },
+            )
+        }
+        item {
+            SettingsNavigationCard(
+                title = stringResource(R.string.feature_edge_nodes),
+                displayPolicy = displayPolicy,
+                onClick = { onOpenFeature(FeatureRoute.EdgeNodes) },
+            )
+        }
+        item { TerminalFindSettingsCard(terminalFindState, displayPolicy) }
+    }
+}
+
+@Composable
 private fun TerminalFindSettingsCard(
     state: TerminalFindState,
     displayPolicy: FscmDisplayPolicy,
@@ -2245,7 +2243,7 @@ private fun TerminalFindSettingsCard(
             )
         }
         Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AssistChip(
                 onClick = { TerminalFindService.testAlarm(context) },
                 label = { Text(stringResource(R.string.terminal_find_test)) },
@@ -3100,7 +3098,7 @@ private fun localAppDescriptionResource(key: String): Int? = when (key) {
 }
 
 @Composable
-private fun localizedAppTitle(app: MobileAppEntry): String =
+internal fun localizedAppTitle(app: MobileAppEntry): String =
     localAppTitleResource(app.key)?.let { stringResource(it) } ?: app.title
 
 private fun localizedAppTitle(context: Context, app: MobileAppEntry): String =
