@@ -61,9 +61,12 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -87,6 +90,7 @@ fun LocationStocktakeScreen(session: SessionState, viewModel: LocationStocktakeV
     val state by viewModel.state.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
+    val codeStyle = SpanStyle(color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
     var scanInput by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(session) { viewModel.enter(session) }
     LaunchedEffect(state.stage, state.location, state.sku) { scanInput = "" }
@@ -118,7 +122,7 @@ fun LocationStocktakeScreen(session: SessionState, viewModel: LocationStocktakeV
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(state.context?.workspace?.warehouseName?.ifBlank { null } ?: stringResource(R.string.st_warehouse), fontWeight = FontWeight.Bold)
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.st_current_location, state.location.ifBlank { "—" }), Modifier.weight(1f))
+                        Text(stringResource(R.string.st_current_location, state.location.ifBlank { "—" }), Modifier.weight(1f), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                         TextButton(onClick = viewModel::changeLocation, enabled = state.allowed && !state.locked) { Text(stringResource(R.string.st_change_location)) }
                     }
                 }
@@ -135,7 +139,12 @@ fun LocationStocktakeScreen(session: SessionState, viewModel: LocationStocktakeV
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(stringResource(R.string.st_pending))
-                        Text("${state.location} · ${state.sku} · ${state.pending!!.countedQuantity}")
+                        Text(
+                            buildAnnotatedString {
+                                withStyle(codeStyle) { append("${state.location} · ${state.sku}") }
+                                append(" · ${state.pending!!.countedQuantity}")
+                            },
+                        )
                         Button(onClick = { viewModel.submit() }, enabled = !state.submitting && state.allowed && state.canWrite) { Text(stringResource(R.string.st_recover)) }
                     }
                 }
@@ -158,6 +167,7 @@ fun LocationStocktakeScreen(session: SessionState, viewModel: LocationStocktakeV
                             modifier = Modifier.fillMaxWidth(),
                             enabled = state.canScan,
                             singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold),
                             label = { Text(stringResource(R.string.st_scan_or_type)) },
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                             keyboardActions = KeyboardActions(onSearch = {
@@ -178,7 +188,7 @@ fun LocationStocktakeScreen(session: SessionState, viewModel: LocationStocktakeV
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(stock.sku, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text(stock.sku, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                         stock.name?.let { Text(it) }
                         Text(stringResource(R.string.st_current_quantity, stock.onHand.toString(), stock.unit.orEmpty()))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -195,7 +205,7 @@ fun LocationStocktakeScreen(session: SessionState, viewModel: LocationStocktakeV
                             OutlinedButton(onClick = { viewModel.editQuantity("0", zero = true) }, enabled = !state.locked) { Text(stringResource(R.string.st_set_zero)) }
                         }
                         val delta = stocktakeQuantity(state.quantity)?.minus(stock.onHand ?: 0)
-                        Text(stringResource(R.string.st_delta, delta?.let { if (it > 0) "+$it" else "$it" } ?: "—"), color = if ((delta ?: 0) < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                        Text(stringResource(R.string.st_delta, delta?.let { if (it > 0) "+$it" else "$it" } ?: "—"), color = MaterialTheme.colorScheme.error)
                         if (state.expired) {
                             Text(stringResource(R.string.st_expired), color = MaterialTheme.colorScheme.error)
                             OutlinedButton(onClick = viewModel::requery, enabled = !state.locked) { Text(stringResource(R.string.st_query_again)) }
@@ -211,7 +221,7 @@ fun LocationStocktakeScreen(session: SessionState, viewModel: LocationStocktakeV
             Card(Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(stock.locationCode, fontWeight = FontWeight.Bold)
+                        Text(stock.locationCode, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                         Text("${stock.onHand ?: "—"} ${stock.unit.orEmpty()}")
                         if ((stock.onHand ?: 0) < 0) Text(stringResource(R.string.st_negative_stock), color = MaterialTheme.colorScheme.error)
                     }
@@ -228,7 +238,12 @@ fun LocationStocktakeScreen(session: SessionState, viewModel: LocationStocktakeV
         state.lastRecord?.let { record ->
             item {
                 Text(stringResource(R.string.st_last_result, stringResource(stocktakeStatusResource(record.status))))
-                Text("${record.locationCode} · ${record.sku} · ${record.beforeQuantity} → ${record.countedQuantity}")
+                Text(
+                    buildAnnotatedString {
+                        withStyle(codeStyle) { append("${record.locationCode} · ${record.sku}") }
+                        append(" · ${record.beforeQuantity} → ${record.countedQuantity}")
+                    },
+                )
             }
         }
     }
@@ -238,9 +253,9 @@ fun LocationStocktakeScreen(session: SessionState, viewModel: LocationStocktakeV
             title = { Text(stringResource(R.string.st_confirm_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("${confirmation.record.locationCode} · ${confirmation.record.sku}")
+                    Text("${confirmation.record.locationCode} · ${confirmation.record.sku}", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                     Text("${confirmation.record.beforeQuantity} → ${confirmation.record.countedQuantity}")
-                    Text(stringResource(R.string.st_delta, confirmation.record.delta.toString()))
+                    Text(stringResource(R.string.st_delta, confirmation.record.delta.toString()), color = MaterialTheme.colorScheme.error)
                     OutlinedTextField(
                         value = state.confirmationInput,
                         onValueChange = viewModel::confirmInput,
