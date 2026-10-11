@@ -99,6 +99,7 @@ data class LocationStocktakeUiState(
     val pending: StocktakeSubmissionInput? = null,
     val confirmation: StocktakeSubmission? = null,
     val confirmationInput: String = "",
+    val serverMessage: String? = null,
     val review: Boolean = false,
     val submitting: Boolean = false,
     val camera: Boolean = false,
@@ -118,9 +119,9 @@ data class LocationStocktakeUiState(
     val locked: Boolean get() = busy || submitting || pending != null || confirmation != null || draftConflict != null
     val readyToSubmit: Boolean get() = editable && allowed && canWrite && context?.writeEnabled == true &&
         lookup?.usable() == true && stocktakeQuantity(quantity) != null && !locked && !expired && !progressFailed
-    val canScan: Boolean get() = editable && allowed && context?.workspace?.status == "configured" &&
+    val canScan: Boolean get() = editable && allowed && context?.writeEnabled == true && context.workspace.status == "configured" &&
         !locked && !review && stage != StocktakeStage.Count && !changingLocation && switchTarget == null && !releasePrompt
-    val canQuick: Boolean get() = allowed && canWrite && context?.workspace?.status == "configured" &&
+    val canQuick: Boolean get() = allowed && canWrite && context?.writeEnabled == true && context.workspace.status == "configured" &&
         !busy && !submitting && pending == null && confirmation == null && !review && !progressFailed && draftConflict == null
 }
 
@@ -228,11 +229,11 @@ class LocationStocktakeViewModel @Inject constructor(
         val seq = ++generation
         queryJob?.cancel()
         alternativesJob?.cancel()
-        mutableState.update { it.copy(busy = true, error = null) }
+        mutableState.update { it.copy(busy = true, error = null, serverMessage = null) }
         queryJob = viewModelScope.launch {
             try {
                 if (seq != generation) return@launch
-                if (task.status == "pending" && state.value.canWrite) repository.changeTask(task, "claim")
+                if (task.status == "pending" && state.value.canWrite && state.value.context?.writeEnabled == true) repository.changeTask(task, "claim")
                 val detail = repository.countTask(task.id)
                 if (seq != generation) return@launch
                 val current = detail.task
@@ -288,7 +289,7 @@ class LocationStocktakeViewModel @Inject constructor(
         if (!state.value.canQuick) return
         val s = state.value
         val seq = generation
-        mutableState.update { it.copy(busy = true, error = null) }
+        mutableState.update { it.copy(busy = true, error = null, serverMessage = null) }
         viewModelScope.launch {
             try {
                 saveProgress(seq)
@@ -495,7 +496,7 @@ class LocationStocktakeViewModel @Inject constructor(
     }
 
     fun chooseStock(stock: StocktakeStock) {
-        if (!state.value.editable || state.value.locked || (stock.onHand ?: 0) <= 0) return
+        if (!state.value.editable || state.value.locked || (stock.onHand == null || stock.onHand < 0)) return
         if (state.value.dirty) mutableState.update { it.copy(switchTarget = stock) } else lookup(stock.locationCode, stock.sku)
     }
     fun changeLocation() {
@@ -646,13 +647,13 @@ class LocationStocktakeViewModel @Inject constructor(
         if (s.pending == null && (!s.readyToSubmit || !s.review)) return
         var input = s.pending ?: StocktakeSubmissionInput(s.lookup!!.snapshotId, UUID.randomUUID().toString(), stocktakeQuantity(s.quantity)!!, s.inputMethod, countTaskId = task.id, countTaskVersion = task.version)
         if (confirm) {
-            val quantity = stocktakeQuantity(s.confirmationInput)
+            val quantity = if (s.confirmation?.record?.reenterRequired == false) input.countedQuantity else stocktakeQuantity(s.confirmationInput)
             if (s.confirmation?.confirmationToken == null || quantity != input.countedQuantity) return
             input = input.copy(confirmationToken = s.confirmation.confirmationToken, confirmedQuantity = quantity)
         }
         val accepted = input
         val seq = generation
-        mutableState.update { it.copy(submitting = true, pending = accepted, review = false, error = null) }
+        mutableState.update { it.copy(submitting = true, pending = accepted, review = false, error = null, serverMessage = null) }
         submitJob = viewModelScope.launch {
             try {
                 progressMutex.withLock {
@@ -680,7 +681,7 @@ class LocationStocktakeViewModel @Inject constructor(
                         val detail = repository.countTask(task.id)
                         if (seq == generation && detail.records.none { it.requestId == accepted.requestId }) {
                             // The server rejected this request before creating a record. Reopening obtains a fresh version and snapshot.
-                            mutableState.update { it.copy(pending = null, confirmation = null, progressFailed = true, error = R.string.st_task_changed) }
+                            mutableState.update { it.copy(pending = null, confirmation = null, progressFailed = true, error = R.string.st_task_changed, serverMessage = e.serverMessage ?: e.message) }
                             drafts.save(s.scope + ":" + task.id, state.value.draft())
                             return@launch
                         }
@@ -688,7 +689,7 @@ class LocationStocktakeViewModel @Inject constructor(
                         if (recoveryError is CancellationException) throw recoveryError
                     }
                 }
-                if (seq == generation) mutableState.update { it.copy(error = R.string.st_recover_required) }
+                if (seq == generation) mutableState.update { it.copy(error = R.string.st_recover_required, serverMessage = (e as? FscmApiException)?.serverMessage) }
             } finally {
                 if (seq == generation) {
                     mutableState.update { it.copy(submitting = false) }

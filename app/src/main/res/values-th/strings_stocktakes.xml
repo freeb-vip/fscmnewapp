@@ -38,7 +38,7 @@
     <string name="st_submit_failed">การตรวจนับไม่สำเร็จ</string>
     <string name="st_success">ตรวจนับเสร็จแล้ว</string>
     <string name="st_save_failed">บันทึกข้อมูลกู้คืนในเครื่องไม่สำเร็จ</string>
-    <string name="st_confirm_title">ผลต่างเกิน 100 หน่วย</string>
+    <string name="st_confirm_title">ยืนยันความเสี่ยงในการตรวจนับ</string>
     <string name="st_reenter">ป้อนจำนวนจริงอีกครั้ง</string>
     <string name="st_confirm">ยืนยันการตรวจนับ</string>
     <string name="st_cancel">ยกเลิก</string>
@@ -84,7 +84,7 @@
     <string name="st_claim">แตะเพื่อรับงานและตรวจนับ</string>
     <string name="st_picking">โซนหยิบสินค้า</string>
     <string name="st_unknown_stock">ไม่ทราบจำนวน ดูได้เท่านั้น</string>
-    <string name="st_zero_stock">สต็อกศูนย์ ดูได้เท่านั้น</string>
+    <string name="st_zero_stock">สต็อกในระบบเป็น 0 สามารถตรวจนับได้</string>
     <string name="st_draft_conflict">เลือกจำนวนที่จะดำเนินการต่อ</string>
     <string name="st_draft_values">แบบร่างในเครื่อง: %1$s\nจำนวนที่บันทึกในงาน: %2$s</string>
     <string name="st_use_local">ใช้จำนวนในเครื่อง</string>

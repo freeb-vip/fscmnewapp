@@ -34,8 +34,10 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.QrCodeScanner
@@ -160,11 +162,13 @@ fun LocationStocktakeScreen(session: SessionState, viewModel: LocationStocktakeV
                     }
                 }
                 if (state.context?.workspace?.status != "configured" && state.context != null) item { Text(stringResource(R.string.st_config_required)) }
-                if (state.context?.writeEnabled == false) item { Text(stringResource(R.string.st_write_blocked)) }
+                if (state.context?.writeEnabled == false) item { Text(state.context?.blockReason.orEmpty().ifBlank { stringResource(R.string.st_write_blocked) }) }
+                state.serverMessage?.takeIf { it.isNotBlank() }?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
+                state.lastRecord?.takeIf { it.status in setOf("failed", "expired") && it.errorMessage.isNotBlank() }?.let { record -> item { Text(record.errorMessage, color = MaterialTheme.colorScheme.error) } }
                 if (state.busy) item { CircularProgressIndicator() }
                 if (state.showTasks) {
                     if (!state.tasksBusy && state.tasks.isEmpty()) item { Text(stringResource(R.string.st_tasks_empty)) }
-                    items(state.tasks, key = CountTask::id) { task -> CountTaskCard(task, state.canWrite && task.status == "pending", !state.busy) { viewModel.openTask(task) } }
+                    items(state.tasks, key = CountTask::id) { task -> CountTaskCard(task, state.canWrite && state.context?.writeEnabled == true && task.status == "pending", !state.busy) { viewModel.openTask(task) } }
                     if (state.tasksMore) item { OutlinedButton(onClick = { viewModel.loadTasks(true) }, enabled = !state.tasksBusy, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.st_load_more)) } }
                 } else {
                     val task = state.task
@@ -288,20 +292,7 @@ fun LocationStocktakeScreen(session: SessionState, viewModel: LocationStocktakeV
         )
     }
     state.confirmation?.let { confirmation ->
-        AlertDialog(
-            onDismissRequest = {},
-            title = { Text(stringResource(R.string.st_confirm_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    StocktakeIdentity(confirmation.record.locationCode, confirmation.record.sku)
-                    Text("${confirmation.record.countedQuantity} ${confirmation.record.unit}", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                    Text(stringResource(R.string.st_delta, confirmation.record.delta.toString()))
-                    OutlinedTextField(value = state.confirmationInput, onValueChange = viewModel::confirmInput, label = { Text(stringResource(R.string.st_reenter)) }, enabled = !state.submitting, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth().stocktakeQuantityInput())
-                }
-            },
-            confirmButton = { Button(onClick = { viewModel.submit(confirm = true) }, enabled = !state.submitting && !state.busy && stocktakeQuantity(state.confirmationInput) == confirmation.record.countedQuantity) { Text(stringResource(R.string.st_confirm)) } },
-            dismissButton = { TextButton(onClick = viewModel::cancelConfirmation, enabled = !state.submitting && !state.busy) { Text(stringResource(R.string.st_edit_count)) } },
-        )
+        StocktakeRiskConfirmation(confirmation, state.confirmationInput, state.submitting, state.busy, viewModel::confirmInput, { viewModel.submit(confirm = true) }, viewModel::cancelConfirmation)
     }
     if (state.switchTarget != null || state.changingLocation) AlertDialog(onDismissRequest = viewModel::cancelSwitch, title = { Text(stringResource(R.string.st_discard_title)) }, text = { Text(stringResource(R.string.st_discard_text)) }, confirmButton = { TextButton(onClick = viewModel::confirmSwitch) { Text(stringResource(R.string.st_switch)) } }, dismissButton = { TextButton(onClick = viewModel::cancelSwitch) { Text(stringResource(R.string.st_cancel)) } })
     if (state.releasePrompt) AlertDialog(onDismissRequest = { viewModel.askRelease(false) }, title = { Text(stringResource(if (state.task?.sku.isNullOrBlank()) R.string.st_cancel_task else R.string.st_release)) }, text = { Text(stringResource(R.string.st_release_hint)) }, confirmButton = { TextButton(onClick = viewModel::release) { Text(stringResource(R.string.st_confirm_action)) } }, dismissButton = { TextButton(onClick = { viewModel.askRelease(false) }) { Text(stringResource(R.string.st_cancel)) } })
@@ -345,7 +336,7 @@ private fun CountTaskCard(task: CountTask, claim: Boolean, enabled: Boolean, onC
 
 @Composable
 internal fun StocktakeChoice(stock: StocktakeStock, showSku: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    Card(onClick = onClick, enabled = enabled && (stock.onHand ?: 0) > 0, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface, disabledContainerColor = MaterialTheme.colorScheme.surface, disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant)) {
+    Card(onClick = onClick, enabled = enabled && (stock.onHand?.let { it >= 0 } == true), modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface, disabledContainerColor = MaterialTheme.colorScheme.surface, disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(if (showSku) stock.sku else stock.locationCode, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -497,4 +488,31 @@ internal fun StocktakeOfflineOption(option: OfflineCodeOption, enabled: Boolean,
             if (option.description.isNotBlank()) Text(option.description, style = MaterialTheme.typography.bodySmall)
         }
     }
+}
+
+@Composable
+internal fun StocktakeRiskConfirmation(
+    confirmation: com.google.samples.apps.nowinandroid.fscm.data.StocktakeSubmission,
+    input: String,
+    submitting: Boolean,
+    busy: Boolean,
+    onInput: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text(stringResource(R.string.st_confirm_title)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                StocktakeIdentity(confirmation.record.locationCode, confirmation.record.sku)
+                Text("${confirmation.record.countedQuantity} ${confirmation.record.unit}", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.st_delta, confirmation.record.delta.toString()))
+                confirmation.record.riskMessages.ifEmpty { listOf(confirmation.record.errorMessage) }.filter { it.isNotBlank() }.forEach { Text(it) }
+                if (confirmation.record.reenterRequired) OutlinedTextField(value = input, onValueChange = onInput, label = { Text(stringResource(R.string.st_reenter)) }, enabled = !submitting, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth().stocktakeQuantityInput())
+            }
+        },
+        confirmButton = { Button(onClick = onConfirm, enabled = !submitting && !busy && (!confirmation.record.reenterRequired || stocktakeQuantity(input) == confirmation.record.countedQuantity)) { Text(stringResource(R.string.st_confirm)) } },
+        dismissButton = { TextButton(onClick = onCancel, enabled = !submitting && !busy) { Text(stringResource(R.string.st_edit_count)) } },
+    )
 }

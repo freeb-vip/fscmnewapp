@@ -59,7 +59,9 @@ import com.google.samples.apps.nowinandroid.fscm.data.OfflineCodeOption
 import com.google.samples.apps.nowinandroid.fscm.data.OfflineCodeResults
 import com.google.samples.apps.nowinandroid.fscm.data.StocktakeContext
 import com.google.samples.apps.nowinandroid.fscm.data.StocktakeLookup
+import com.google.samples.apps.nowinandroid.fscm.data.StocktakeRecord
 import com.google.samples.apps.nowinandroid.fscm.data.StocktakeStock
+import com.google.samples.apps.nowinandroid.fscm.data.StocktakeSubmission
 import com.google.samples.apps.nowinandroid.fscm.data.StocktakeWorkspace
 import org.junit.Rule
 import org.junit.Test
@@ -79,6 +81,7 @@ import kotlin.test.assertEquals
 @OptIn(ExperimentalTestApi::class)
 class LocationStocktakeScreenTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    private var selectedLocation = ""
     private val location = "PICK-A-001-VERY-LONG-LOCATION-2026"
     private val sku = "SKU-2026-VERY-LONG-PRODUCT-CODE-001"
     private val stock = StocktakeStock("row", "location", location, sku, onHand = 201, unit = "PCS")
@@ -160,15 +163,49 @@ class LocationStocktakeScreenTest {
     }
 
     @Test
-    fun zeroNegativeAndUnknownRemainVisibleButCannotBeSelected() {
+    @Config(sdk = [28, 36])
+    fun zeroStockCanBeSelectedWhileNegativeAndUnknownRemainReadOnly() {
         render(choices = true)
         compose.onNodeWithText("P-PICK").assertIsEnabled()
         compose.onNodeWithText("拣货区").assertIsDisplayed()
-        compose.onNodeWithText("P-ZERO").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("P-ZERO").performScrollTo().assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals("P-ZERO", selectedLocation) }
         compose.onNodeWithText("P-NEGATIVE").performScrollTo().assertIsNotEnabled()
         compose.onNodeWithText("P-UNKNOWN").performScrollTo().assertIsNotEnabled()
         compose.onNodeWithText("快速盘点").assertIsDisplayed()
         capture("locations-320")
+    }
+
+    @Test
+    @Config(sdk = [28, 36], qualifiers = "zh-rCN-w320dp-h480dp")
+    fun riskPromptShowsServerMessageAndAllowsExplicitConfirmation() {
+        var confirmed = 0
+        val record = StocktakeRecord("r", "awaiting_confirmation", "LOC-1", "SKU-1", 10, 12, 2, unit = "PCS", riskMessages = listOf("请核对包装规格后再执行"), reenterRequired = false)
+        compose.setContent {
+            FscmTheme {
+                StocktakeRiskConfirmation(StocktakeSubmission(record, "token"), "", false, false, {}, { confirmed++ }, {})
+            }
+        }
+        compose.onNodeWithText("请核对包装规格后再执行").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("确认盘点").assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals(1, confirmed) }
+    }
+
+    @Test
+    @Config(sdk = [28, 36])
+    fun largeRiskPromptRequiresMatchingQuantityBeforeConfirming() {
+        var input by mutableStateOf("")
+        val record = StocktakeRecord("r", "awaiting_confirmation", "LOC-1", "SKU-1", 0, 101, 101, unit = "PCS", riskMessages = listOf("数量变动较大"), reenterRequired = true)
+        compose.setContent {
+            FscmTheme {
+                StocktakeRiskConfirmation(StocktakeSubmission(record, "token"), input, false, false, { input = it }, {}, {})
+            }
+        }
+        compose.onNodeWithText("确认盘点").assertIsNotEnabled()
+        compose.onNode(hasSetTextAction()).performTextReplacement("100")
+        compose.onNodeWithText("确认盘点").assertIsNotEnabled()
+        compose.onNode(hasSetTextAction()).performTextReplacement("101")
+        compose.onNodeWithText("确认盘点").assertIsEnabled()
     }
 
     private fun render(choices: Boolean = false) {
@@ -186,7 +223,7 @@ class LocationStocktakeScreenTest {
                         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             if (choices) {
                                 item { StocktakeChoice(stock.copy(locationCode = "P-PICK", supportsPicking = true), false, true) {} }
-                                item { StocktakeChoice(stock.copy(locationCode = "P-ZERO", onHand = 0), false, true) {} }
+                                item { StocktakeChoice(stock.copy(locationCode = "P-ZERO", onHand = 0), false, true) { selectedLocation = "P-ZERO" } }
                                 item { StocktakeChoice(stock.copy(locationCode = "P-NEGATIVE", onHand = -1), false, true) {} }
                                 item { StocktakeChoice(stock.copy(locationCode = "P-UNKNOWN", onHand = null), false, true) {} }
                             } else {

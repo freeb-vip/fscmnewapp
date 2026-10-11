@@ -38,7 +38,7 @@
     <string name="st_submit_failed">Stocktake was not completed</string>
     <string name="st_success">Count completed</string>
     <string name="st_save_failed">Could not save the local recovery information</string>
-    <string name="st_confirm_title">Difference exceeds 100 units</string>
+    <string name="st_confirm_title">Stocktake risk confirmation</string>
     <string name="st_reenter">Re-enter the actual quantity</string>
     <string name="st_confirm">Confirm stocktake</string>
     <string name="st_cancel">Cancel</string>
@@ -84,7 +84,7 @@
     <string name="st_claim">Tap to claim and count</string>
     <string name="st_picking">Picking zone</string>
     <string name="st_unknown_stock">Unknown quantity, read only</string>
-    <string name="st_zero_stock">Zero stock, read only</string>
+    <string name="st_zero_stock">Zero book stock, counting allowed</string>
     <string name="st_draft_conflict">Choose the count to continue</string>
     <string name="st_draft_values">Local draft: %1$s\nSaved task: %2$s</string>
     <string name="st_use_local">Use local count</string>

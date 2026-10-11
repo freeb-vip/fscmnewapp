@@ -38,7 +38,7 @@
     <string name="st_submit_failed">ရေတွက်မှု မပြီးမြောက်ပါ</string>
     <string name="st_success">စာရင်းစစ်ပြီးပါပြီ</string>
     <string name="st_save_failed">ပြန်လည်ဆက်လုပ်ရန် အချက်အလက်ကို စက်တွင် မသိမ်းနိုင်ပါ</string>
-    <string name="st_confirm_title">ကွာဟချက် 100 ကျော်နေသည်</string>
+    <string name="st_confirm_title">စာရင်းစစ်ဆေးမှု အန္တရာယ်ကို အတည်ပြုပါ</string>
     <string name="st_reenter">အမှန်တကယ်အရေအတွက်ကို ထပ်ရိုက်ထည့်ပါ</string>
     <string name="st_confirm">ရေတွက်မှု အတည်ပြုရန်</string>
     <string name="st_cancel">ပယ်ဖျက်ရန်</string>
@@ -84,7 +84,7 @@
     <string name="st_claim">လက်ခံ၍ စစ်ရန် နှိပ်ပါ</string>
     <string name="st_picking">ပစ္စည်းကောက်ဇုန်</string>
     <string name="st_unknown_stock">အရေအတွက်မသိ၊ ကြည့်ရန်သာ</string>
-    <string name="st_zero_stock">လက်ကျန်သုည၊ ကြည့်ရန်သာ</string>
+    <string name="st_zero_stock">စနစ်ရှိလက်ကျန် 0၊ ရေတွက်နိုင်သည်</string>
     <string name="st_draft_conflict">ဆက်လက်ရေတွက်မည့် အရေအတွက်ကို ရွေးပါ</string>
     <string name="st_draft_values">ဤစက်ရှိမူကြမ်း: %1$s\nလုပ်ငန်းတွင်သိမ်းထားသည်: %2$s</string>
     <string name="st_use_local">စက်ရှိအရေအတွက်ကိုသုံးမည်</string>

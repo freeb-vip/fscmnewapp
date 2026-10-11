@@ -86,7 +86,7 @@ data class StocktakeLookup(
     @SerialName("expires_at") val expiresAt: String? = null,
     @SerialName("query_id") val queryId: String = "",
 ) {
-    fun usable(now: Instant = Instant.now()): Boolean = status == "ready" && (stock?.onHand ?: 0) > 0 &&
+    fun usable(now: Instant = Instant.now()): Boolean = status == "ready" && (stock?.onHand?.let { it >= 0 } == true) &&
         snapshotId.isNotBlank() && runCatching { Instant.parse(expiresAt).isAfter(now) }.getOrDefault(false)
 }
 
@@ -133,6 +133,8 @@ data class StocktakeRecord(
     @SerialName("input_method") val inputMethod: String = "manual",
     val unit: String = "",
     @SerialName("created_at") val createdAt: String = "",
+    @SerialName("risk_messages") val riskMessages: List<String> = emptyList(),
+    @SerialName("reenter_required") val reenterRequired: Boolean = true,
 )
 
 @Serializable

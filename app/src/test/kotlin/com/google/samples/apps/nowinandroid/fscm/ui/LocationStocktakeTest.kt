@@ -74,16 +74,23 @@ class LocationStocktakeTest {
         assertFalse(state.copy(busy = true).readyToSubmit)
         assertFalse(state.copy(allowed = false).readyToSubmit)
         assertFalse(state.copy(canWrite = false).readyToSubmit)
-        assertFalse(state.copy(context = state.context!!.copy(writeEnabled = false)).readyToSubmit)
+        val denied = state.copy(context = state.context!!.copy(writeEnabled = false))
+        assertFalse(denied.readyToSubmit)
+        assertFalse(denied.canQuick)
+        assertFalse(denied.copy(stage = StocktakeStage.Sku).canScan)
         assertFalse(state.copy(expired = true).readyToSubmit)
         assertFalse(state.dirty)
         assertTrue(state.copy(quantity = "0").dirty)
     }
 
     @Test
-    fun snapshotsRequirePositiveStockAndUnexpiredServerIdentity() {
+    fun snapshotsAllowKnownZeroStockAndRequireUnexpiredServerIdentity() {
         assertTrue(lookup.usable())
-        assertFalse(lookup.copy(stock = stock.copy(onHand = 0)).usable())
+        val zero = lookup.copy(stock = stock.copy(onHand = 0))
+        assertTrue(zero.usable())
+        assertTrue(state.copy(lookup = zero, quantity = "0").readyToSubmit)
+        assertTrue(state.copy(lookup = zero, quantity = "12").readyToSubmit)
+        assertFalse(zero.copy(status = "sku_not_found").usable())
         assertFalse(lookup.copy(stock = stock.copy(onHand = -1)).usable())
         assertFalse(lookup.copy(stock = stock.copy(onHand = null)).usable())
         assertFalse(lookup.copy(snapshotId = "").usable())

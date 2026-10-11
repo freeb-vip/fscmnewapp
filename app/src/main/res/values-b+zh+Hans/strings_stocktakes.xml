@@ -38,7 +38,7 @@
     <string name="st_submit_failed">盘点未完成</string>
     <string name="st_success">盘点已完成</string>
     <string name="st_save_failed">本地恢复信息保存失败</string>
-    <string name="st_confirm_title">盘点差额超过100</string>
+    <string name="st_confirm_title">盘点风险确认</string>
     <string name="st_reenter">再次输入实际数量</string>
     <string name="st_confirm">确认盘点</string>
     <string name="st_cancel">取消</string>
@@ -84,7 +84,7 @@
     <string name="st_claim">点击认领并盘点</string>
     <string name="st_picking">拣货区</string>
     <string name="st_unknown_stock">数量未知，仅可查看</string>
-    <string name="st_zero_stock">零库存，仅可查看</string>
+    <string name="st_zero_stock">账面库存为 0，可盘点</string>
     <string name="st_draft_conflict">选择要继续的盘点数量</string>
     <string name="st_draft_values">本机草稿：%1$s\n任务已保存：%2$s</string>
     <string name="st_use_local">保留本机数量</string>
