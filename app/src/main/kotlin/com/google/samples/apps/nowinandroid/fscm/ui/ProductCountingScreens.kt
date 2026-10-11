@@ -44,7 +44,6 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.QrCodeScanner
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -75,7 +74,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -104,6 +102,8 @@ import com.google.samples.apps.nowinandroid.fscm.ui.components.FscmStatusChip
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareAlertDialog as AlertDialog
+import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareDialog as Dialog
 
 @Composable
 fun ProductCountingTaskListScreen(
@@ -274,6 +274,7 @@ fun ProductCountingTaskDetailScreen(
     val broadcastMode = scannerState.effectiveMode == ScannerInputMode.IntentBroadcast
     val context = LocalContext.current
     var showCamera by rememberSaveable { mutableStateOf(false) }
+    ScannerInputScope(!showCamera && state.editable && !state.taskActionRunning && !state.deleteConfirmationVisible && !state.resetConfirmationVisible && !state.deleted && state.pendingDuplicate == null)
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> showCamera = granted }
 
     LaunchedEffect(taskId) { viewModel.load(taskId) }

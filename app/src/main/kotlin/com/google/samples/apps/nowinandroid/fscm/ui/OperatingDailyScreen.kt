@@ -17,7 +17,6 @@
 package com.google.samples.apps.nowinandroid.fscm.ui
 
 import android.app.DatePickerDialog
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -109,6 +108,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareBackHandler as BackHandler
 
 @Composable
 internal fun OperatingDailyScreen(session: SessionState, onBack: () -> Unit, viewModel: OperatingDailyViewModel = hiltViewModel()) {

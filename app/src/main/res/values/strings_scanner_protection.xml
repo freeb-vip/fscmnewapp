@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="device_event_recording">Record scanner events</string>
+    <string name="device_event_privacy">Keeps the latest 100 events on this device. Barcode and input contents are not recorded. Turn on before reproducing the issue, then copy diagnostics.</string>
+    <string name="device_event_count">%1$d / 100 events</string>
+    <string name="device_build_info">App and device</string>
+</resources>

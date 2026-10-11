@@ -17,16 +17,32 @@
 package com.google.samples.apps.nowinandroid
 
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import com.google.samples.apps.nowinandroid.fscm.device.ScannerManager
 import com.google.samples.apps.nowinandroid.fscm.ui.FscmApp
+import com.google.samples.apps.nowinandroid.fscm.ui.ScannerInputProvider
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
+    @Inject lateinit var scannerManager: ScannerManager
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (scannerManager.handleKeyEvent(event, currentFocus?.onCheckIsTextEditor() == true)) return true
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun onPause() {
+        scannerManager.clearInputProtection()
+        super.onPause()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
@@ -41,7 +57,7 @@ class MainActivity : AppCompatActivity() {
             ),
         )
         setContent {
-            FscmApp()
+            ScannerInputProvider(scannerManager) { FscmApp() }
         }
     }
 }

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="device_event_recording">记录扫码事件</string>
+    <string name="device_event_privacy">仅在本机保留最近100条事件，不记录条码和输入内容。请在复现前开启，复现后复制诊断。</string>
+    <string name="device_event_count">%1$d / 100 条事件</string>
+    <string name="device_build_info">应用与设备</string>
+</resources>

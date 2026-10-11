@@ -42,7 +42,6 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -88,6 +87,7 @@ import com.google.samples.apps.nowinandroid.fscm.data.allowedTicketStatuses
 import com.google.samples.apps.nowinandroid.fscm.data.isTodoCompleted
 import com.google.samples.apps.nowinandroid.fscm.data.plainRichText
 import com.google.samples.apps.nowinandroid.fscm.data.richTextBlocks
+import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareAlertDialog as AlertDialog
 
 private val WorkplaceBlue = Color(0xFF1677FF)
 private val WorkplaceDeepBlue = Color(0xFF0958D9)

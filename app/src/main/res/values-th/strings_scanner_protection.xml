@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="device_event_recording">บันทึกเหตุการณ์สแกน</string>
+    <string name="device_event_privacy">เก็บ 100 เหตุการณ์ล่าสุดบนอุปกรณ์นี้ ไม่บันทึกบาร์โค้ดหรือข้อความที่ป้อน เปิดก่อนทดสอบปัญหา แล้วคัดลอกข้อมูลวินิจฉัย</string>
+    <string name="device_event_count">%1$d / 100 เหตุการณ์</string>
+    <string name="device_build_info">แอปและอุปกรณ์</string>
+</resources>

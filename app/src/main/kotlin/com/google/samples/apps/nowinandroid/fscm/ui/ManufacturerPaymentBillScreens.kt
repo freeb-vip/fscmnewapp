@@ -21,7 +21,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -55,7 +54,6 @@ import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -107,6 +105,8 @@ import com.google.samples.apps.nowinandroid.fscm.data.PaymentAttachment
 import com.google.samples.apps.nowinandroid.fscm.data.PaymentConfigOption
 import java.io.File
 import java.util.Locale
+import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareAlertDialog as AlertDialog
+import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareBackHandler as BackHandler
 
 private val BillBackground = Color(0xFFF5F8FF)
 private val BillStroke = Color(0xFFDCE8FA)

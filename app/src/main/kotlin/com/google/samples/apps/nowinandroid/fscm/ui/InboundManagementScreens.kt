@@ -57,7 +57,6 @@ import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Warehouse
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -94,7 +93,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -118,6 +116,8 @@ import com.google.samples.apps.nowinandroid.fscm.device.ScannerInputMode
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareAlertDialog as AlertDialog
+import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareDialog as Dialog
 
 private val InboundBrand = Color(0xFF1677FF)
 private val InboundDeep = Color(0xFF0958D9)
@@ -227,6 +227,7 @@ fun InboundSessionScreen(
 ) {
     val crossOrderTasks by viewModel.crossOrder.tasks.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
+    ScannerInputScope(!state.cameraOpen && !state.loading && !state.submitting && state.pendingRebind == null && !viewModel.crossOrder.isBlocking && !state.pendingBoxesOpen && !state.completedBoxesOpen && !state.finishConfirmationOpen && !state.cancelConfirmationOpen)
     val scannerState by viewModel.scannerState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current

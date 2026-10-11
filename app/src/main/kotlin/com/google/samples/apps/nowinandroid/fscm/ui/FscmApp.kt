@@ -27,7 +27,6 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
@@ -89,7 +88,6 @@ import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Workspaces
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -162,7 +160,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -220,6 +217,9 @@ import java.io.Serializable
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareAlertDialog as AlertDialog
+import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareBackHandler as BackHandler
+import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareDialog as Dialog
 
 private val BrandMain = Color(0xFF1677FF)
 private val BrandDeep = Color(0xFF0958D9)
@@ -877,24 +877,25 @@ private fun MainShell(
         }
     }
 
+    val routeScanner = LocalScannerManager.current
+    LaunchedEffect(featureRoute, selectedTab) { routeScanner?.recordRoute("${selectedTab.name}/${featureRoute.javaClass.simpleName}") }
+
     LaunchedEffect(globalScanResult) {
         if (globalScanResult == null) return@LaunchedEffect
         rootViewModel.consumeGlobalScan()
     }
 
     BackHandler {
-        if (!rootViewModel.consumeBackEventAfterScan()) {
-            when {
-                featureRoute != FeatureRoute.None -> featureRoute = featureRoute.parentRoute()
-                selectedTab != MainTab.Workbench -> selectedTab = MainTab.Workbench
-                else -> {
-                    val now = System.currentTimeMillis()
-                    if (now - lastBackPressedAt <= EXIT_CONFIRM_WINDOW_MS) {
-                        (context as? Activity)?.finish()
-                    } else {
-                        lastBackPressedAt = now
-                        Toast.makeText(context, exitConfirmMessage, Toast.LENGTH_SHORT).show()
-                    }
+        when {
+            featureRoute != FeatureRoute.None -> featureRoute = featureRoute.parentRoute()
+            selectedTab != MainTab.Workbench -> selectedTab = MainTab.Workbench
+            else -> {
+                val now = System.currentTimeMillis()
+                if (now - lastBackPressedAt <= EXIT_CONFIRM_WINDOW_MS) {
+                    (context as? Activity)?.finish()
+                } else {
+                    lastBackPressedAt = now
+                    Toast.makeText(context, exitConfirmMessage, Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -916,9 +917,13 @@ private fun MainShell(
             route = featureRoute,
             session = session,
             onBack = { featureRoute = featureRoute.parentRoute() },
-            onNavigate = { featureRoute = it },
+            onNavigate = {
+                routeScanner?.recordNavigation("business_callback")
+                featureRoute = it
+            },
             onOpenReceivingDetail = { featureRoute = FeatureRoute.ReceivingDetail(it) },
             onScanResult = { barcode ->
+                routeScanner?.recordNavigation("business_scan_callback")
                 featureRoute = FeatureRoute.None
                 // TODO: Handle global barcode scan if needed
             },
@@ -1301,11 +1306,15 @@ private fun FscmTopBar(
     onBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
+    val scanner = LocalScannerManager.current
     TopAppBar(
         title = { Text(title, color = InkStrong, fontWeight = FontWeight.Bold) },
         navigationIcon = {
             if (onBack != null) {
-                IconButton(onClick = onBack) {
+                IconButton(onClick = {
+                    scanner?.recordNavigation("top_button")
+                    onBack()
+                }) {
                     Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.back))
                 }
             }
@@ -2723,6 +2732,7 @@ private fun ReceivingDetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var scanCode by rememberSaveable(sessionId) { mutableStateOf("") }
     var showCamera by remember { mutableStateOf(false) }
+    ScannerInputScope(!showCamera && !state.submitting)
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val focusRequester = remember { FocusRequester() }
@@ -3827,6 +3837,8 @@ private fun PdaModeScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     var showCamera by remember { mutableStateOf(false) }
 
+    ScannerInputScope(!showCamera)
+
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { isGranted ->
@@ -4465,6 +4477,7 @@ private fun PdaSettingsScreen(
                 scannerState = scannerState,
                 audioDiagnostics = audioDiagnostics,
                 onClear = viewModel::clearScannerDiagnostics,
+                onRecordingChange = viewModel::setEventRecording,
                 onTestSuccess = viewModel::testSuccessFeedback,
                 onTestFailure = viewModel::testFailureFeedback,
                 onCopy = {
@@ -4554,6 +4567,7 @@ private fun ScannerModeButton(
 @Composable
 private fun ScannerDiagnosticsCard(
     scannerState: ScannerRuntimeState,
+    onRecordingChange: (Boolean) -> Unit,
     audioDiagnostics: ScanAudioDiagnostics,
     onClear: () -> Unit,
     onTestSuccess: () -> Unit,
@@ -4563,6 +4577,15 @@ private fun ScannerDiagnosticsCard(
     val event = scannerState.lastEvent
     FscmCard(modifier = Modifier.fillMaxWidth()) {
         SectionHeader(stringResource(R.string.device_pda_diagnostics), stringResource(if (scannerState.registered) R.string.device_listening else R.string.device_not_listening))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.device_event_recording), modifier = Modifier.weight(1f))
+            androidx.compose.material3.Switch(checked = scannerState.eventRecording, onCheckedChange = onRecordingChange)
+        }
+        Text(stringResource(R.string.device_event_privacy), style = MaterialTheme.typography.bodySmall, color = InkSoft)
+        Text(stringResource(R.string.device_event_count, scannerState.inputEvents.size), style = MaterialTheme.typography.bodySmall)
+        DiagnosticText(stringResource(R.string.device_build_info), "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) / Android ${Build.VERSION.RELEASE} / ${Build.MANUFACTURER} ${Build.MODEL}")
+        scannerState.inputEvents.takeLast(8).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatusChip(
@@ -4700,7 +4723,11 @@ private fun ScannerRuntimeState.toDiagnosticText(
         appendLine("lastAction=${event?.action.orEmpty()}")
         appendLine("lastExtra=${event?.extraKey.orEmpty()}")
         appendLine("extracted=${event?.extracted ?: false}")
-        appendLine("barcode=${event?.normalizedValue.orEmpty()}")
+        appendLine("app=${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+        appendLine("android=${Build.VERSION.RELEASE} api=${Build.VERSION.SDK_INT}")
+        appendLine("device=${Build.MANUFACTURER} ${Build.MODEL}")
+        appendLine("recording=$eventRecording")
+        inputEvents.forEach { appendLine(it) }
         appendLine("suppressedBackCount=$suppressedBackCount")
         appendLine("lastBackSuppressedAtMillis=$lastBackSuppressedAtMillis")
         appendLine("receivedAt=${event?.receivedAtMillis?.let(::formatScannerTime).orEmpty()}")

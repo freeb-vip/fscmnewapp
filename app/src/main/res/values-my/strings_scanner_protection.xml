@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="device_event_recording">စကင်ဖတ်ဖြစ်စဉ်များ မှတ်တမ်းတင်ရန်</string>
+    <string name="device_event_privacy">ဤစက်တွင် နောက်ဆုံးဖြစ်စဉ် ၁၀၀ ကိုသာ သိမ်းထားသည်။ ဘားကုဒ်နှင့် ထည့်သွင်းထားသောစာသားကို မမှတ်တမ်းတင်ပါ။ ပြဿနာကို ပြန်စမ်းမည့်အချိန်တွင် ဖွင့်ပြီး စစ်ဆေးချက်ကို ကူးယူပါ။</string>
+    <string name="device_event_count">ဖြစ်စဉ် %1$d / 100</string>
+    <string name="device_build_info">အက်ပ်နှင့် စက်</string>
+</resources>

@@ -75,7 +75,6 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandDeep
@@ -95,6 +94,7 @@ import com.google.samples.apps.nowinandroid.fscm.ui.WorkbenchViewModel
 import com.google.samples.apps.nowinandroid.fscm.ui.components.FscmBadge
 import com.google.samples.apps.nowinandroid.fscm.ui.components.FscmCard
 import com.google.samples.apps.nowinandroid.fscm.ui.localizedAppTitle
+import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareDialog as Dialog
 
 @Composable
 fun WorkbenchScreen(

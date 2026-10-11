@@ -37,7 +37,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CameraAlt
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -68,7 +67,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -78,6 +76,8 @@ import com.google.samples.apps.nowinandroid.core.ui.BarcodeScanner
 import com.google.samples.apps.nowinandroid.fscm.data.SessionState
 import com.google.samples.apps.nowinandroid.fscm.data.stocktakeQuantity
 import kotlinx.coroutines.delay
+import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareAlertDialog as AlertDialog
+import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareDialog as Dialog
 
 // Quantity entry accepts the touch keyboard, never characters from a PDA scanner wedge.
 private fun Modifier.stocktakeQuantityInput(): Modifier = onPreviewKeyEvent { event ->
@@ -88,6 +88,7 @@ private fun Modifier.stocktakeQuantityInput(): Modifier = onPreviewKeyEvent { ev
 @Composable
 fun LocationStocktakeScreen(session: SessionState, viewModel: LocationStocktakeViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    ScannerInputScope(state.canScan && !state.camera)
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val codeStyle = SpanStyle(color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)

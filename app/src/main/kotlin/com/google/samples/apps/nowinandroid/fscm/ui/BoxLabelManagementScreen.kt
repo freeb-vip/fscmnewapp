@@ -16,7 +16,6 @@
 
 package com.google.samples.apps.nowinandroid.fscm.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -55,12 +54,13 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.samples.apps.nowinandroid.core.ui.BarcodeScanner
 import com.google.samples.apps.nowinandroid.fscm.data.BoxLabel
 import com.google.samples.apps.nowinandroid.fscm.ui.components.FscmCard
+import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareBackHandler as BackHandler
+import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareDialog as Dialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -21,7 +21,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
+import android.os.SystemClock
+import android.view.KeyEvent
 import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.google.samples.apps.nowinandroid.core.data.repository.UserDataRepository
@@ -48,29 +51,92 @@ class ScannerManager @Inject constructor(
     val scannerState: StateFlow<ScannerRuntimeState> = _scannerState.asStateFlow()
 
     private val scannerReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            val event = intent.extractScannerEvent(activeProfile.extraKeys)
-            val effectiveMode = if (event.extracted && activeConfiguredMode != ScannerInputMode.Keyboard) {
-                ScannerInputMode.IntentBroadcast
-            } else {
-                activeConfiguredMode ?: ScannerInputMode.Keyboard
-            }
-            _scannerState.update {
-                it.copy(
-                    effectiveMode = effectiveMode,
-                    lastEvent = event,
-                    lastError = null,
-                )
-            }
-            if (event.extracted && effectiveMode == ScannerInputMode.IntentBroadcast) {
-                scanFeedback.scanReceived()
-                onScanListeners.lastOrNull()?.invoke(event.normalizedValue)
-            }
+        override fun onReceive(context: Context, intent: Intent) = onScannerBroadcast(intent)
+    }
+
+    internal fun onScannerBroadcast(intent: Intent) {
+        val event = intent.extractScannerEvent(activeProfile.extraKeys)
+        val effectiveMode = scannerModeAfterBroadcast(activeConfiguredMode, _scannerState.value.effectiveMode, event.extracted)
+        val active = onScanListeners.isNotEmpty() && activeOwnerLifecycle?.get()?.currentState?.isAtLeast(Lifecycle.State.RESUMED) != false
+        if (active && event.extracted && effectiveMode == ScannerInputMode.IntentBroadcast) inputGuard.scanned()
+        trace("broadcast valid=${event.extracted} active=$active mode=${effectiveMode.name}")
+        _scannerState.update {
+            it.copy(
+                effectiveMode = effectiveMode,
+                lastEvent = event,
+                lastValidEvent = if (event.extracted) event else it.lastValidEvent,
+                lastError = null,
+            )
+        }
+        if (active && event.extracted && effectiveMode == ScannerInputMode.IntentBroadcast) {
+            scanFeedback.scanReceived()
+            onScanListeners.lastOrNull()?.invoke(event.normalizedValue)
         }
     }
     private var activeProfile = ScannerProfile.default()
     private var activeConfiguredMode: ScannerInputMode? = null
     private var registered = false
+    private val inputGuard = ScannerInputGuard(SystemClock::uptimeMillis)
+    private val scanScopes = linkedMapOf<Any, Boolean>()
+    private var routeName = ""
+    private val textInputSessions = mutableSetOf<Any>()
+
+    fun setTextInputSession(owner: Any, active: Boolean) {
+        if (active) textInputSessions.add(owner) else textInputSessions.remove(owner)
+    }
+
+    fun setScanScope(owner: Any, enabled: Boolean?) {
+        if (enabled == null) scanScopes.remove(owner) else scanScopes[owner] = enabled
+    }
+
+    private fun canReceiveScan(): Boolean = scanScopes.values.lastOrNull() ?: (onScanListeners.size > 1)
+
+    fun clearInputProtection() = inputGuard.clear()
+
+    fun setEventRecording(enabled: Boolean) {
+        _scannerState.update { it.copy(eventRecording = enabled) }
+    }
+
+    fun recordNavigation(source: String) = trace("navigation source=$source route=$routeName")
+
+    fun recordRoute(name: String) {
+        if (routeName != name) {
+            trace("route from=$routeName to=$name")
+            routeName = name
+        }
+    }
+
+    private fun trace(event: String) {
+        if (!_scannerState.value.eventRecording) return
+        val line = "uptime=${SystemClock.uptimeMillis()} scanAge=${inputGuard.age() ?: -1} $event"
+        _scannerState.update { it.copy(inputEvents = (it.inputEvents + line).takeLast(100)) }
+    }
+
+    private fun recordSuppressedBack() {
+        _scannerState.update {
+            it.copy(lastBackSuppressedAtMillis = System.currentTimeMillis(), suppressedBackCount = it.suppressedBackCount + 1)
+        }
+    }
+
+    fun handleKeyEvent(event: KeyEvent, editing: Boolean): Boolean {
+        val back = event.keyCode == KeyEvent.KEYCODE_BACK
+        val suffix = event.keyCode in setOf(KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_ESCAPE)
+        if (!back && !suffix) return false // Never log character keys or typed contents.
+        val manualEditing = editing || textInputSessions.isNotEmpty()
+        val broadcast = _scannerState.value.effectiveMode == ScannerInputMode.IntentBroadcast
+        val eligible = broadcast && (back || (suffix && canReceiveScan() && !manualEditing))
+        val decision = inputGuard.key(KeyPress(event.deviceId, event.keyCode, event.downTime), event.action, eligible)
+        if (back && decision.first) recordSuppressedBack()
+        val reason = when {
+            decision.consume -> "scan_guard"
+            !broadcast -> "keyboard_mode"
+            manualEditing && !back -> "manual_editor"
+            !canReceiveScan() && !back -> "scan_inactive"
+            else -> "outside_window"
+        }
+        trace("key=${KeyEvent.keyCodeToString(event.keyCode)} action=${event.action} device=${event.deviceId} source=${event.source} scanCode=${event.scanCode} eventUptime=${event.eventTime} consumed=${decision.consume} reason=$reason")
+        return decision.consume
+    }
 
     fun pushOnScanListener(listener: (String) -> Unit) {
         onScanListeners.add(listener)
@@ -79,6 +145,7 @@ class ScannerManager @Inject constructor(
     fun popOnScanListener() {
         if (onScanListeners.isNotEmpty()) {
             onScanListeners.removeAt(onScanListeners.size - 1)
+            if (onScanListeners.isEmpty()) clearInputProtection()
         }
     }
 
@@ -86,6 +153,8 @@ class ScannerManager @Inject constructor(
         _scannerState.update {
             it.copy(
                 lastEvent = null,
+                lastValidEvent = null,
+                inputEvents = emptyList(),
                 lastError = null,
                 lastBackSuppressedAtMillis = 0L,
                 suppressedBackCount = 0,
@@ -93,22 +162,15 @@ class ScannerManager @Inject constructor(
         }
     }
 
-    fun consumeBackEventAfterScan(nowMillis: Long = System.currentTimeMillis()): Boolean {
-        val scanMillis = _scannerState.value.lastEvent
-            ?.takeIf { it.extracted && _scannerState.value.effectiveMode == ScannerInputMode.IntentBroadcast }
-            ?.receivedAtMillis
-            ?: return false
-        if (nowMillis - scanMillis !in 0..BACK_EVENT_GUARD_WINDOW_MS) return false
-        _scannerState.update {
-            it.copy(
-                lastBackSuppressedAtMillis = nowMillis,
-                suppressedBackCount = it.suppressedBackCount + 1,
-            )
-        }
-        return true
+    fun consumeBackEventAfterScan(): Boolean {
+        val consume = _scannerState.value.effectiveMode == ScannerInputMode.IntentBroadcast && inputGuard.isProtected()
+        if (consume) recordSuppressedBack()
+        trace("back_callback consumed=$consume route=$routeName")
+        return consume
     }
 
     fun applyInputMode(mode: ScannerInputMode) {
+        clearInputProtection()
         activeConfiguredMode = mode
         _scannerState.update {
             it.copy(
@@ -119,6 +181,7 @@ class ScannerManager @Inject constructor(
     }
 
     fun unregister() {
+        clearInputProtection()
         try {
             context.unregisterReceiver(scannerReceiver)
             registered = false
@@ -145,7 +208,7 @@ class ScannerManager @Inject constructor(
                     activeProfile = scannerConfig.profile
                     activeConfiguredMode = scannerConfig.configuredMode
                     val effectiveMode = scannerConfig.configuredMode
-                        ?: if (_scannerState.value.lastEvent?.extracted == true) {
+                        ?: if (_scannerState.value.effectiveMode == ScannerInputMode.IntentBroadcast) {
                             ScannerInputMode.IntentBroadcast
                         } else {
                             ScannerInputMode.Keyboard
@@ -388,6 +451,9 @@ data class ScannerRuntimeState(
     val effectiveMode: ScannerInputMode = ScannerInputMode.Keyboard,
     val registered: Boolean = false,
     val lastEvent: ScannerEvent? = null,
+    val lastValidEvent: ScannerEvent? = null,
+    val eventRecording: Boolean = false,
+    val inputEvents: List<String> = emptyList(),
     val lastError: String? = null,
     val lastBackSuppressedAtMillis: Long = 0L,
     val suppressedBackCount: Int = 0,

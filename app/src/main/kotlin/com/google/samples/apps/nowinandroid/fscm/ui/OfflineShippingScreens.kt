@@ -35,7 +35,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -66,7 +65,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -80,6 +78,8 @@ import com.google.samples.apps.nowinandroid.core.ui.BarcodeScanner
 import com.google.samples.apps.nowinandroid.fscm.data.ShippingItem
 import com.google.samples.apps.nowinandroid.fscm.data.ShippingTask
 import com.google.samples.apps.nowinandroid.fscm.device.ScannerInputMode
+import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareAlertDialog as AlertDialog
+import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareDialog as Dialog
 
 internal fun shippingStageLabel(stage: String): Int = when (stage) {
     "packing" -> R.string.shipping_packing
@@ -153,6 +153,7 @@ fun OfflineShippingDetailScreen(orderId: Long, scopeKey: String) {
     val focus = remember { FocusRequester() }
     var scanText by rememberSaveable(orderId) { mutableStateOf("") }
     var cameraScan by rememberSaveable { mutableStateOf(false) }
+    ScannerInputScope(!cameraScan && !state.busy && !state.pending && state.scan == null && state.task?.stage == "picking")
     var photoCaptured by rememberSaveable(orderId) { mutableStateOf(false) }
     var carrier by rememberSaveable(orderId) { mutableStateOf("") }
     var tracking by rememberSaveable(orderId) { mutableStateOf("") }

@@ -230,6 +230,7 @@ class FscmRootViewModel @Inject constructor(
     }
 
     fun unregisterScanner() {
+        scannerManager.clearInputProtection()
         scannerManager.popOnScanListener()
     }
 
@@ -393,6 +394,7 @@ class FscmRootViewModel @Inject constructor(
     }
 
     fun logout() {
+        scannerManager.clearInputProtection()
         loginLockJob?.cancel()
         _loginState.value = LoginUiState()
         edgeCatalogClient.invalidate()
@@ -1506,6 +1508,8 @@ class PdaSettingsViewModel @Inject constructor(
     fun testSuccessFeedback() = scanFeedback.success()
 
     fun testFailureFeedback() = scanFeedback.failure()
+
+    fun setEventRecording(enabled: Boolean) = scannerManager.setEventRecording(enabled)
 
     fun clearScannerDiagnostics() {
         scannerManager.clearDiagnostics()
