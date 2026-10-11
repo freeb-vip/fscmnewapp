@@ -97,7 +97,7 @@ class ReferenceCatalogRefreshTest {
             old.openHelper.writableDatabase.version = 19
             old.close()
             val migrated = Room.databaseBuilder(context, FscmDatabase::class.java, name).allowMainThreadQueries()
-                .addMigrations(FscmDatabaseModule.MIGRATION_19_20, FscmDatabaseModule.MIGRATION_20_21).build()
+                .addMigrations(FscmDatabaseModule.MIGRATION_19_20, FscmDatabaseModule.MIGRATION_20_21, FscmDatabaseModule.MIGRATION_21_22).build()
             try {
                 assertTrue(migrated.localSkuCatalogDao().find(1, 2, listOf("A")).isEmpty())
                 assertEquals("draft", migrated.localInboundDao().batch("draft")?.status)

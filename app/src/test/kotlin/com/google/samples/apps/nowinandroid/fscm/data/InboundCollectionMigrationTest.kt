@@ -56,7 +56,7 @@ class InboundCollectionMigrationTest {
             old.openHelper.writableDatabase.version = 17
             old.close()
             val migrated = Room.databaseBuilder(context, FscmDatabase::class.java, name).allowMainThreadQueries()
-                .addMigrations(FscmDatabaseModule.MIGRATION_17_18, FscmDatabaseModule.MIGRATION_18_19, FscmDatabaseModule.MIGRATION_19_20, FscmDatabaseModule.MIGRATION_20_21).build()
+                .addMigrations(FscmDatabaseModule.MIGRATION_17_18, FscmDatabaseModule.MIGRATION_18_19, FscmDatabaseModule.MIGRATION_19_20, FscmDatabaseModule.MIGRATION_20_21, FscmDatabaseModule.MIGRATION_21_22).build()
             try {
                 assertEquals(before, migrated.localInboundDao().itemsForSession(7, 9, 11))
                 val snapshot = migrated.localInboundDao().snapshots(7, 9, 11).single()

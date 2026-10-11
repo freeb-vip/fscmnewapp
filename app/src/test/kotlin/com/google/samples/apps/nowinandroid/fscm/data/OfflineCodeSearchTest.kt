@@ -45,7 +45,7 @@ class OfflineCodeSearchTest {
     fun skuPrefixIsLiteralCaseInsensitiveScopedSortedAndBounded() = runBlocking {
         val dao = db.localSkuCatalogDao()
         val row = LocalSkuCatalogEntity(1, 2, "SKU-A", 3, "A", "large", 4, "P", "Product")
-        fun sku(code: String) = row.copy(code = code, foldedCode = foldCatalogCode(code))
+        fun sku(code: String) = row.copy(code = code, skuId = code.hashCode().toLong(), baseCode = code, foldedCode = foldCatalogCode(code))
         dao.insert(listOf(sku("SKU-B"), sku("SKU-A"), sku("sku-a"), sku("XSKU-A"), sku("SKU_%"), sku("SKU_%2"), sku("SKU_XX"), sku("SKU\\A"), row.copy(userId = 9), row.copy(namespaceId = 9)))
         assertEquals(listOf("SKU-A", "sku-a", "SKU-B"), dao.prefixCandidates(1, 2, offlineCodePrefix(" sku- "), 21).map { it.code })
         assertEquals(listOf("SKU_%", "SKU_%2"), dao.prefixCandidates(1, 2, offlineCodePrefix("SKU_%"), 21).map { it.code })

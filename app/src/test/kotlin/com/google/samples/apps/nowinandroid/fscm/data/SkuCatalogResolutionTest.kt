@@ -42,6 +42,89 @@ class SkuCatalogResolutionTest {
     private fun item(row: LocalSkuCatalogEntity) = MobileSkuSnapshotItem(row.skuId, row.code, row.name, row.spec, row.productId, row.productCode, row.productName)
 
     @Test
+    fun historicalSingleTFallbackOnlyRunsAfterDirectMiss() {
+        for ((query, codes, expected) in listOf(
+            Triple("X37", listOf("TX37"), "TX37"),
+            Triple("TX37", listOf("X37"), "X37"),
+            Triple("TX37", listOf("TTX37"), "TTX37"),
+            Triple("TTX37", listOf("TX37"), "TX37"),
+            Triple("tx37", listOf("X37"), "X37"),
+            Triple("TX37", listOf("X37", "TX37", "TTX37"), "TX37"),
+            Triple("TTX37", listOf("X37"), null),
+            Triple("X37", listOf("TTX37"), null),
+            Triple("PX37", listOf("X37"), null),
+            Triple("X37", listOf("TX370"), null),
+        )) {
+            val rows = codes.mapIndexed { index, code -> row(index + 1L, code) }
+            val cache = SkuCatalogCache(rows, listOf(full(rows.size)))
+            assertEquals(expected, cache.resolve(query)?.code, query)
+        }
+        val ambiguous = SkuCatalogCache(listOf(row(1, "X37"), row(2, "TTX37")), listOf(full()))
+        assertEquals(InboundClientError.SkuAmbiguous, assertFailsWith<InboundClientException> { ambiguous.resolve("TX37") }.reason)
+        val directAmbiguous = SkuCatalogCache(listOf(row(1, "Tx37"), row(2, "tX37"), row(3, "X37")), listOf(full(3)))
+        assertEquals(InboundClientError.SkuAmbiguous, assertFailsWith<InboundClientException> { directAmbiguous.resolve("TX37") }.reason)
+        val partial = SkuCatalogCache(listOf(row(1, "TX37")), emptyList())
+        assertNull(partial.resolve("X37"), "partial cache cannot prove fallback uniqueness")
+        assertFalse(partial.isFresh("X37"))
+    }
+
+    @Test
+    fun serverFallbackMustProveOneHopAndKeepDirectPriority() {
+        val target = item(row(1, "TX37"))
+        val valid = MobileSkuResolution("X37", "matched", target.id, listOf(target))
+        assertEquals(listOf(target), validateSkuResolutionResult(MobileSkuResolveResult(listOf(valid)), listOf("X37"))["X37"])
+        val wrong = valid.copy(candidates = listOf(item(row(1, "TTX37"))))
+        assertFailsWith<IllegalStateException> { validateSkuResolutionResult(MobileSkuResolveResult(listOf(wrong)), listOf("X37")) }
+        val candidates = listOf(item(row(2, "X37")), item(row(3, "TTX37")))
+        val ambiguous = MobileSkuResolution("TX37", "ambiguous", candidates = candidates)
+        assertEquals(2, validateSkuResolutionResult(MobileSkuResolveResult(listOf(ambiguous)), listOf("TX37"))["TX37"]?.size)
+        assertFailsWith<IllegalStateException> {
+            validateSkuResolutionResult(MobileSkuResolveResult(listOf(ambiguous.copy(status = "matched", matchedSkuId = 2))), listOf("TX37"))
+        }
+        assertFailsWith<IllegalStateException> {
+            validateSkuResolutionResult(MobileSkuResolveResult(listOf(valid.copy(requestedCode = "TX37", candidates = listOf(target, candidates[0])))), listOf("TX37"))
+        }
+    }
+
+    @Test
+    fun fallbackGroupReplacementEvictsStaleAlternatives() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), FscmDatabase::class.java).build()
+        try {
+            val dao = db.localSkuCatalogDao()
+            val old = listOf(row(1, "X37"), row(2, "TTX37"))
+            dao.replace(old, full())
+            val group = ReferenceCacheMeta(1, 2, "sku_group:TX37", true, 1, now)
+            dao.applyResolvedGroups(1, 2, listOf(old[0]), listOf(group))
+            val candidates = dao.candidates(1, 2, listOf("TX37", "X37", "TTX37"))
+            assertEquals(listOf(old[0]), candidates)
+            assertEquals(1L, SkuCatalogCache(candidates, listOf(group)).resolve("TX37")?.skuId)
+            dao.applyResolvedGroups(1, 2, emptyList(), listOf(group.copy(totalCount = 0)))
+            assertTrue(dao.candidates(1, 2, listOf("TX37", "X37", "TTX37")).isEmpty())
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun workspaceAliasesKeepNativePrefixesAndRejectCrossDomainCollision() = runBlocking {
+        val first = row(31, "TX37").copy(baseCode = "X37", workspaceCode = "TX37", policyVersion = 1)
+        val second = row(32, "TTX37").copy(baseCode = "TX37", workspaceCode = "TTX37", policyVersion = 1)
+        val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), FscmDatabase::class.java).build()
+        try {
+            val dao = db.localSkuCatalogDao()
+            val meta = full(2).copy(policyVersion = 1)
+            dao.replace(listOf(first, second), meta)
+            val cache = SkuCatalogCache(dao.candidates(1, 2, listOf("TX37", "TTX37", "X37")), listOf(meta))
+            assertEquals(31L, cache.resolve("X37")?.skuId)
+            assertEquals(32L, cache.resolve("TTX37")?.skuId)
+            assertEquals(InboundClientError.SkuAmbiguous, assertFailsWith<InboundClientException> { cache.resolve("TX37") }.reason)
+            assertEquals(2, dao.candidates(1, 2, listOf("TX37")).size)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
     fun completeSnapshotRetainsCrossPageCaseVariantsAndExactIdentities() = runBlocking {
         val first = MobileSkuSnapshotPage(listOf(item(brown)), 10, true)
         val second = MobileSkuSnapshotPage(listOf(item(lower)))
@@ -175,7 +258,7 @@ class SkuCatalogResolutionTest {
             removeSkuFoldedCode(old.openHelper.writableDatabase)
             old.openHelper.writableDatabase.version = 20
             old.close()
-            val migrated = Room.databaseBuilder(context, FscmDatabase::class.java, name).allowMainThreadQueries().addMigrations(FscmDatabaseModule.MIGRATION_20_21).build()
+            val migrated = Room.databaseBuilder(context, FscmDatabase::class.java, name).allowMainThreadQueries().addMigrations(FscmDatabaseModule.MIGRATION_20_21, FscmDatabaseModule.MIGRATION_21_22).build()
             try {
                 val dao = migrated.localSkuCatalogDao()
                 assertTrue(dao.find(1, 2, listOf(brown.code)).isEmpty())

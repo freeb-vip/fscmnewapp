@@ -354,9 +354,10 @@ interface LocalReceivingDao {
         ProductCountEntryEntity::class,
         SkuProductIndexEntity::class,
         LocalSkuCatalogEntity::class,
+        LocalSkuCodeAlias::class,
         ReferenceCacheMeta::class,
     ],
-    version = 21,
+    version = 22,
     exportSchema = false,
 )
 abstract class FscmDatabase : RoomDatabase() {
@@ -421,6 +422,7 @@ object FscmDatabaseModule {
                     MIGRATION_18_19,
                     MIGRATION_19_20,
                     MIGRATION_20_21,
+                    MIGRATION_21_22,
                 )
                 .build()
         } finally {
@@ -688,6 +690,20 @@ object FscmDatabaseModule {
             db.execSQL("UPDATE `product_count_entries` SET `skuItemsJson` = COALESCE((SELECT json_group_array(json_object('sku_code', value, 'quantity', NULL, 'quantity_source', 'unknown')) FROM json_each(`skuCodesJson`)), '[]')")
             db.execSQL("UPDATE `product_count_entries` SET `sequenceNo` = rowid WHERE `sequenceNo` = 0")
             db.execSQL("DELETE FROM `pending_sync_operations` WHERE `module` = 'product_counting'")
+        }
+    }
+
+    internal val MIGRATION_21_22 = object : Migration(21, 22) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // Rebuild recognition caches around entity IDs. Pending business operations are preserved.
+            db.execSQL("DROP TABLE IF EXISTS local_sku_code_aliases")
+            db.execSQL("DROP TABLE local_sku_catalog")
+            db.execSQL("DELETE FROM reference_cache_meta WHERE kind = 'skus' OR kind LIKE 'sku_group:%'")
+            db.addColumnIfNotExists("reference_cache_meta", "policyVersion", "INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("CREATE TABLE local_sku_catalog(userId INTEGER NOT NULL,namespaceId INTEGER NOT NULL,code TEXT NOT NULL,skuId INTEGER NOT NULL,name TEXT NOT NULL,spec TEXT NOT NULL,productId INTEGER NOT NULL,productCode TEXT NOT NULL,productName TEXT NOT NULL,syncedAt INTEGER NOT NULL DEFAULT 0,foldedCode TEXT NOT NULL DEFAULT '',baseCode TEXT NOT NULL DEFAULT '',workspaceCode TEXT NOT NULL DEFAULT '',policyVersion INTEGER NOT NULL DEFAULT 0,aliasesJson TEXT NOT NULL DEFAULT '[]',PRIMARY KEY(userId,namespaceId,skuId))")
+            db.execSQL("CREATE INDEX index_local_sku_catalog_userId_namespaceId_foldedCode ON local_sku_catalog(userId,namespaceId,foldedCode)")
+            db.execSQL("CREATE TABLE local_sku_code_aliases(userId INTEGER NOT NULL,namespaceId INTEGER NOT NULL,skuId INTEGER NOT NULL,code TEXT NOT NULL,foldedCode TEXT NOT NULL,PRIMARY KEY(userId,namespaceId,skuId,code),FOREIGN KEY(userId,namespaceId,skuId) REFERENCES local_sku_catalog(userId,namespaceId,skuId) ON UPDATE NO ACTION ON DELETE CASCADE)")
+            db.execSQL("CREATE INDEX index_local_sku_code_aliases_userId_namespaceId_foldedCode ON local_sku_code_aliases(userId,namespaceId,foldedCode)")
         }
     }
 
