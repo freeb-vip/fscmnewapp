@@ -65,6 +65,9 @@ data class ReferenceCacheMeta(
 
 @Dao
 interface LocalSkuCatalogDao {
+    @Query("SELECT * FROM local_sku_catalog WHERE userId = :user AND namespaceId = :namespace AND foldedCode LIKE :pattern ESCAPE '\\' ORDER BY foldedCode, code LIMIT :limit")
+    suspend fun prefixCandidates(user: Long, namespace: Long, pattern: String, limit: Int): List<LocalSkuCatalogEntity>
+
     @Query("SELECT * FROM local_sku_catalog WHERE userId = :user AND namespaceId = :namespace AND code IN (:codes)")
     suspend fun find(user: Long, namespace: Long, codes: List<String>): List<LocalSkuCatalogEntity>
 

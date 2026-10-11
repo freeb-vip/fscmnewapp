@@ -70,6 +70,9 @@ data class WarehouseLocationCacheMetaEntity(
 
 @Dao
 interface WarehouseLocationDao {
+    @Query("SELECT code, GROUP_CONCAT(DISTINCT warehouseName) AS description FROM local_warehouse_locations WHERE userId = :user AND namespaceId = :namespace AND isActive = 1 AND code LIKE :pattern ESCAPE '\\' GROUP BY code ORDER BY code COLLATE NOCASE, code LIMIT :limit")
+    suspend fun prefixCandidates(user: Long, namespace: Long, pattern: String, limit: Int): List<OfflineCodeOption>
+
     @Query(
         """
         SELECT * FROM local_warehouse_locations

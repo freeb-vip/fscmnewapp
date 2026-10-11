@@ -74,6 +74,8 @@ data class StocktakeStock(
     val name: String? = null,
     @SerialName("on_hand") val onHand: Long? = null,
     val unit: String? = null,
+    @SerialName("supports_picking") val supportsPicking: Boolean? = null,
+    @SerialName("zone_name") val zoneName: String? = null,
 )
 
 @Serializable
@@ -82,6 +84,7 @@ data class StocktakeLookup(
     val stock: StocktakeStock? = null,
     @SerialName("snapshot_id") val snapshotId: String = "",
     @SerialName("expires_at") val expiresAt: String? = null,
+    @SerialName("query_id") val queryId: String = "",
 ) {
     fun usable(now: Instant = Instant.now()): Boolean = status == "ready" && (stock?.onHand ?: 0) > 0 &&
         snapshotId.isNotBlank() && runCatching { Instant.parse(expiresAt).isAfter(now) }.getOrDefault(false)
@@ -107,6 +110,8 @@ data class StocktakeSubmissionInput(
     @SerialName("input_method") val inputMethod: String,
     @SerialName("confirmation_token") val confirmationToken: String? = null,
     @SerialName("confirmed_quantity") val confirmedQuantity: Long? = null,
+    @SerialName("count_task_id") val countTaskId: String? = null,
+    @SerialName("count_task_version") val countTaskVersion: Long? = null,
 )
 
 @Serializable
@@ -120,6 +125,14 @@ data class StocktakeRecord(
     val delta: Long,
     @SerialName("operator_name") val operatorName: String = "",
     @SerialName("error_message") val errorMessage: String = "",
+    @SerialName("verified_quantity") val verifiedQuantity: Long? = null,
+    @SerialName("verified_at") val verifiedAt: String? = null,
+    @SerialName("request_id") val requestId: String = "",
+    @SerialName("snapshot_id") val snapshotId: String = "",
+    @SerialName("count_task_id") val countTaskId: String? = null,
+    @SerialName("input_method") val inputMethod: String = "manual",
+    val unit: String = "",
+    @SerialName("created_at") val createdAt: String = "",
 )
 
 @Serializable
@@ -137,6 +150,8 @@ data class StocktakeDraft(
     val lookup: StocktakeLookup? = null,
     val workspaceVersion: Long = 0,
     val inputMethod: String = "manual",
+    val taskVersion: Long = 0,
+    val createRequestId: String = "",
 )
 
 @Singleton
@@ -151,6 +166,27 @@ class LocationStocktakeRepository @Inject constructor(
     )
 
     suspend fun locations(sku: String, page: Int): StocktakePage = json.decodeFromJsonElement(query("sku_locations", "", sku, page))
+    suspend fun shelf(location: String, page: Int): StocktakePage = json.decodeFromJsonElement(query("location_skus", location, "", page))
+
+    suspend fun countTasks(status: String, mine: Boolean, page: Int): CountTaskPage = api.get("location-stocktakes/count-tasks", mapOf("status" to status, "mine" to mine.toString(), "page" to page.toString(), "page_size" to "20"))
+    suspend fun countTask(id: String): CountTaskDetail = api.get("location-stocktakes/count-tasks/$id")
+    suspend fun quick(requestId: String): CountTask = api.post(
+        "location-stocktakes/count-tasks",
+        buildJsonObject {
+            put("quick", true)
+            put("request_id", requestId)
+        },
+    )
+    suspend fun changeTask(task: CountTask, action: String, queryId: String = "", quantity: Long? = null, inputMethod: String = "manual", clearTarget: Boolean = false): CountTask = api.post(
+        "location-stocktakes/count-tasks/${task.id}/$action",
+        buildJsonObject {
+            put("version", task.version)
+            if (queryId.isNotBlank()) put("query_id", queryId)
+            if (quantity != null) put("quantity", quantity)
+            put("input_method", inputMethod)
+            put("clear_target", clearTarget)
+        },
+    )
 
     private suspend fun query(kind: String, location: String, sku: String, page: Int = 1): JsonElement = withTimeout(120_000) {
         var task = api.post<StocktakeTask>(

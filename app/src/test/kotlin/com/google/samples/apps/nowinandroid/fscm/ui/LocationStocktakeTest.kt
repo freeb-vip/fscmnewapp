@@ -16,9 +16,13 @@
 
 package com.google.samples.apps.nowinandroid.fscm.ui
 
+import com.google.samples.apps.nowinandroid.fscm.data.CountTask
+import com.google.samples.apps.nowinandroid.fscm.data.CountTaskDetail
 import com.google.samples.apps.nowinandroid.fscm.data.STOCKTAKE_MAX_QUANTITY
 import com.google.samples.apps.nowinandroid.fscm.data.StocktakeContext
+import com.google.samples.apps.nowinandroid.fscm.data.StocktakeDraft
 import com.google.samples.apps.nowinandroid.fscm.data.StocktakeLookup
+import com.google.samples.apps.nowinandroid.fscm.data.StocktakeRecord
 import com.google.samples.apps.nowinandroid.fscm.data.StocktakeStock
 import com.google.samples.apps.nowinandroid.fscm.data.StocktakeSubmissionInput
 import com.google.samples.apps.nowinandroid.fscm.data.StocktakeWorkspace
@@ -38,6 +42,9 @@ class LocationStocktakeTest {
     private val state = LocationStocktakeUiState(
         allowed = true,
         canWrite = true,
+        userId = 7,
+        showTasks = false,
+        task = CountTask("task", sku = "TB999-VIP-BOX", status = "in_progress", claimedBy = 7),
         context = StocktakeContext(StocktakeWorkspace(status = "configured"), writeEnabled = true),
         lookup = lookup,
         quantity = "201",
@@ -85,5 +92,50 @@ class LocationStocktakeTest {
         val saved = StocktakeSubmissionInput("snapshot", "original-request", 10, "manual", "bound-token", 10)
         val encoded = Json.encodeToString(saved)
         assertEquals(saved, Json.decodeFromString<StocktakeSubmissionInput>(encoded))
+    }
+
+    @Test
+    fun taskOwnershipAndLifecycleProtectScanningAndSubmission() {
+        for (status in listOf("pending", "processing", "needs_review", "completed", "cancelled")) {
+            val inactive = state.copy(task = state.task!!.copy(status = status), stage = StocktakeStage.Location)
+            assertFalse(inactive.canScan)
+            assertFalse(inactive.readyToSubmit)
+        }
+        assertFalse(state.copy(task = state.task!!.copy(claimedBy = 8), stage = StocktakeStage.Location).canScan)
+        assertFalse(state.copy(showTasks = true, stage = StocktakeStage.Sku).canScan)
+        assertFalse(state.copy(review = true, stage = StocktakeStage.Location).canScan)
+        assertFalse(state.copy(progressFailed = true).readyToSubmit)
+        val conflicted = state.copy(draftConflict = StocktakeDraft(quantity = "5"), stage = StocktakeStage.Location)
+        assertFalse(conflicted.canQuick)
+        assertFalse(conflicted.canScan)
+        assertFalse(conflicted.readyToSubmit)
+        assertFalse(state.copy(pending = StocktakeSubmissionInput("snapshot", "request", 10, "manual")).canQuick)
+        assertTrue(state.copy(task = state.task!!.copy(status = "completed")).canQuick)
+    }
+
+    @Test
+    fun taskDraftsRetainIdentityQuantityAndOriginalRequest() {
+        val request = StocktakeSubmissionInput("snapshot", "same-request", 0, "zero", countTaskId = "task")
+        val draft = StocktakeDraft(location = "P01", sku = "SKU", quantity = "0", pending = request, taskVersion = 9)
+        assertEquals(draft, Json.decodeFromString<StocktakeDraft>(Json.encodeToString(draft)))
+        val quick = StocktakeDraft(location = "P01", createRequestId = "original-create")
+        assertEquals(quick, Json.decodeFromString<StocktakeDraft>(Json.encodeToString(quick)))
+        val detail = Json.decodeFromString<CountTaskDetail>("""{"task":{"id":"task","status":"completed","draft_quantity":0,"claimed_by":7},"records":[],"events":[]}""")
+        assertEquals(0, detail.task.draftQuantity)
+        assertEquals("completed", detail.task.status)
+    }
+
+    @Test
+    fun restartResolvesTerminalServerResultsBeforeRestoringPendingWrites() {
+        val request = StocktakeSubmissionInput("snapshot", "request", 0, "zero", countTaskId = "task", countTaskVersion = 2)
+        val draft = StocktakeDraft(pending = request)
+        val task = state.task!!.copy(lastRecordId = "record", version = 3)
+        val record = StocktakeRecord("record", "succeeded", "P01", "SKU", 20, 0, -20, requestId = "request", snapshotId = "snapshot")
+        assertNull(restoreStocktakeRequest(task.copy(status = "completed"), listOf(record), draft))
+        assertNull(restoreStocktakeRequest(task.copy(status = "pending"), emptyList(), draft))
+        assertNull(restoreStocktakeRequest(task, listOf(record.copy(status = "cancelled")), draft))
+        assertEquals(request, restoreStocktakeRequest(task, emptyList(), draft))
+        assertEquals("request", restoreStocktakeRequest(task.copy(status = "needs_review"), listOf(record.copy(status = "result_unknown")), StocktakeDraft())?.requestId)
+        assertEquals(3, restoreStocktakeRequest(task, listOf(record.copy(status = "awaiting_confirmation")), StocktakeDraft())?.countTaskVersion)
     }
 }
