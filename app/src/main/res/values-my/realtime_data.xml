@@ -17,6 +17,9 @@
     <string name="rt_delayed">ဒေတာနှောင့်နှေးနေသည်</string>
     <string name="rt_live">စောင့်ကြည့်နေသည်</string>
     <string name="rt_select_account">ဒေတာအကောင့်ရွေးရန်</string>
+    <string name="rt_switch_account">အကောင့်ပြောင်းရန်</string>
+    <string name="rt_change_time">မနေ့ကအချိန်တူနှိုင်းယှဉ်</string>
+    <string name="rt_change_period">မနေ့ကအချိန်ကာလတူနှိုင်းယှဉ်</string>
     <string name="rt_no_account">ခွင့်ပြုချက်ပြည့်စုံသောအကောင့် မရှိပါ</string>
     <string name="rt_xinjian">Xinjian</string>
     <string name="rt_sales">ယနေ့ရောင်းရငွေ</string>

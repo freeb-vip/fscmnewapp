@@ -17,6 +17,9 @@
     <string name="rt_delayed">ข้อมูลล่าช้า</string>
     <string name="rt_live">กำลังติดตาม</string>
     <string name="rt_select_account">เลือกบัญชีข้อมูล</string>
+    <string name="rt_switch_account">เปลี่ยนบัญชี</string>
+    <string name="rt_change_time">เทียบเวลาเดียวกันเมื่อวาน</string>
+    <string name="rt_change_period">เทียบช่วงเวลาเดียวกันเมื่อวาน</string>
     <string name="rt_no_account">ไม่มีบัญชีที่ได้รับสิทธิ์ครบถ้วน</string>
     <string name="rt_xinjian">Xinjian</string>
     <string name="rt_sales">ยอดขายวันนี้</string>

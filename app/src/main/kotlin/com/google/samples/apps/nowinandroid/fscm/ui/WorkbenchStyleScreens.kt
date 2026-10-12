@@ -30,7 +30,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Assignment
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Card
@@ -42,13 +45,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -56,22 +59,29 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.samples.apps.nowinandroid.R
+import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandDeep
+import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandMain
+import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandSoft
+import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmInkSoft
+import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmInkStrong
+import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmPageTop
+import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmSurfaceRaised
 import com.google.samples.apps.nowinandroid.fscm.data.MobileAppEntry
-import com.google.samples.apps.nowinandroid.fscm.data.MobileAppUsage
+import com.google.samples.apps.nowinandroid.fscm.data.MobileTodo
 import com.google.samples.apps.nowinandroid.fscm.data.MobileWorkbenchOverview
 import com.google.samples.apps.nowinandroid.fscm.data.OperationsWorkbench
 import com.google.samples.apps.nowinandroid.fscm.data.SessionState
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseWorkbench
 import com.google.samples.apps.nowinandroid.fscm.data.WorkbenchModule
 import com.google.samples.apps.nowinandroid.fscm.data.WorkbenchPresentation
-import com.google.samples.apps.nowinandroid.fscm.data.commonMobileApps
+import com.google.samples.apps.nowinandroid.fscm.data.isTodoCompleted
 import com.google.samples.apps.nowinandroid.fscm.data.orderedWarehouseHomeApps
 import com.google.samples.apps.nowinandroid.fscm.data.visibleMobileApps
 import java.math.BigDecimal
 import java.text.NumberFormat
 
-private val workbenchBlue = Color(0xFF1677FF)
-private val workbenchBackground = Color(0xFFF5F8FF)
+private val workbenchBlue = FscmBrandMain
+private val workbenchBackground = FscmPageTop
 
 @Composable
 internal fun WarehouseStyleScreen(
@@ -146,8 +156,6 @@ private fun WarehouseAppTile(app: MobileAppEntry, modifier: Modifier, onOpen: (M
 @Composable
 internal fun OperationsStyleScreen(
     session: SessionState,
-    presentation: WorkbenchPresentation,
-    usage: MobileAppUsage,
     state: LoadState<OperationsWorkbench>,
     realtimeState: RealtimeUiState,
     onRealtime: () -> Unit,
@@ -157,14 +165,12 @@ internal fun OperationsStyleScreen(
     onTodos: () -> Unit,
     onTodo: (Long) -> Unit,
     onRefresh: () -> Unit,
-    onOpenApp: (MobileAppEntry) -> Unit,
 ) {
     val data = state.data
-    val apps = commonMobileApps(visibleMobileApps(MobileWorkbenchOverview(apps = presentation.apps), session.permissions, session.sessionMode), usage).take(4)
     val columns = if (LocalConfiguration.current.screenWidthDp < 360 || LocalDensity.current.fontScale >= 1.3f) 1 else 2
     PullToRefreshBox(isRefreshing = state.loading || realtimeState.loading, onRefresh = onRefresh) {
         LazyColumn(
-            modifier = Modifier.background(workbenchBackground),
+            modifier = Modifier.fillMaxSize().background(workbenchBackground).testTag("operations-home"),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -179,16 +185,23 @@ internal fun OperationsStyleScreen(
             }
             if (data == null || data.daily.status != "no_permission") {
                 item {
-                    StyleCard(onClick = onDaily) {
-                        Text(stringResource(R.string.style_yesterday_daily), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    StyleCard(onClick = onDaily, blue = true) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(stringResource(R.string.style_yesterday_daily), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, stringResource(R.string.rt_view_details), tint = FscmBrandDeep)
+                        }
                         val daily = data?.daily
                         ModuleNotice(daily)
                         daily?.data?.let { report ->
-                            Text(report.date, style = MaterialTheme.typography.bodySmall)
                             StyleMetric(stringResource(R.string.style_operating_profit), money(report.summary.profit), prominent = true)
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                StyleMetric(stringResource(R.string.style_sales_orders), report.summary.totalOrders?.toString() ?: "—", Modifier.weight(1f))
-                                StyleMetric(stringResource(R.string.style_profit_margin), percent(report.summary.profitMargin), Modifier.weight(1f))
+                            if (columns == 1) {
+                                StyleMetric(stringResource(R.string.style_sales_orders), report.summary.totalOrders?.toString() ?: "—")
+                                StyleMetric(stringResource(R.string.style_profit_margin), percent(report.summary.profitMargin))
+                            } else {
+                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    StyleMetric(stringResource(R.string.style_sales_orders), report.summary.totalOrders?.toString() ?: "—", Modifier.weight(1f))
+                                    StyleMetric(stringResource(R.string.style_profit_margin), percent(report.summary.profitMargin), Modifier.weight(1f))
+                                }
                             }
                         }
                     }
@@ -196,29 +209,45 @@ internal fun OperationsStyleScreen(
             }
             if (data == null || data.todos.status != "no_permission") {
                 item {
-                    StyleCard {
+                    StyleCard(blue = true) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text(stringResource(R.string.style_todos), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                             TextButton(onClick = onTodos, enabled = data?.todos?.status == "ready") { Text(stringResource(R.string.style_view_all)) }
                         }
                         val todos = data?.todos?.data.orEmpty().take(3)
-                        if (todos.isEmpty()) ModuleNotice(data?.todos, emptyMessage = stringResource(R.string.style_no_todos))
+                        if (todos.isEmpty()) {
+                            if (data?.todos?.status == "ready") {
+                                Text(stringResource(R.string.style_no_todos), color = FscmInkSoft, modifier = Modifier.padding(vertical = 12.dp))
+                            } else {
+                                ModuleNotice(data?.todos)
+                            }
+                        }
                         todos.forEach { todo ->
-                            Text(todo.title, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { onTodo(todo.id) }.padding(vertical = 10.dp), maxLines = 1)
+                            OperationsTodoRow(todo, onOpen = { onTodo(todo.id) })
                         }
                     }
                 }
             }
-            if (apps.isNotEmpty()) {
-                item { Text(stringResource(R.string.style_common_work), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-                items(apps.chunked(columns)) { pair ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        pair.forEach { app -> WarehouseAppTile(app, Modifier.weight(1f), onOpenApp) }
-                        if (columns == 2 && pair.size == 1) Spacer(Modifier.weight(1f))
-                    }
-                }
-            }
         }
+    }
+}
+
+@Composable
+private fun OperationsTodoRow(todo: MobileTodo, onOpen: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(FscmSurfaceRaised.copy(alpha = 0.65f))
+            .clickable(onClick = onOpen).heightIn(min = 64.dp).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(Icons.Rounded.Assignment, null, tint = FscmBrandMain, modifier = Modifier.size(22.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(todo.title, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, color = FscmInkStrong)
+            val summary = todo.description.ifBlank { todo.content }
+            if (summary.isNotBlank()) Text(summary, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, color = FscmInkSoft)
+            Text(stringResource(if (isTodoCompleted(todo.status)) R.string.status_completed else R.string.status_pending), style = MaterialTheme.typography.labelSmall, color = FscmBrandDeep)
+        }
+        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = FscmBrandMain, modifier = Modifier.size(20.dp))
     }
 }
 
@@ -244,26 +273,24 @@ internal fun DailyDetailScreen(state: LoadState<OperationsWorkbench>) {
 }
 
 @Composable
-private fun <T> ModuleNotice(module: WorkbenchModule<T>?, emptyMessage: String? = null) {
+private fun <T> ModuleNotice(module: WorkbenchModule<T>?) {
     val message = when (module?.status) {
         "ready" -> return
         "no_permission" -> stringResource(R.string.style_no_access)
         "not_configured" -> stringResource(R.string.style_no_source)
-        else -> module?.reason?.takeIf(String::isNotBlank) ?: emptyMessage ?: stringResource(R.string.style_data_unavailable)
+        else -> module?.reason?.takeIf(String::isNotBlank) ?: stringResource(R.string.style_data_unavailable)
     }
     Text(message, style = MaterialTheme.typography.bodySmall)
 }
 
 @Composable
-private fun StyleCard(onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
+private fun StyleCard(onClick: (() -> Unit)? = null, blue: Boolean = false, content: @Composable () -> Unit) {
     Card(
-        onClick = onClick ?: {},
-        enabled = onClick != null,
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = if (blue) FscmBrandSoft else FscmSurfaceRaised, contentColor = FscmInkStrong),
         shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
     ) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { content() }
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { content() }
     }
 }
 
@@ -273,7 +300,9 @@ private fun StyleMetric(label: String, value: String, modifier: Modifier = Modif
         Text(label, style = MaterialTheme.typography.bodySmall)
         Text(
             value,
+            modifier = Modifier.fillMaxWidth(),
             style = if (prominent) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineSmall,
+            autoSize = TextAutoSize.StepBased(minFontSize = 16.sp, maxFontSize = if (prominent) MaterialTheme.typography.headlineMedium.fontSize else MaterialTheme.typography.headlineSmall.fontSize, stepSize = 1.sp),
             fontWeight = FontWeight.Bold,
             color = workbenchBlue,
             maxLines = 1,

@@ -799,7 +799,6 @@ private fun MainShell(
     val presentationReady by workbenchViewModel.presentationReady.collectAsStateWithLifecycle()
     val warehouseState by workbenchViewModel.warehouse.collectAsStateWithLifecycle()
     val operationsState by workbenchViewModel.operations.collectAsStateWithLifecycle()
-    val mobileAppUsage by workbenchViewModel.mobileAppUsage.collectAsStateWithLifecycle()
     val globalScanResult by rootViewModel.globalScanResult.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -976,8 +975,6 @@ private fun MainShell(
                     )
                     presentation.style == "operations" -> OperationsStyleScreen(
                         session = session,
-                        presentation = presentation,
-                        usage = mobileAppUsage,
                         state = operationsState,
                         realtimeState = realtimeState,
                         onRealtime = { featureRoute = FeatureRoute.RealtimeData },
@@ -992,11 +989,6 @@ private fun MainShell(
                         onRefresh = {
                             workbenchViewModel.loadStyle(session, force = true)
                             realtimeViewModel.refresh()
-                        },
-                        onOpenApp = { app ->
-                            if (openAppEntry(context, app, { featureRoute = it }) { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }) {
-                                workbenchViewModel.recordMobileAppUsage(session, app.key)
-                            }
                         },
                     )
                     else -> WorkbenchScreen(

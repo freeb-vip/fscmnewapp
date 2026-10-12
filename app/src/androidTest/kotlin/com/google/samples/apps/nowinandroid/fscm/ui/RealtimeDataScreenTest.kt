@@ -104,7 +104,7 @@ class RealtimeDataScreenTest {
         var selected = ""
         compose.setContent { FscmTheme { RealtimeDataScreen(fixture(), { selected = it }, {}) } }
         saveImage("realtime-detail-fixture")
-        compose.onNodeWithText("BigSeller · Demo account A").performClick()
+        compose.onNodeWithTag("realtime-account-switch").performClick()
         compose.onNodeWithText("Demo account B").performClick()
         compose.runOnIdle { assertEquals("b", selected) }
         compose.onNodeWithTag("realtime-list").performScrollToNode(hasText("Demo shop"))

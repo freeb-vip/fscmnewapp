@@ -17,6 +17,9 @@
     <string name="rt_delayed">数据延迟</string>
     <string name="rt_live">数据监测中</string>
     <string name="rt_select_account">选择数据账户</string>
+    <string name="rt_switch_account">切换账户</string>
+    <string name="rt_change_time">较昨日同时刻</string>
+    <string name="rt_change_period">较昨日同时段</string>
     <string name="rt_no_account">暂无可查看的完整账户</string>
     <string name="rt_xinjian">心舰</string>
     <string name="rt_sales">今日销售额</string>

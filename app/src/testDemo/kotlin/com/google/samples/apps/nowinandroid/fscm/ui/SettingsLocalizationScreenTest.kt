@@ -43,7 +43,6 @@ import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmTheme
 import com.google.samples.apps.nowinandroid.core.model.data.DisplayMode
 import com.google.samples.apps.nowinandroid.fscm.data.MobileAppEntry
-import com.google.samples.apps.nowinandroid.fscm.data.MobileAppUsage
 import com.google.samples.apps.nowinandroid.fscm.data.NamespaceProfile
 import com.google.samples.apps.nowinandroid.fscm.data.OperationsWorkbench
 import com.google.samples.apps.nowinandroid.fscm.data.SessionState
@@ -94,18 +93,22 @@ class SettingsLocalizationScreenTest {
     }
 
     @Test
-    fun operationsHomeTitlesFollowLocaleChangesForCachedServerApps() {
+    fun operationsHomeDoesNotShowAppTilesAcrossLocales() {
         compose.setContent {
             LocalizedContent {
                 OperationsStyleScreen(
-                    session = SessionState(), presentation = presentation, usage = MobileAppUsage(),
+                    session = SessionState(),
                     state = LoadState(data = OperationsWorkbench()), realtimeState = RealtimeUiState(),
                     onRealtime = {}, onRealtimeSelect = {}, onSearch = {}, onDaily = {}, onTodos = {},
-                    onTodo = {}, onRefresh = {}, onOpenApp = {},
+                    onTodo = {}, onRefresh = {},
                 )
             }
         }
-        assertAppTitlesAcrossLocales()
+        listOf("en", "zh-Hans", "th", "my").forEach { tag ->
+            compose.runOnIdle { languageTag.value = tag }
+            appTitles.forEach { (_, title) -> compose.onNodeWithText(text(title)).assertDoesNotExist() }
+            compose.onNodeWithText(text(R.string.style_common_work)).assertDoesNotExist()
+        }
     }
 
     @Test

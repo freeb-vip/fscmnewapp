@@ -17,6 +17,9 @@
     <string name="rt_delayed">Delayed</string>
     <string name="rt_live">Monitoring</string>
     <string name="rt_select_account">Select data account</string>
+    <string name="rt_switch_account">Switch account</string>
+    <string name="rt_change_time">Vs same time yesterday</string>
+    <string name="rt_change_period">Vs same period yesterday</string>
     <string name="rt_no_account">No fully authorized account</string>
     <string name="rt_xinjian">Xinjian</string>
     <string name="rt_sales">Sales today</string>
