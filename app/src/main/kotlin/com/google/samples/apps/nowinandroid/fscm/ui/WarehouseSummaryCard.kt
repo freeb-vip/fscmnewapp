@@ -16,6 +16,7 @@
 
 package com.google.samples.apps.nowinandroid.fscm.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,16 +30,20 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.google.samples.apps.nowinandroid.R
+import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandDeep
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandMain
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmDanger
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmInkSoft
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmSuccess
+import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmSurfaceRaised
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseWorkbench
 import com.google.samples.apps.nowinandroid.fscm.data.warehouseChangePercent
 import java.text.NumberFormat
@@ -58,13 +63,16 @@ internal fun WarehouseSummaryCard(state: LoadState<WarehouseWorkbench>, offline:
     val previousEfficiency = yesterday?.efficiency?.takeIf { yesterday.efficiencyAvailable == true && it.isFinite() }
     Card(
         modifier = Modifier.fillMaxWidth().testTag("warehouse_summary"),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = FscmBrandDeep, contentColor = Color.White),
         shape = RoundedCornerShape(16.dp),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(
+            Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(FscmBrandMain, FscmBrandDeep))).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.warehouse_summary_title), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                if (!data?.date.isNullOrBlank()) Text(data.date.takeLast(5), color = FscmInkSoft, style = MaterialTheme.typography.bodySmall)
+                if (!data?.date.isNullOrBlank()) Text(data.date.takeLast(5), color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 WarehouseComparisonMetric(
@@ -100,10 +108,10 @@ internal fun WarehouseSummaryCard(state: LoadState<WarehouseWorkbench>, offline:
                     stringResource(R.string.warehouse_summary_basis),
                 ).filterNotNull().joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
-                color = FscmInkSoft,
+                color = Color.White.copy(alpha = 0.85f),
             )
             if (state.error != null && !offline) {
-                TextButton(onClick = onRetry, enabled = !state.loading) { Text(stringResource(R.string.common_retry)) }
+                TextButton(onClick = onRetry, enabled = !state.loading) { Text(stringResource(R.string.common_retry), color = Color.White) }
             }
         }
     }
@@ -113,9 +121,9 @@ internal fun WarehouseSummaryCard(state: LoadState<WarehouseWorkbench>, offline:
 private fun WarehouseComparisonMetric(label: String, value: String, yesterday: String, change: Double?, modifier: Modifier) {
     val roundedChange = change?.let { kotlin.math.round(it * 10) / 10 }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = FscmInkSoft)
-        Text(value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = FscmBrandMain)
-        Text(stringResource(R.string.warehouse_summary_yesterday, yesterday), style = MaterialTheme.typography.bodyMedium, color = FscmInkSoft)
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.85f))
+        Text(value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White)
+        Text(stringResource(R.string.warehouse_summary_yesterday, yesterday), style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.85f))
         Text(
             when {
                 roundedChange == null -> "—"
@@ -123,6 +131,7 @@ private fun WarehouseComparisonMetric(label: String, value: String, yesterday: S
                 roundedChange < 0 -> "↓ %.1f%%".format(abs(roundedChange))
                 else -> "0.0%"
             },
+            modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(FscmSurfaceRaised).padding(horizontal = 8.dp, vertical = 4.dp),
             color = when {
                 roundedChange == null || roundedChange == 0.0 -> FscmInkSoft
                 roundedChange > 0 -> FscmSuccess

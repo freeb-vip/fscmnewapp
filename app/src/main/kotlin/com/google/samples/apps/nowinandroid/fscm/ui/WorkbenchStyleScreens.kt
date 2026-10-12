@@ -48,7 +48,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -106,11 +105,11 @@ internal fun WarehouseStyleScreen(
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(session.currentNamespace?.name.orEmpty(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text(session.user?.username.orEmpty(), style = MaterialTheme.typography.bodySmall)
+                        Text(session.currentNamespace?.name.orEmpty(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = FscmInkStrong)
+                        Text(session.user?.username.orEmpty(), style = MaterialTheme.typography.bodySmall, color = FscmInkSoft)
                     }
-                    IconButton(onClick = onProfile) {
-                        Icon(Icons.Rounded.Person, contentDescription = stringResource(R.string.profile))
+                    IconButton(onClick = onProfile, modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(FscmBrandSoft)) {
+                        Icon(Icons.Rounded.Person, contentDescription = stringResource(R.string.profile), tint = FscmBrandMain)
                     }
                 }
             }
@@ -132,7 +131,7 @@ private fun WarehouseAppTile(app: MobileAppEntry, modifier: Modifier, onOpen: (M
     Card(
         onClick = { onOpen(app) },
         modifier = modifier.heightIn(min = if (large) 120.dp else 108.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = FscmBrandSoft, contentColor = FscmBrandDeep),
         shape = RoundedCornerShape(16.dp),
     ) {
         Column(
