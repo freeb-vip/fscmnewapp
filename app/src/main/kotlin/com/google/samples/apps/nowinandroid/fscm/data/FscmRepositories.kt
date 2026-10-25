@@ -1538,6 +1538,7 @@ private val localSearchAliases = mapOf(
     "tickets" to listOf("工单", "服务协同"),
     "documents" to listOf("文档", "文档中心"),
     "realtime_data" to listOf("实时数据", "今日数据", "realtime", "real time", "live data"),
+    "purchase_insights" to listOf("采购洞察", "销量", "库存", "在途", "purchase insights", "sku"),
     "profit" to listOf("运营日报", "店铺概览", "排行榜", "利润", "利润看板"),
     "receiving" to listOf("收货", "扫码入库", "仓库收货"),
     "product_management" to listOf("产品", "SKU", "SKU 管理"),
@@ -2365,6 +2366,7 @@ fun visibleMobileApps(
         .distinctBy { it.key }
         .filter { it.visible }
         .filter { it.key != "realtime_data" || canAccessRealtime(permissions, sessionMode) }
+        .filter { it.key != "purchase_insights" || (sessionMode == SessionMode.Online && "purchase-insights" in permissionSet) }
         .filter { it.key != "profit" || (sessionMode == SessionMode.Online && "mobile-app:profit" in permissionSet && "operating-profit-daily" in permissionSet) }
         .filter { it.key != "offline_shipping" || "mobile-app:offline-shipping" in permissionSet }
         .filter { it.key in implementedMobileAppKeys && it.key !in setOf("pda_settings", "edge_nodes") }
@@ -2387,6 +2389,7 @@ private fun normalizeMobileAppEntry(entry: MobileAppEntry): MobileAppEntry {
 }
 
 internal val implementedMobileAppKeys = setOf(
+    "purchase_insights",
     "location_stocktakes",
     "receiving",
     "inbound_management",
@@ -2523,6 +2526,7 @@ val defaultMobileApps = listOf(
         offlineRequiredPermissions = listOf("mobile-app:product-counting"),
     ),
     MobileAppEntry("realtime_data", "", "", "/pages/realtime-data/index", "mobile-app:realtime-data", "realtime-data", "monitoring", "#1677ff", sort = 51),
+    MobileAppEntry("purchase_insights", "采购洞察", "销量、库存、在途与 SKU 销量曲线", "/pages/purchase-insights/index", "purchase-insights", "purchase-insights", "monitoring", "#1677ff", sort = 52),
     MobileAppEntry("profit", "", "", "/pages/profit/index", "mobile-app:profit", "operating-profit-daily", "daily_report", "#1677ff", sort = 50),
     MobileAppEntry("product_management", "", "", "/pages/product/index", "mobile-app:product", "products", "", "#1890ff", sort = 60),
     MobileAppEntry("box_labels", "", "", "/pages/box-labels/index", "mobile-app:box-labels", "", "", "#0f766e", sort = 70),

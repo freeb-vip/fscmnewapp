@@ -86,6 +86,7 @@ private fun appGlyphForKey(rawKey: String): AppGlyph? = when (rawKey.normalizedI
     "inbound_management" -> AppGlyph.InboundManagement
     "central_receiving" -> AppGlyph.CentralReceiving
     "realtime_data" -> AppGlyph.RealtimeData
+    "purchase_insights" -> AppGlyph.RealtimeData
     "profit" -> AppGlyph.Profit
     "product_management" -> AppGlyph.Products
     "offline_shipping" -> AppGlyph.OfflineShipping

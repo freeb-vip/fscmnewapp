@@ -713,6 +713,7 @@ private enum class MainTab(@StringRes val titleRes: Int, val icon: ImageVector) 
 internal sealed interface FeatureRoute : Serializable {
     data object None : FeatureRoute
     data object RealtimeData : FeatureRoute
+    data object PurchaseInsights : FeatureRoute
     data object DailyDetail : FeatureRoute
     data object Todos : FeatureRoute
     data class TodoDetail(val id: Long?) : FeatureRoute
@@ -1049,6 +1050,10 @@ private fun FeatureScreen(
         OperatingDailyScreen(session, onBack)
         return
     }
+    if (route == FeatureRoute.PurchaseInsights) {
+        PurchaseInsightScreen(session, onBack)
+        return
+    }
     val operationsState by workbenchViewModel.operations.collectAsStateWithLifecycle()
     val receivingDetailId = (route as? FeatureRoute.ReceivingDetail)?.id
     val receivingDetailViewModel: ReceivingDetailViewModel? =
@@ -1093,6 +1098,7 @@ private fun FeatureScreen(
                 FscmTopBar(
                     title = when (route) {
                         FeatureRoute.Profit -> stringResource(R.string.od_title)
+                        FeatureRoute.PurchaseInsights -> stringResource(R.string.pi_title)
                         FeatureRoute.RealtimeData -> stringResource(R.string.rt_title)
                         FeatureRoute.DailyDetail -> stringResource(R.string.style_yesterday_daily)
                         FeatureRoute.Todos, is FeatureRoute.TodoDetail -> stringResource(R.string.style_todos)
@@ -1221,6 +1227,7 @@ private fun FeatureScreen(
                 )
                 is FeatureRoute.TodoDetail -> TodoDetailScreen(id = route.id, onBack = onBack)
                 FeatureRoute.Profit -> Unit
+                FeatureRoute.PurchaseInsights -> Unit
                 FeatureRoute.ReceivingList -> WarehouseReceivingScreen(onOpenReceivingDetail)
                 is FeatureRoute.ReceivingDetail -> ReceivingDetailScreen(
                     route.id,
@@ -2963,6 +2970,7 @@ internal fun localAppTitleResource(key: String): Int? = when (key) {
     "inbound_management" -> R.string.local_app_inbound_management_title
     "central_receiving" -> R.string.local_app_central_receiving_title
     "realtime_data" -> R.string.rt_title
+    "purchase_insights" -> R.string.pi_title
     "profit" -> R.string.local_app_profit_title
     "product_management" -> R.string.local_app_product_management_title
     "offline_shipping" -> R.string.shipping_title
@@ -2988,6 +2996,7 @@ private fun localAppDescriptionResource(key: String): Int? = when (key) {
     "inbound_management" -> R.string.local_app_inbound_management_description
     "central_receiving" -> R.string.local_app_central_receiving_description
     "realtime_data" -> R.string.rt_description
+    "purchase_insights" -> R.string.pi_description
     "profit" -> R.string.local_app_profit_description
     "product_management" -> R.string.local_app_product_management_description
     "offline_shipping" -> R.string.shipping_description
@@ -3218,6 +3227,10 @@ private fun openAppEntry(
     onOpenFeature: (FeatureRoute) -> Unit,
     showUnavailable: (String) -> Unit,
 ) = when (app.key) {
+    "purchase_insights" -> {
+        onOpenFeature(FeatureRoute.PurchaseInsights)
+        true
+    }
     "realtime_data" -> {
         onOpenFeature(FeatureRoute.RealtimeData)
         true
