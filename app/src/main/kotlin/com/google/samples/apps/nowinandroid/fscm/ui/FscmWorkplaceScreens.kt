@@ -353,7 +353,6 @@ fun TicketDetailScreen(
     }
     val isCreator = ticket?.creatorId == session.user?.id
     val isAssignee = ticket?.assigneeId == session.user?.id
-    val isAdmin = session.effectiveRole == "admin" || session.user?.role == "admin"
     WorkplacePage(bottomPadding = 104) {
         item { WorkplaceNotice(state.error, state.message, viewModel::consumeNotice) }
         ticket?.let { item ->
@@ -392,6 +391,7 @@ fun TicketDetailScreen(
                     }
                 }
             }
+            item { TicketConversation(id, session.user?.id, item.status) }
             if (item.history.isNotEmpty()) {
                 item { WorkplaceSectionTitle(stringResource(R.string.workplace_status_history)) }
                 items(item.history, key = { history -> history.id }) { history ->
@@ -408,9 +408,9 @@ fun TicketDetailScreen(
     ticket?.let { item ->
         TicketActionBar(
             canEdit = isCreator || isAssignee,
-            canChangeStatus = allowedTicketStatuses(item.status).any { target -> ticketStatusAllowedForUser(item.status, target, isCreator, isAssignee, isAdmin) },
+            canChangeStatus = allowedTicketStatuses(item.status).any { target -> ticketStatusAllowedForUser(item.status, target, isCreator, isAssignee) },
             canEditAction = { editMode = !editMode },
-            targets = allowedTicketStatuses(item.status).filter { target -> ticketStatusAllowedForUser(item.status, target, isCreator, isAssignee, isAdmin) },
+            targets = allowedTicketStatuses(item.status).filter { target -> ticketStatusAllowedForUser(item.status, target, isCreator, isAssignee) },
             submitting = state.submitting,
             onStatus = { targetStatus = it },
         )
@@ -583,10 +583,10 @@ private fun TodoFilters(selected: TodoFilter, onSelected: (TodoFilter) -> Unit) 
 @Composable
 private fun TicketFilters(selected: TicketFilter, onSelected: (TicketFilter) -> Unit) = FilterRow(
     selected = selected,
-    values = TicketFilter.entries.toList(),
+    values = listOf(TicketFilter.Active, TicketFilter.All),
     label = { filter ->
         when (filter) {
-            TicketFilter.Active -> stringResource(R.string.workplace_active)
+            TicketFilter.Active -> stringResource(R.string.status_pending)
             TicketFilter.Urgent -> stringResource(R.string.priority_urgent)
             TicketFilter.Closed -> stringResource(R.string.status_closed)
             TicketFilter.All -> stringResource(R.string.common_all)
@@ -705,9 +705,9 @@ private fun TicketActionBar(canEdit: Boolean, canChangeStatus: Boolean, canEditA
     }
 }
 
-private fun ticketStatusAllowedForUser(from: String, target: String, isCreator: Boolean, isAssignee: Boolean, isAdmin: Boolean): Boolean = when {
-    from == "resolved" && target == "closed" -> isCreator || isAdmin
-    from == "closed" && target == "open" -> isCreator || isAdmin
+private fun ticketStatusAllowedForUser(from: String, target: String, isCreator: Boolean, isAssignee: Boolean): Boolean = when {
+    from == "resolved" && target == "closed" -> isCreator
+    from == "closed" && target == "open" -> isCreator
     else -> isAssignee
 }
 

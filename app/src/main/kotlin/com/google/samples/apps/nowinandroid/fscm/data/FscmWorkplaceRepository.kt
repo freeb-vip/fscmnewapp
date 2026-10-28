@@ -72,15 +72,16 @@ class WorkplaceRepository @Inject constructor(
         val params = mutableMapOf(
             "page" to page.toString(),
             "page_size" to "20",
-            "scope" to "mine",
+            "scope" to "related",
         )
         when (filter) {
+            TicketFilter.Active -> params["todo_for_me"] = "true"
             TicketFilter.Closed -> params["status"] = "closed"
             TicketFilter.Urgent -> params["priority"] = "urgent"
             else -> Unit
         }
         keyword.trim().takeIf { it.isNotEmpty() }?.let { params["keyword"] = it }
-        val payload: JsonElement = api.get("workplace/tickets", params)
+        val payload: JsonElement = api.get("tickets", params)
         return decodeTicketPage(payload, json)
     }
 
@@ -183,14 +184,21 @@ internal fun tipTapDocument(content: String): JsonObject = buildJsonObject {
 
 internal fun decodeTicketPage(payload: JsonElement, json: Json): WorkplaceTicketPage {
     val obj = payload as? JsonObject
-    val meta = obj?.get("meta") as? JsonObject
+    val meta = obj?.get("meta") as? JsonObject ?: obj
     return WorkplaceTicketPage(
         data = decodeBusinessList(payload, json),
         meta = WorkplaceTicketPageMeta(
             total = meta?.get("total")?.jsonPrimitive?.intOrNull ?: 0,
             page = meta?.get("page")?.jsonPrimitive?.intOrNull ?: 1,
-            pageSize = meta?.get("page_size")?.jsonPrimitive?.intOrNull ?: 20,
-            hasMore = meta?.get("has_more")?.jsonPrimitive?.content == "true",
+            pageSize = (meta?.get("page_size") ?: meta?.get("pageSize"))?.jsonPrimitive?.intOrNull ?: 20,
+            hasMore = meta?.get("has_more")?.jsonPrimitive?.content?.toBooleanStrictOrNull()
+                ?: (
+                    (
+                        (meta?.get("page")?.jsonPrimitive?.intOrNull ?: 1) *
+                            ((meta?.get("page_size") ?: meta?.get("pageSize"))?.jsonPrimitive?.intOrNull ?: 20)
+                        ) <
+                        (meta?.get("total")?.jsonPrimitive?.intOrNull ?: 0)
+                    ),
         ),
     )
 }
