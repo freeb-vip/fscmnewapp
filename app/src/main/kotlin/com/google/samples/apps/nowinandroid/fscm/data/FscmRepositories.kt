@@ -2389,6 +2389,7 @@ private fun normalizeMobileAppEntry(entry: MobileAppEntry): MobileAppEntry {
 }
 
 internal val implementedMobileAppKeys = setOf(
+    "tickets",
     "purchase_insights",
     "location_stocktakes",
     "receiving",
@@ -2441,6 +2442,7 @@ private fun MobileAppEntry.hasOfflinePermissions(permissionSet: Set<String>): Bo
 private val offlineImplementedAppKeys = setOf("receiving", "inbound_management", "central_receiving", "product_counting")
 
 val defaultMobileApps = listOf(
+    MobileAppEntry(key = "tickets", title = "工单", description = "服务协同", path = "/pages/messages/tickets/index", permission = "mobile-app:tickets", businessPermission = "workbench-access", icon = "tickets", color = "#fa8c16", sort = 30),
     MobileAppEntry(
         key = "location_stocktakes",
         title = "",

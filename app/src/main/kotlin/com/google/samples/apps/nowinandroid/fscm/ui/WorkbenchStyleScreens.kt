@@ -92,7 +92,7 @@ internal fun WarehouseStyleScreen(
     onOpenApp: (MobileAppEntry) -> Unit,
 ) {
     val catalog = visibleMobileApps(MobileWorkbenchOverview(apps = presentation.apps), session.permissions, session.sessionMode)
-        .filterNot { it.key in setOf("todos", "notes", "tickets") }
+        .filterNot { it.key in setOf("todos", "notes") }
     val pinned = orderedWarehouseHomeApps(catalog, presentation.homeAppKeys)
     val other = catalog.filterNot { app -> pinned.any { it.key == app.key } }
     val apps = (pinned + other).distinctBy { it.key }

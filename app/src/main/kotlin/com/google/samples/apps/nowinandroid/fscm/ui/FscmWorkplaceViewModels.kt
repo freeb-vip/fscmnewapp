@@ -23,7 +23,6 @@ import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.fscm.data.DocumentFilter
 import com.google.samples.apps.nowinandroid.fscm.data.FscmApiException
 import com.google.samples.apps.nowinandroid.fscm.data.TicketFilter
-import com.google.samples.apps.nowinandroid.fscm.data.TicketUpdateInput
 import com.google.samples.apps.nowinandroid.fscm.data.TodoFilter
 import com.google.samples.apps.nowinandroid.fscm.data.TodoInput
 import com.google.samples.apps.nowinandroid.fscm.data.WorkplaceDocument
@@ -271,7 +270,6 @@ class TicketDetailViewModel @Inject constructor(
             .onFailure { error -> _state.update { it.copy(loading = false, error = error.workplaceMessage(R.string.workplace_ticket_detail_failed)) } }
     }
 
-    fun update(id: Long, input: TicketUpdateInput) = execute(id, R.string.workplace_ticket_updated) { repository.updateTicket(id, input) }
     fun updateStatus(id: Long, status: String, remark: String = "") = execute(id, R.string.workplace_ticket_status_updated) { repository.updateTicketStatus(id, status, remark) }
     fun consumeNotice() = _state.update { it.copy(error = null, message = null) }
 

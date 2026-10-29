@@ -21,6 +21,16 @@ import kotlin.test.assertEquals
 
 class WorkbenchStyleTest {
     @Test
+    fun ticketsAppearInOnlineCatalogAndStayHiddenOffline() {
+        val ticket = defaultMobileApps.single { it.key == "tickets" }
+        val overview = MobileWorkbenchOverview(apps = listOf(ticket))
+        val permissions = listOf("mobile-app:tickets", "workbench-access")
+        assertEquals(listOf("tickets"), visibleMobileApps(overview, permissions).map { it.key })
+        assertEquals(emptyList(), visibleMobileApps(overview, permissions, SessionMode.Offline))
+        assertEquals(emptyList(), visibleMobileApps(overview.copy(apps = listOf(ticket.copy(visible = false))), permissions))
+    }
+
+    @Test
     fun configuredAppsKeepRoleOrderAndIgnoreUnavailableApps() {
         val catalog = listOf("receiving", "box_labels", "product_counting").map { MobileAppEntry(key = it) }
         val ordered = orderedWarehouseHomeApps(catalog, listOf("product_counting", "unknown", "receiving"))

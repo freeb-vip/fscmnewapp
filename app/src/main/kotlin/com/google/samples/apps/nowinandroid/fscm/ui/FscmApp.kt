@@ -47,6 +47,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -542,161 +543,167 @@ private fun LoginScreen(
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var captchaAnswer by rememberSaveable { mutableStateOf("") }
+    val passwordFocus = remember { FocusRequester() }
+    val captchaFocus = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
     val captcha = state.security?.captcha
     val loginEnabled = isLoginSubmissionEnabled(username, password, captchaAnswer, state)
     LaunchedEffect(captcha?.captchaId) {
         captchaAnswer = ""
     }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(28.dp),
-        verticalArrangement = Arrangement.Center,
+    Column(
+        modifier = Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.Top,
     ) {
-        item {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Brush.linearGradient(listOf(BrandMain, BrandDeep)))
-                        .padding(22.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(
+                    modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(BrandMain),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.16f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(stringResource(R.string.brand_mark), color = Color.White, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black)
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium, color = Color.White, fontWeight = FontWeight.Black)
-                    Text(stringResource(R.string.mobile_workbench), color = Color.White.copy(alpha = 0.76f), fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.brand_mark), color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                 }
+                Column {
+                    Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge, color = InkStrong, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.mobile_workbench), color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            FscmCard(padding = 20) {
+                Text(stringResource(R.string.account_login), color = InkStrong, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                Text(stringResource(R.string.account_login_description), color = InkSoft, style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(18.dp))
-                FscmCard(padding = 20) {
-                    Text(stringResource(R.string.account_login), color = InkStrong, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                    Text(stringResource(R.string.account_login_description), color = InkSoft, style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.height(18.dp))
-                    OutlinedTextField(
-                        value = username,
-                        onValueChange = {
-                            username = it
-                            onUsernameChanged(it)
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = {
+                        username = it
+                        onUsernameChanged(it)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.username)) },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { passwordFocus.requestFocus() }),
+                    enabled = !state.submitting,
+                    singleLine = true,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = fscmTextFieldColors(),
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    modifier = Modifier.fillMaxWidth().focusRequester(passwordFocus),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = if (state.requiresCaptcha) ImeAction.Next else ImeAction.Done),
+                    keyboardActions = KeyboardActions(
+                        onNext = { captchaFocus.requestFocus() },
+                        onDone = {
+                            if (loginEnabled) {
+                                keyboardController?.hide()
+                                onLogin(username.trim(), password, captchaAnswer)
+                            }
                         },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(stringResource(R.string.username)) },
-                        enabled = !state.submitting,
-                        singleLine = true,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = fscmTextFieldColors(),
-                    )
+                    ),
+                    label = { Text(stringResource(R.string.password)) },
+                    enabled = !state.submitting,
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = fscmTextFieldColors(),
+                )
+                if (state.requiresCaptcha) {
                     Spacer(Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = { password = it },
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text(stringResource(R.string.password)) },
-                        enabled = !state.submitting,
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = fscmTextFieldColors(),
-                    )
-                    if (state.requiresCaptcha) {
-                        Spacer(Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        OutlinedTextField(
+                            value = captchaAnswer,
+                            onValueChange = { captchaAnswer = it.filter(Char::isDigit) },
+                            modifier = Modifier.weight(1f).focusRequester(captchaFocus),
+                            label = { Text(stringResource(R.string.login_captcha)) },
+                            enabled = !state.isLocked && !state.submitting,
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Done,
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onDone = {
+                                    if (loginEnabled) onLogin(username.trim(), password, captchaAnswer)
+                                },
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = fscmTextFieldColors(),
+                        )
+                        OutlinedButton(
+                            onClick = { onRefreshCaptcha(username.trim()) },
+                            modifier = Modifier.width(124.dp),
+                            enabled = !state.isLocked && !state.submitting && !state.refreshingCaptcha,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 15.dp),
                         ) {
-                            OutlinedTextField(
-                                value = captchaAnswer,
-                                onValueChange = { captchaAnswer = it.filter(Char::isDigit) },
-                                modifier = Modifier.weight(1f),
-                                label = { Text(stringResource(R.string.login_captcha)) },
-                                enabled = !state.isLocked && !state.submitting,
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(
-                                    keyboardType = KeyboardType.Number,
-                                    imeAction = ImeAction.Done,
-                                ),
-                                keyboardActions = KeyboardActions(
-                                    onDone = {
-                                        if (loginEnabled) onLogin(username.trim(), password, captchaAnswer)
-                                    },
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = fscmTextFieldColors(),
-                            )
-                            OutlinedButton(
-                                onClick = { onRefreshCaptcha(username.trim()) },
-                                modifier = Modifier.width(124.dp),
-                                enabled = !state.isLocked && !state.submitting && !state.refreshingCaptcha,
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 15.dp),
-                            ) {
-                                if (state.refreshingCaptcha) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(18.dp),
-                                        strokeWidth = 2.dp,
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Refresh,
-                                        contentDescription = stringResource(R.string.login_captcha_refresh),
-                                    )
-                                    captcha?.question?.takeIf(String::isNotBlank)?.let { question ->
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(question, maxLines = 1)
-                                    }
+                            if (state.refreshingCaptcha) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Rounded.Refresh,
+                                    contentDescription = stringResource(R.string.login_captcha_refresh),
+                                )
+                                captcha?.question?.takeIf(String::isNotBlank)?.let { question ->
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(question, maxLines = 1)
                                 }
                             }
                         }
                     }
-                    state.security?.takeIf { it.failedCount > 0 || it.lockRemainingSeconds > 0 }?.let { security ->
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            text = if (state.isLocked) {
-                                stringResource(
-                                    R.string.login_security_locked,
-                                    security.failedCount,
-                                    security.lockRemainingSeconds,
-                                )
-                            } else {
-                                stringResource(
-                                    R.string.login_security_failed_hint,
-                                    security.failedCount,
-                                    security.remainingAttempts,
-                                )
-                            },
-                            color = if (state.isLocked) Danger else Warning,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    Spacer(Modifier.height(18.dp))
-                    Button(
-                        onClick = { onLogin(username.trim(), password, captchaAnswer) },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = loginEnabled,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandMain),
-                        contentPadding = PaddingValues(vertical = 14.dp),
-                    ) {
-                        if (state.submitting) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                color = Color.White,
-                                strokeWidth = 2.dp,
+                }
+                state.security?.takeIf { it.failedCount > 0 || it.lockRemainingSeconds > 0 }?.let { security ->
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = if (state.isLocked) {
+                            stringResource(
+                                R.string.login_security_locked,
+                                security.failedCount,
+                                security.lockRemainingSeconds,
                             )
                         } else {
-                            Icon(Icons.AutoMirrored.Rounded.Login, contentDescription = null)
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.login))
+                            stringResource(
+                                R.string.login_security_failed_hint,
+                                security.failedCount,
+                                security.remainingAttempts,
+                            )
+                        },
+                        color = if (state.isLocked) Danger else Warning,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Spacer(Modifier.height(18.dp))
+                Button(
+                    onClick = { onLogin(username.trim(), password, captchaAnswer) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = loginEnabled,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandMain),
+                    contentPadding = PaddingValues(vertical = 14.dp),
+                ) {
+                    if (state.submitting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(Icons.AutoMirrored.Rounded.Login, contentDescription = null)
                     }
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.login))
                 }
             }
         }
@@ -725,6 +732,8 @@ internal sealed interface FeatureRoute : Serializable {
     data object CentralReceivingList : FeatureRoute
     data class CentralReceivingDetail(val id: Long) : FeatureRoute
     data class ReceivingProductProgress(val business: ReceivingProductBusiness, val documentId: Long) : FeatureRoute
+    data object Tickets : FeatureRoute
+    data class TicketDetail(val id: Long) : FeatureRoute
     data object SupplierOrders : FeatureRoute
     data class SupplierOrderDetail(val id: Long, val returnToPaymentBillId: Long? = null) : FeatureRoute
     data object ManufacturerPaymentBills : FeatureRoute
@@ -749,6 +758,7 @@ internal sealed interface FeatureRoute : Serializable {
 }
 
 private fun FeatureRoute.parentRoute(): FeatureRoute = when (this) {
+    is FeatureRoute.TicketDetail -> FeatureRoute.Tickets
     is FeatureRoute.TodoDetail -> FeatureRoute.Todos
     is FeatureRoute.ReceivingDetail -> FeatureRoute.ReceivingList
     is FeatureRoute.InboundSession -> FeatureRoute.InboundManagement
@@ -1109,6 +1119,8 @@ private fun FeatureScreen(
                         FeatureRoute.CentralReceivingList -> stringResource(R.string.feature_central_receiving)
                         is FeatureRoute.CentralReceivingDetail -> stringResource(R.string.feature_central_receiving_detail)
                         is FeatureRoute.ReceivingProductProgress -> stringResource(R.string.receiving_product_details_title)
+                        FeatureRoute.Tickets -> stringResource(R.string.local_app_tickets_title)
+                        is FeatureRoute.TicketDetail -> stringResource(R.string.local_app_tickets_title)
                         FeatureRoute.SupplierOrders -> stringResource(R.string.feature_supplier_orders)
                         is FeatureRoute.SupplierOrderDetail -> stringResource(R.string.feature_supplier_order_detail)
                         FeatureRoute.ManufacturerPaymentBills -> stringResource(R.string.feature_manufacturer_payment_bills)
@@ -1246,6 +1258,8 @@ private fun FeatureScreen(
                     business = route.business,
                     documentId = route.documentId,
                 )
+                FeatureRoute.Tickets -> TicketsScreen(onOpen = { onNavigate(FeatureRoute.TicketDetail(it)) })
+                is FeatureRoute.TicketDetail -> TicketDetailScreen(route.id, session)
                 FeatureRoute.SupplierOrders -> SupplierOrdersScreen(
                     onOpenDetail = { onNavigate(FeatureRoute.SupplierOrderDetail(it)) },
                     viewModel = requireNotNull(supplierOrdersViewModel),
@@ -3227,6 +3241,10 @@ private fun openAppEntry(
     onOpenFeature: (FeatureRoute) -> Unit,
     showUnavailable: (String) -> Unit,
 ) = when (app.key) {
+    "tickets" -> {
+        onOpenFeature(FeatureRoute.Tickets)
+        true
+    }
     "purchase_insights" -> {
         onOpenFeature(FeatureRoute.PurchaseInsights)
         true

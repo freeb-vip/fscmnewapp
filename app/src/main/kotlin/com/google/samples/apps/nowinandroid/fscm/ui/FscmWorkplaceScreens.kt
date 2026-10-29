@@ -76,7 +76,6 @@ import com.google.samples.apps.nowinandroid.fscm.data.RichTextBlock
 import com.google.samples.apps.nowinandroid.fscm.data.RichTextBlockType
 import com.google.samples.apps.nowinandroid.fscm.data.SessionState
 import com.google.samples.apps.nowinandroid.fscm.data.TicketFilter
-import com.google.samples.apps.nowinandroid.fscm.data.TicketUpdateInput
 import com.google.samples.apps.nowinandroid.fscm.data.TodoFilter
 import com.google.samples.apps.nowinandroid.fscm.data.TodoInput
 import com.google.samples.apps.nowinandroid.fscm.data.WorkplaceDocument
@@ -336,28 +335,16 @@ fun TicketDetailScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val ticket = state.ticket
-    var title by rememberSaveable(id) { mutableStateOf("") }
-    var description by rememberSaveable(id) { mutableStateOf("") }
-    var priority by rememberSaveable(id) { mutableStateOf("medium") }
-    var expectedDate by rememberSaveable(id) { mutableStateOf("") }
-    var editMode by rememberSaveable(id) { mutableStateOf(false) }
-    var targetStatus by remember { mutableStateOf<String?>(null) }
+    var historyExpanded by rememberSaveable(id) { mutableStateOf(false) }
+    var targetStatus by remember(id) { mutableStateOf<String?>(null) }
     LaunchedEffect(id) { viewModel.load(id) }
-    LaunchedEffect(ticket?.id) {
-        ticket?.let {
-            title = it.title
-            description = it.description
-            priority = it.priority
-            expectedDate = it.expectedAt.take(10)
-        }
-    }
     val isCreator = ticket?.creatorId == session.user?.id
     val isAssignee = ticket?.assigneeId == session.user?.id
     WorkplacePage(bottomPadding = 104) {
         item { WorkplaceNotice(state.error, state.message, viewModel::consumeNotice) }
         ticket?.let { item ->
             item {
-                WorkplaceCard {
+                WorkplaceCard(containerColor = Color(0xFFE6F4FF)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(item.ticketNo.ifBlank { "TK-${item.id}" }, fontWeight = FontWeight.Bold, color = WorkplaceText)
                         WorkplacePill(ticketStatusText(item.status), ticketStatusColor(item.status))
@@ -368,37 +355,34 @@ fun TicketDetailScreen(
                     Text(stringResource(R.string.workplace_expected_completion, item.expectedAt.workplaceDate()), color = WorkplaceMuted)
                 }
             }
-            if (editMode) {
-                item {
-                    WorkplaceCard {
-                        if (isCreator) OutlinedTextField(title, { title = it }, label = { Text(stringResource(R.string.workplace_ticket_title)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                        if (isCreator) OutlinedTextField(description, { description = it }, label = { Text(stringResource(R.string.workplace_ticket_description)) }, minLines = 4, modifier = Modifier.fillMaxWidth()) else Text(description.ifBlank { stringResource(R.string.workplace_no_ticket_description) })
-                        if (isCreator || isAssignee) {
-                            OutlinedTextField(expectedDate, { expectedDate = it.take(10) }, label = { Text(stringResource(R.string.workplace_expected_date)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                            PrioritySelector(priority, { priority = it })
-                        }
-                        Button(onClick = {
-                            viewModel.update(id, TicketUpdateInput(if (isCreator) title else "", if (isCreator) description else null, priority, expectedDate))
-                            editMode = false
-                        }, enabled = !state.submitting) { Text(stringResource(R.string.workplace_save_information)) }
-                    }
-                }
-            } else {
-                item {
-                    WorkplaceCard {
-                        Text(stringResource(R.string.workplace_ticket_description), fontWeight = FontWeight.SemiBold)
-                        Text(description.ifBlank { stringResource(R.string.workplace_no_ticket_description) })
-                    }
+            item {
+                WorkplaceCard(containerColor = Color(0xFFFFF7E6)) {
+                    Text(stringResource(R.string.workplace_ticket_description), fontWeight = FontWeight.SemiBold)
+                    Text(item.description.ifBlank { stringResource(R.string.workplace_no_ticket_description) })
                 }
             }
             item { TicketConversation(id, session.user?.id, item.status) }
             if (item.history.isNotEmpty()) {
-                item { WorkplaceSectionTitle(stringResource(R.string.workplace_status_history)) }
-                items(item.history, key = { history -> history.id }) { history ->
-                    WorkplaceCard {
-                        Text("${ticketStatusText(history.fromStatus)} → ${ticketStatusText(history.toStatus)}", fontWeight = FontWeight.SemiBold)
-                        Text("${history.operator?.displayName.orEmpty().ifBlank { stringResource(R.string.business_system) }} · ${history.createdAt.workplaceDate()}", color = WorkplaceMuted)
-                        if (history.remark.isNotBlank()) Text(history.remark, color = WorkplaceMuted)
+                item {
+                    TextButton(onClick = { historyExpanded = !historyExpanded }) {
+                        Text(
+                            "状态历史 · ${item.history.size} 条  ${if (historyExpanded) "收起" else "展开"}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = WorkplaceMuted,
+                        )
+                    }
+                }
+                if (historyExpanded) {
+                    items(item.history, key = { history -> "history-${history.id}" }) { history ->
+                        Column(Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) {
+                            Text(
+                                "${ticketStatusText(history.fromStatus)} → ${ticketStatusText(history.toStatus)} · ${history.operator?.displayName.orEmpty().ifBlank { stringResource(R.string.business_system) }}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = WorkplaceMuted,
+                            )
+                            Text(history.createdAt.workplaceDate(), style = MaterialTheme.typography.labelSmall, color = WorkplaceMuted)
+                            if (history.remark.isNotBlank()) Text(history.remark, style = MaterialTheme.typography.bodySmall, color = WorkplaceMuted)
+                        }
                     }
                 }
             }
@@ -407,9 +391,7 @@ fun TicketDetailScreen(
     }
     ticket?.let { item ->
         TicketActionBar(
-            canEdit = isCreator || isAssignee,
             canChangeStatus = allowedTicketStatuses(item.status).any { target -> ticketStatusAllowedForUser(item.status, target, isCreator, isAssignee) },
-            canEditAction = { editMode = !editMode },
             targets = allowedTicketStatuses(item.status).filter { target -> ticketStatusAllowedForUser(item.status, target, isCreator, isAssignee) },
             submitting = state.submitting,
             onStatus = { targetStatus = it },
@@ -488,11 +470,11 @@ private fun WorkplacePage(bottomPadding: Int = 24, content: LazyListScope.() -> 
 }
 
 @Composable
-private fun WorkplaceCard(onClick: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+private fun WorkplaceCard(onClick: (() -> Unit)? = null, containerColor: Color = Color.White, content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)),
         shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
         border = BorderStroke(1.dp, WorkplaceBorder),
     ) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp), content = content) }
 }
@@ -691,11 +673,10 @@ private fun NoteActionBar(isExisting: Boolean, editing: Boolean, submitting: Boo
 }
 
 @Composable
-private fun TicketActionBar(canEdit: Boolean, canChangeStatus: Boolean, canEditAction: () -> Unit, targets: List<String>, submitting: Boolean, onStatus: (String) -> Unit) {
-    if (!canEdit && !canChangeStatus) return
+private fun TicketActionBar(canChangeStatus: Boolean, targets: List<String>, submitting: Boolean, onStatus: (String) -> Unit) {
+    if (!canChangeStatus) return
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         Column(Modifier.fillMaxWidth().background(Color.White).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (canEdit) OutlinedButton(onClick = canEditAction, enabled = !submitting, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.workplace_edit_ticket)) }
             if (canChangeStatus) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     targets.forEach { status -> Button(onClick = { onStatus(status) }, enabled = !submitting) { Text(ticketStatusText(status)) } }

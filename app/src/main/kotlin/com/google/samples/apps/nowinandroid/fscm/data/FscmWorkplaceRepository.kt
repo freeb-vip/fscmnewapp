@@ -88,10 +88,6 @@ class WorkplaceRepository @Inject constructor(
     suspend fun ticket(id: Long): WorkplaceTicket =
         decodeBusinessObject(api.get("tickets/$id"), json)
 
-    suspend fun updateTicket(id: Long, input: TicketUpdateInput) {
-        api.put<JsonElement>("tickets/$id", input.toJson())
-    }
-
     suspend fun updateTicketStatus(id: Long, status: String, remark: String = "") {
         api.post<JsonElement>(
             "tickets/$id/status",
@@ -136,20 +132,6 @@ data class TodoInput(
         if (dueTime.isNotBlank()) put("due_time", dueTime)
         put("priority", priority)
         put("status", if (isTodoCompleted(status)) "completed" else status)
-    }
-}
-
-data class TicketUpdateInput(
-    val title: String = "",
-    val description: String? = null,
-    val priority: String = "",
-    val expectedDate: String = "",
-) {
-    fun toJson() = buildJsonObject {
-        if (title.isNotBlank()) put("title", title.trim())
-        description?.let { put("description", it.trim()) }
-        if (priority.isNotBlank()) put("priority", priority)
-        if (expectedDate.isNotBlank()) put("expected_at", todoDateTime(expectedDate))
     }
 }
 

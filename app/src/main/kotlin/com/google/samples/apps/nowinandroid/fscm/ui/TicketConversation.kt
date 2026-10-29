@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -43,7 +45,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -241,12 +245,18 @@ fun TicketConversation(id: Long, userId: Long?, ticketStatus: String, viewModel:
                 if (collaborator.assignment.isNotBlank()) Text(collaborator.assignment)
             }
         }
-        Text("交流", style = MaterialTheme.typography.titleMedium)
-        state.comments.asReversed().forEach { comment ->
-            Card(Modifier.fillMaxWidth()) {
+        Text("交流与进展 · ${state.comments.size}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        if (state.comments.isEmpty()) {
+            Text("还没有处理进展，发条跟帖开始交流吧", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        state.comments.sortedBy { it.id }.forEachIndexed { index, comment ->
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(comment.user?.displayName ?: "工单成员", style = MaterialTheme.typography.labelLarge)
-                    if (comment.content.isNotBlank()) Text(comment.content)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(comment.user?.displayName ?: "工单成员", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text("${index + 1}楼", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (comment.content.isNotBlank()) Text(comment.content, style = MaterialTheme.typography.bodyLarge)
                     comment.attachments.forEach { file ->
                         if (file.mimeType.startsWith("image/")) {
                             AsyncImage(model = file.url, contentDescription = file.name, modifier = Modifier.fillMaxWidth().height(180.dp).clickable { if (file.url.isNotBlank()) uriHandler.openUri(file.url) })
@@ -254,11 +264,12 @@ fun TicketConversation(id: Long, userId: Long?, ticketStatus: String, viewModel:
                             TextButton(onClick = { if (file.url.isNotBlank()) uriHandler.openUri(file.url) }) { Text(file.name) }
                         }
                     }
-                    Text(comment.createdAt.take(16).replace("T", " "), style = MaterialTheme.typography.labelSmall)
+                    Text(comment.createdAt.take(16).replace("T", " "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
-        OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth(), label = { Text("说点处理进展…") }, minLines = 2, enabled = !state.busy)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth(), label = { Text("跟帖补充处理进展…") }, minLines = 2, enabled = !state.busy)
         state.files.forEach { file ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(file.name)
@@ -273,7 +284,7 @@ fun TicketConversation(id: Long, userId: Long?, ticketStatus: String, viewModel:
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = { picker.launch("image/*") }, enabled = !state.busy && state.files.size < 10) { Text("添加图片") }
-            Button(onClick = { viewModel.send(id, text) }, enabled = !state.busy && (text.isNotBlank() || state.files.isNotEmpty())) { Text(if (state.busy) "正在处理…" else "发送") }
+            Button(onClick = { viewModel.send(id, text) }, enabled = !state.busy && (text.isNotBlank() || state.files.isNotEmpty())) { Text(if (state.busy) "正在处理…" else "发布跟帖") }
         }
     }
 }
