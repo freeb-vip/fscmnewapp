@@ -56,8 +56,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.samples.apps.nowinandroid.core.ui.BarcodeScanner
 import com.google.samples.apps.nowinandroid.fscm.data.BoxLabel
+import com.google.samples.apps.nowinandroid.fscm.device.ScannerInputMode
 import com.google.samples.apps.nowinandroid.fscm.ui.components.FscmCard
 import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareBackHandler as BackHandler
 import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareDialog as Dialog
@@ -70,6 +72,8 @@ internal fun BoxLabelManagementContent(
     onNavigate: (FeatureRoute) -> Unit,
     initialCode: String = "",
 ) {
+    val scannerState by viewModel.scannerState.collectAsStateWithLifecycle()
+    val broadcastMode = scannerState.effectiveMode == ScannerInputMode.IntentBroadcast
     val lifecycleOwner = LocalLifecycleOwner.current
     val listState = rememberLazyListState(state.listIndex, state.listOffset)
     DisposableEffect(listState) {
@@ -219,7 +223,8 @@ internal fun BoxLabelManagementContent(
                             value = state.query,
                             onValueChange = { if (it.contains('\n') || it.contains('\r') || it.contains('\t')) viewModel.resolve(it) else viewModel.setQuery(it) },
                             modifier = Modifier.fillMaxWidth(),
-                            label = { Text("箱唛码、产品编码或 SKU 编码") },
+                            label = { Text(if (broadcastMode) "直接扫描箱唛 / SKU" else "箱唛码、产品编码或 SKU 编码") },
+                            supportingText = { if (broadcastMode) Text("PAD 广播模式 · 无需点击输入框，按扫描键即可查询") },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                             keyboardActions = KeyboardActions(onSearch = { viewModel.resolve(state.query) }),

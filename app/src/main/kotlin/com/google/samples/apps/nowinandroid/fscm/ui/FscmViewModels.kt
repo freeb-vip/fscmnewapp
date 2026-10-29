@@ -1533,6 +1533,7 @@ class CartonManagementViewModel @Inject constructor(
 ) : ViewModel() {
     private val _state = MutableStateFlow(CartonManagementUiState())
     val state = _state.asStateFlow()
+    val scannerState = scannerManager.scannerState
 
     private var searchJob: Job? = null
     private var searchVersion = 0L
@@ -1630,10 +1631,30 @@ class CartonManagementViewModel @Inject constructor(
     }
 
     fun resolve(rawCode: String) {
-        if (rawCode.isBlank() || _state.value.printSubmitting) return
+        val code = rawCode.trim { it.isWhitespace() || it == '\u0000' || it == '\uFEFF' }
+        if (code.isBlank() || _state.value.printSubmitting) return
         detailJob?.cancel()
-        _state.update { it.copy(query = rawCode.trim(), lastScannedCode = rawCode, detailId = null, boxLabel = null, labels = emptyList(), total = 0, page = 0, listLoading = true) }
-        searchLabels(navigate = true)
+        searchJob?.cancel()
+        ++searchVersion
+        _state.update { it.copy(query = code, lastScannedCode = code, detailId = null, boxLabel = null, labels = emptyList(), total = 0, page = 0, listLoading = true, error = null) }
+        detailJob = viewModelScope.launch {
+            try {
+                val result = repository.resolveManagementLabel(code)
+                if (result.data.recognized && result.data.id > 0) {
+                    _state.update { it.copy(listLoading = false) }
+                    openDetail(result.data.id, code)
+                } else {
+                    searchLabels(navigate = true)
+                }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                if (error is FscmApiException && error.statusCode in listOf(401, 403)) {
+                    _state.update { it.copy(listLoading = false, error = UiText.Dynamic(error.message ?: "无权查询箱唛")) }
+                } else {
+                    searchLabels(navigate = true)
+                }
+            }
+        }
     }
 
     fun retry() {

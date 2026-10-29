@@ -2128,21 +2128,27 @@ class CartonRepository @Inject constructor(
         }
     }
 
+    suspend fun resolveManagementLabel(rawCode: String): CatalogResult<BoxLabel> = managementResult(
+        path = "box-labels/resolve",
+        body = buildJsonObject { put("raw_code", normalizeBoxLabelLookupCode(rawCode)) },
+    ) { decodeBusinessObject<BoxLabel>(it, json) }
+
     private suspend fun <T> managementResult(
         path: String,
         params: Map<String, String> = emptyMap(),
+        body: JsonElement? = null,
         decode: (JsonElement) -> T,
     ): CatalogResult<T> {
         if (!sessionStore.current().isOffline) {
             try {
-                return CatalogResult(decode(api.get(path, params)), CatalogSource.Center)
+                return CatalogResult(decode(if (body == null) api.get(path, params) else api.post(path, body)), CatalogSource.Center)
             } catch (error: Exception) {
                 if (error is kotlinx.coroutines.CancellationException) throw error
                 if (error is FscmApiException && !error.isTemporaryCenterFailure()) throw error
                 if (error !is java.io.IOException && error !is FscmApiException) throw error
             }
         }
-        val response = edgeCatalogClient.get(path, params)
+        val response = (if (body == null) edgeCatalogClient.get(path, params) else edgeCatalogClient.post(path, body))
             ?: error("中心不可达，且没有支持箱唛目录的边缘节点")
         return decode(response.payload).toCatalogResult(response)
     }
