@@ -73,4 +73,6 @@
     <string name="device_jifeng_box_label">极风箱唛</string>
     <string name="device_box_label_mapping_offline_warning">本地极风箱唛映射，状态和归属将在联网后校验。</string>
     <string name="device_supplier_box_label">厂家箱唛</string>
+    <string name="order_exceptions_title">异常订单</string>
+    <string name="order_exceptions_description">查看异常订单并登记整改结果</string>
 </resources>

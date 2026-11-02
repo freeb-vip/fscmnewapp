@@ -89,4 +89,6 @@
     <string name="device_jifeng_box_label">ฉลากกล่อง Jifeng</string>
     <string name="device_box_label_mapping_offline_warning">การจับคู่ฉลากกล่อง Jifeng ในเครื่อง ระบบจะตรวจสอบสถานะและเจ้าของอีกครั้งเมื่อออนไลน์</string>
     <string name="device_supplier_box_label">ฉลากกล่องผู้ผลิต</string>
+    <string name="order_exceptions_title">คำสั่งซื้อผิดปกติ</string>
+    <string name="order_exceptions_description">ตรวจสอบคำสั่งซื้อและบันทึกผลการแก้ไข</string>
 </resources>

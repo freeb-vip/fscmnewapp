@@ -732,6 +732,8 @@ internal sealed interface FeatureRoute : Serializable {
     data object CentralReceivingList : FeatureRoute
     data class CentralReceivingDetail(val id: Long) : FeatureRoute
     data class ReceivingProductProgress(val business: ReceivingProductBusiness, val documentId: Long) : FeatureRoute
+    data object OrderExceptions : FeatureRoute
+    data class OrderExceptionDetail(val id: Long) : FeatureRoute
     data object Tickets : FeatureRoute
     data class TicketDetail(val id: Long) : FeatureRoute
     data object SupplierOrders : FeatureRoute
@@ -758,6 +760,7 @@ internal sealed interface FeatureRoute : Serializable {
 }
 
 private fun FeatureRoute.parentRoute(): FeatureRoute = when (this) {
+    is FeatureRoute.OrderExceptionDetail -> FeatureRoute.OrderExceptions
     is FeatureRoute.TicketDetail -> FeatureRoute.Tickets
     is FeatureRoute.TodoDetail -> FeatureRoute.Todos
     is FeatureRoute.ReceivingDetail -> FeatureRoute.ReceivingList
@@ -1119,6 +1122,7 @@ private fun FeatureScreen(
                         FeatureRoute.CentralReceivingList -> stringResource(R.string.feature_central_receiving)
                         is FeatureRoute.CentralReceivingDetail -> stringResource(R.string.feature_central_receiving_detail)
                         is FeatureRoute.ReceivingProductProgress -> stringResource(R.string.receiving_product_details_title)
+                        FeatureRoute.OrderExceptions, is FeatureRoute.OrderExceptionDetail -> stringResource(R.string.order_exceptions_title)
                         FeatureRoute.Tickets -> stringResource(R.string.local_app_tickets_title)
                         is FeatureRoute.TicketDetail -> stringResource(R.string.local_app_tickets_title)
                         FeatureRoute.SupplierOrders -> stringResource(R.string.feature_supplier_orders)
@@ -1258,6 +1262,8 @@ private fun FeatureScreen(
                     business = route.business,
                     documentId = route.documentId,
                 )
+                FeatureRoute.OrderExceptions -> OrderExceptionsListScreen("${session.user?.id}-${session.currentNamespace?.id}", onOpen = { onNavigate(FeatureRoute.OrderExceptionDetail(it)) })
+                is FeatureRoute.OrderExceptionDetail -> OrderExceptionDetailScreen(route.id, "${session.user?.id}-${session.currentNamespace?.id}")
                 FeatureRoute.Tickets -> TicketsScreen(onOpen = { onNavigate(FeatureRoute.TicketDetail(it)) })
                 is FeatureRoute.TicketDetail -> TicketDetailScreen(route.id, session)
                 FeatureRoute.SupplierOrders -> SupplierOrdersScreen(
@@ -1601,7 +1607,7 @@ private fun TaskSection(
     displayPolicy: FscmDisplayPolicy,
 ) {
     val todoCount = overview?.todos?.count { it.status !in listOf("done", "completed", "finished") } ?: 0
-    val taskApps = apps.filter { it.key in setOf("receiving", "central_receiving", "manufacturer_payment_bills", "purchase_approvals", "supplier_orders", "tickets", "todos") }
+    val taskApps = apps.filter { it.key in setOf("receiving", "central_receiving", "manufacturer_payment_bills", "purchase_approvals", "supplier_orders", "tickets", "todos", "order_exceptions") }
         .map { app -> app to if (app.key == "todos") todoCount else app.badgeCount }
         .filter { (app, count) -> count > 0 || app.key in setOf("receiving", "central_receiving") }
     if (taskApps.isEmpty()) return
@@ -2978,6 +2984,7 @@ private fun FscmDisplayPolicy.cardPadding() = if (isCompact) 14 else 18
 internal fun localAppTitleResource(key: String): Int? = when (key) {
     "todos" -> R.string.local_app_todos_title
     "notes" -> R.string.local_app_notes_title
+    "order_exceptions" -> R.string.order_exceptions_title
     "tickets" -> R.string.local_app_tickets_title
     "documents" -> R.string.local_app_documents_title
     "receiving" -> R.string.local_app_receiving_title
@@ -3004,6 +3011,7 @@ internal fun localAppTitleResource(key: String): Int? = when (key) {
 private fun localAppDescriptionResource(key: String): Int? = when (key) {
     "todos" -> R.string.local_app_todos_description
     "notes" -> R.string.local_app_notes_description
+    "order_exceptions" -> R.string.order_exceptions_description
     "tickets" -> R.string.local_app_tickets_description
     "documents" -> R.string.local_app_documents_description
     "receiving" -> R.string.local_app_receiving_description
@@ -3241,6 +3249,10 @@ private fun openAppEntry(
     onOpenFeature: (FeatureRoute) -> Unit,
     showUnavailable: (String) -> Unit,
 ) = when (app.key) {
+    "order_exceptions" -> {
+        onOpenFeature(FeatureRoute.OrderExceptions)
+        true
+    }
     "tickets" -> {
         onOpenFeature(FeatureRoute.Tickets)
         true

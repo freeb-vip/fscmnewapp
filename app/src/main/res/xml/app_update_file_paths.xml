@@ -22,4 +22,5 @@
         name="payment_attachments"
         path="payment-attachments/" />
     <files-path name="offline_shipping" path="offline-shipping/" />
+    <cache-path name="exception_photos" path="exception-photos/" />
 </paths>

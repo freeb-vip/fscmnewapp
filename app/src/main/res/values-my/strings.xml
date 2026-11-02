@@ -89,4 +89,6 @@
     <string name="device_jifeng_box_label">Jifeng သေတ္တာတံဆိပ်</string>
     <string name="device_box_label_mapping_offline_warning">စက်တွင်း Jifeng သေတ္တာတံဆိပ် ချိတ်ဆက်မှုဖြစ်သည်။ အွန်လိုင်းရောက်သည့်အခါ အခြေအနေနှင့် ပိုင်ဆိုင်မှုကို ပြန်လည်စစ်ဆေးပါမည်။</string>
     <string name="device_supplier_box_label">ထုတ်လုပ်သူ သေတ္တာတံဆိပ်</string>
+    <string name="order_exceptions_title">ပြဿနာရှိသော အော်ဒါများ</string>
+    <string name="order_exceptions_description">အော်ဒါပြဿနာနှင့် ပြင်ဆင်မှုရလဒ်များကို မှတ်တမ်းတင်ရန်</string>
 </resources>
