@@ -237,6 +237,7 @@ fun OrderExceptionDetailScreen(id: Long, scopeKey: String) {
                         Text("运单号：${detail.order.tracking.joinToString("、").ifBlank { "未记录" }}")
                         Text("SKU：${detail.skus.joinToString("、").ifBlank { "未记录" }}")
                         Text("异常类型：${detail.types.joinToString("、") { it.name }}")
+                        TicketScopeRows(detail.scopeItems)
                         if (detail.description.isNotBlank()) Text(detail.description)
                         detail.ticket?.let {
                             Text(

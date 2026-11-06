@@ -320,6 +320,7 @@ fun TicketsScreen(
         item { WorkplaceSearch(state.query, stringResource(R.string.workplace_search_tickets), viewModel::setQuery) { viewModel.load(true) } }
         state.error?.let { item { WorkplaceNotice(it, null, null) } }
         item { TicketFilters(state.filter, viewModel::setFilter) }
+        item { TicketScopeFilters(state, viewModel::setScope) }
         if (state.loading && state.tickets.isEmpty()) item { WorkplaceLoading() }
         if (!state.loading && state.tickets.isEmpty()) item { WorkplaceEmpty(stringResource(R.string.workplace_no_tickets)) }
         items(state.tickets, key = { it.id }) { ticket -> TicketCard(ticket) { onOpen(ticket.id) } }
@@ -361,6 +362,7 @@ fun TicketDetailScreen(
                     Text(item.description.ifBlank { stringResource(R.string.workplace_no_ticket_description) })
                 }
             }
+            item { TicketScopeCard(item, onSaved = { viewModel.load(id) }) }
             item { TicketConversation(id, session.user?.id, item.status) }
             if (item.history.isNotEmpty()) {
                 item {
@@ -507,6 +509,7 @@ private fun TicketCard(ticket: WorkplaceTicket, onOpen: () -> Unit) = WorkplaceC
         Text(ticket.title.ifBlank { stringResource(R.string.workplace_unnamed_ticket) }, fontWeight = FontWeight.Bold, color = WorkplaceText, modifier = Modifier.weight(1f))
         WorkplacePill(ticketStatusText(ticket.status), ticketStatusColor(ticket.status))
     }
+    TicketScopeRows(ticket.scopeItems, compact = true)
     Text(ticket.description.ifBlank { stringResource(R.string.workplace_no_ticket_description) }, color = WorkplaceMuted, maxLines = 2, overflow = TextOverflow.Ellipsis)
     Text("${ticket.ticketNo} · ${priorityText(ticket.priority)} · ${ticket.expectedAt.workplaceDate()}", color = WorkplaceMuted, style = MaterialTheme.typography.bodySmall)
 }

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ticket_scope_title">Scope</string>
+    <string name="ticket_scope_empty">No shop or product specified</string>
+    <string name="ticket_scope_unrestricted">Shop not specified</string>
+    <string name="ticket_scope_whole_product">Product-level task</string>
+    <string name="ticket_scope_unavailable">Original item unavailable; history retained</string>
+    <string name="ticket_scope_unmatched">Local product not matched</string>
+    <string name="ticket_scope_more">%1$d more scope items</string>
+    <string name="ticket_scope_edit">Edit scope</string>
+    <string name="ticket_scope_shop">Select shop</string>
+    <string name="ticket_scope_sku">SKU code</string>
+    <string name="ticket_scope_product">Product code</string>
+    <string name="ticket_scope_search">Search</string>
+    <string name="ticket_scope_clear_shop">Clear shop</string>
+    <string name="ticket_scope_clear_product">Clear product</string>
+    <string name="ticket_scope_add">Add this scope</string>
+    <string name="ticket_scope_remove">Remove</string>
+    <string name="ticket_scope_save">Save</string>
+    <string name="ticket_scope_mine">My assigned scope</string>
+    <string name="ticket_scope_filters">Filter by shop and product</string>
+    <string name="ticket_scope_clear">Clear filters</string>
+    <string name="ticket_scope_edit_hint">Choose a shop, product, or both. Adjust assigned scope on Web first. On a conflict, input is retained; cancel and review the latest scope.</string>
+    <string name="ticket_scope_choose_sku">Select exact SKU</string>
+    <string name="ticket_scope_choose_product">Select exact product</string>
+    <string name="ticket_scope_matches">Matching scope</string>
+</resources>

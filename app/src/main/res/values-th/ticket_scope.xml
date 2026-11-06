@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ticket_scope_title">ขอบเขตงาน</string>
+    <string name="ticket_scope_empty">ยังไม่ได้ระบุร้านค้าหรือสินค้า</string>
+    <string name="ticket_scope_unrestricted">ไม่จำกัดร้านค้า</string>
+    <string name="ticket_scope_whole_product">งานระดับสินค้า</string>
+    <string name="ticket_scope_unavailable">รายการเดิมไม่พร้อมใช้งาน เก็บประวัติไว้แล้ว</string>
+    <string name="ticket_scope_unmatched">ยังไม่จับคู่สินค้าในระบบ</string>
+    <string name="ticket_scope_more">อีก %1$d รายการ</string>
+    <string name="ticket_scope_edit">แก้ไขขอบเขต</string>
+    <string name="ticket_scope_shop">เลือกร้านค้า</string>
+    <string name="ticket_scope_sku">รหัส SKU</string>
+    <string name="ticket_scope_product">รหัสสินค้า</string>
+    <string name="ticket_scope_search">ค้นหา</string>
+    <string name="ticket_scope_clear_shop">ล้างร้านค้า</string>
+    <string name="ticket_scope_clear_product">ล้างสินค้า</string>
+    <string name="ticket_scope_add">เพิ่มขอบเขตนี้</string>
+    <string name="ticket_scope_remove">นำออก</string>
+    <string name="ticket_scope_save">บันทึก</string>
+    <string name="ticket_scope_mine">ขอบเขตที่ฉันรับผิดชอบ</string>
+    <string name="ticket_scope_filters">กรองตามร้านค้าและสินค้า</string>
+    <string name="ticket_scope_clear">ล้างตัวกรอง</string>
+    <string name="ticket_scope_edit_hint">เลือกร้านค้า สินค้า หรือทั้งสองอย่าง ขอบเขตที่มอบหมายแล้วต้องแก้ไขในเว็บก่อน หากข้อมูลขัดแย้งจะเก็บข้อมูลที่กรอกไว้ ให้ยกเลิกและตรวจสอบใหม่</string>
+    <string name="ticket_scope_choose_sku">เลือก SKU ที่ตรงกัน</string>
+    <string name="ticket_scope_choose_product">เลือกสินค้าที่ตรงกัน</string>
+    <string name="ticket_scope_matches">ขอบเขตที่ตรงกัน</string>
+</resources>

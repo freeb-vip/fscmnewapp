@@ -197,6 +197,11 @@ class NoteDetailViewModel @Inject constructor(
 }
 
 data class TicketsUiState(
+    val scopeSku: com.google.samples.apps.nowinandroid.fscm.data.TicketReferenceOption? = null,
+    val scopeProduct: com.google.samples.apps.nowinandroid.fscm.data.TicketReferenceOption? = null,
+    val scopeShops: List<com.google.samples.apps.nowinandroid.fscm.data.TicketReferenceOption> = emptyList(),
+    val skuCode: String = "",
+    val productCode: String = "",
     val loading: Boolean = false,
     val filter: TicketFilter = TicketFilter.Active,
     val query: String = "",
@@ -214,6 +219,11 @@ class TicketsViewModel @Inject constructor(
     val state = _state.asStateFlow()
 
     fun setQuery(value: String) = _state.update { it.copy(query = value) }
+    fun setScope(shops: List<com.google.samples.apps.nowinandroid.fscm.data.TicketReferenceOption>, sku: String, product: String, selectedSku: com.google.samples.apps.nowinandroid.fscm.data.TicketReferenceOption?, selectedProduct: com.google.samples.apps.nowinandroid.fscm.data.TicketReferenceOption?) {
+        _state.update { it.copy(scopeShops = shops, skuCode = sku, productCode = product, scopeSku = selectedSku, scopeProduct = selectedProduct) }
+        load(true)
+    }
+
     fun setFilter(filter: TicketFilter) {
         _state.update { it.copy(filter = filter) }
         load(true)
@@ -225,7 +235,7 @@ class TicketsViewModel @Inject constructor(
         val page = if (reset) 1 else current.page + 1
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
-            runCatching { repository.tickets(current.filter, current.query, page) }
+            runCatching { repository.tickets(current.filter, current.query, page, current.scopeShops.map { it.id }, current.skuCode, current.productCode, current.scopeSku?.id, current.scopeProduct?.id) }
                 .onSuccess { result ->
                     val filtered = result.data.filter { ticket ->
                         when (current.filter) {

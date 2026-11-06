@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ticket_scope_title">涉及范围</string>
+    <string name="ticket_scope_empty">未指定涉及店铺或商品</string>
+    <string name="ticket_scope_unrestricted">未限定店铺</string>
+    <string name="ticket_scope_whole_product">产品整体事项</string>
+    <string name="ticket_scope_unavailable">原对象已失效，历史信息保留</string>
+    <string name="ticket_scope_unmatched">未匹配本地商品</string>
+    <string name="ticket_scope_more">另有 %1$d 条范围</string>
+    <string name="ticket_scope_edit">编辑涉及范围</string>
+    <string name="ticket_scope_shop">选择店铺</string>
+    <string name="ticket_scope_sku">SKU编码</string>
+    <string name="ticket_scope_product">产品编码</string>
+    <string name="ticket_scope_search">查询</string>
+    <string name="ticket_scope_clear_shop">清空店铺</string>
+    <string name="ticket_scope_clear_product">清空商品</string>
+    <string name="ticket_scope_add">添加以上范围</string>
+    <string name="ticket_scope_remove">移除</string>
+    <string name="ticket_scope_save">保存</string>
+    <string name="ticket_scope_mine">我的负责范围</string>
+    <string name="ticket_scope_filters">按店铺和商品筛选</string>
+    <string name="ticket_scope_clear">清空筛选</string>
+    <string name="ticket_scope_edit_hint">可只选店铺或商品。已分派范围需先在Web调整分工；保存冲突时输入保留，请取消后重新核对。</string>
+    <string name="ticket_scope_choose_sku">选择具体SKU</string>
+    <string name="ticket_scope_choose_product">选择具体产品</string>
+    <string name="ticket_scope_matches">命中范围</string>
+</resources>

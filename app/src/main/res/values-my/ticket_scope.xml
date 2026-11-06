@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ticket_scope_title">လုပ်ငန်းအကျုံးဝင်မှု</string>
+    <string name="ticket_scope_empty">ဆိုင် သို့မဟုတ် ကုန်ပစ္စည်း မသတ်မှတ်ထားပါ</string>
+    <string name="ticket_scope_unrestricted">ဆိုင် မသတ်မှတ်ထားပါ</string>
+    <string name="ticket_scope_whole_product">ကုန်ပစ္စည်းအဆင့် လုပ်ငန်း</string>
+    <string name="ticket_scope_unavailable">မူရင်းအချက်အလက် မရရှိနိုင်၊ မှတ်တမ်းထိန်းသိမ်းထားသည်</string>
+    <string name="ticket_scope_unmatched">စနစ်ရှိ ကုန်ပစ္စည်းနှင့် မချိတ်ဆက်ရသေးပါ</string>
+    <string name="ticket_scope_more">နောက်ထပ် %1$d ခု</string>
+    <string name="ticket_scope_edit">အကျုံးဝင်မှု ပြင်ဆင်ရန်</string>
+    <string name="ticket_scope_shop">ဆိုင်ရွေးရန်</string>
+    <string name="ticket_scope_sku">SKU ကုဒ်</string>
+    <string name="ticket_scope_product">ကုန်ပစ္စည်းကုဒ်</string>
+    <string name="ticket_scope_search">ရှာရန်</string>
+    <string name="ticket_scope_clear_shop">ဆိုင် ရှင်းရန်</string>
+    <string name="ticket_scope_clear_product">ကုန်ပစ္စည်း ရှင်းရန်</string>
+    <string name="ticket_scope_add">ဤအကျုံးဝင်မှု ထည့်ရန်</string>
+    <string name="ticket_scope_remove">ဖယ်ရှားရန်</string>
+    <string name="ticket_scope_save">သိမ်းရန်</string>
+    <string name="ticket_scope_mine">ကျွန်ုပ်တာဝန်ယူရသောအပိုင်း</string>
+    <string name="ticket_scope_filters">ဆိုင်နှင့်ကုန်ပစ္စည်းအလိုက် စစ်ထုတ်ရန်</string>
+    <string name="ticket_scope_clear">စစ်ထုတ်မှု ရှင်းရန်</string>
+    <string name="ticket_scope_edit_hint">ဆိုင်၊ ကုန်ပစ္စည်း သို့မဟုတ် နှစ်ခုလုံး ရွေးပါ။ တာဝန်ပေးထားသောအပိုင်းကို Web တွင် အရင်ပြင်ပါ။ မကိုက်ညီပါက ဖြည့်ထားသည်များကို ထိန်းထားမည်၊ ပယ်ဖျက်ပြီး အသစ်ကို ပြန်စစ်ပါ။</string>
+    <string name="ticket_scope_choose_sku">SKU အတိအကျ ရွေးရန်</string>
+    <string name="ticket_scope_choose_product">ကုန်ပစ္စည်းအတိအကျ ရွေးရန်</string>
+    <string name="ticket_scope_matches">ကိုက်ညီသော နယ်ပယ်</string>
+</resources>

@@ -68,7 +68,7 @@ class WorkplaceRepository @Inject constructor(
         return (data as? JsonObject)?.get("document_id")?.let { json.decodeFromJsonElement<Long>(it) } ?: 0L
     }
 
-    suspend fun tickets(filter: TicketFilter, keyword: String, page: Int): WorkplaceTicketPage {
+    suspend fun tickets(filter: TicketFilter, keyword: String, page: Int, shops: List<Long> = emptyList(), skuCode: String = "", productCode: String = "", skuId: Long? = null, productId: Long? = null): WorkplaceTicketPage {
         val params = mutableMapOf(
             "page" to page.toString(),
             "page_size" to "20",
@@ -81,6 +81,11 @@ class WorkplaceRepository @Inject constructor(
             else -> Unit
         }
         keyword.trim().takeIf { it.isNotEmpty() }?.let { params["keyword"] = it }
+        if (shops.isNotEmpty()) params["shop_ids"] = shops.joinToString(",")
+        if (skuCode.isNotBlank()) params["sku_code"] = skuCode.trim()
+        if (productCode.isNotBlank()) params["product_code"] = productCode.trim()
+        skuId?.let { params["sku_id"] = it.toString() }
+        productId?.let { params["product_id"] = it.toString() }
         val payload: JsonElement = api.get("tickets", params)
         return decodeTicketPage(payload, json)
     }

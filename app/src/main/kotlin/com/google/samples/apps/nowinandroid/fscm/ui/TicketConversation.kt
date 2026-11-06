@@ -93,6 +93,7 @@ data class TicketConversationComment(
 
 @Serializable
 data class MobileTicketCollaborator(
+    @SerialName("scope_items") val scopeItems: List<com.google.samples.apps.nowinandroid.fscm.data.TicketScopeItem> = emptyList(),
     @SerialName("user_id") val userId: Long = 0,
     val user: WorkplaceUserRef? = null,
     val assignment: String = "",
@@ -242,6 +243,8 @@ fun TicketConversation(id: Long, userId: Long?, ticketStatus: String, viewModel:
                         else -> "待完成"
                     }}",
                 )
+                if (collaborator.userId == userId) Text(androidx.compose.ui.res.stringResource(com.google.samples.apps.nowinandroid.R.string.ticket_scope_mine))
+                TicketScopeRows(collaborator.scopeItems)
                 if (collaborator.assignment.isNotBlank()) Text(collaborator.assignment)
             }
         }

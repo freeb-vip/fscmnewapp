@@ -80,6 +80,9 @@ data class WorkplaceTicketHistory(
 
 @Serializable
 data class WorkplaceTicket(
+    @SerialName("scope_items") val scopeItems: List<TicketScopeItem> = emptyList(),
+    @SerialName("scope_version") val scopeVersion: Long = 1,
+    val permissions: TicketScopePermissions = TicketScopePermissions(),
     val id: Long = 0,
     @SerialName("ticket_no") val ticketNo: String = "",
     val title: String = "",
