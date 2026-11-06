@@ -56,11 +56,12 @@ import kotlin.math.abs
 internal fun WarehouseSummaryCard(state: LoadState<WarehouseWorkbench>, offline: Boolean, onRetry: () -> Unit) {
     val data = state.data
     val today = data?.metric
-    val yesterday = data?.yesterdayMetric
+    val comparison = data?.comparison?.takeIf { it.available }
+    val yesterday = comparison?.previous
     val count = today?.count?.takeIf { today.available == true }
-    val previousCount = yesterday?.count?.takeIf { yesterday.available == true }
+    val previousCount = yesterday?.count
     val efficiency = today?.efficiency?.takeIf { today.efficiencyAvailable == true && it.isFinite() }
-    val previousEfficiency = yesterday?.efficiency?.takeIf { yesterday.efficiencyAvailable == true && it.isFinite() }
+    val previousEfficiency = yesterday?.efficiency?.takeIf { it.isFinite() }
     Card(
         modifier = Modifier.fillMaxWidth().testTag("warehouse_summary"),
         colors = CardDefaults.cardColors(containerColor = FscmBrandDeep, contentColor = Color.White),
@@ -79,14 +80,14 @@ internal fun WarehouseSummaryCard(state: LoadState<WarehouseWorkbench>, offline:
                     label = stringResource(R.string.warehouse_summary_count),
                     value = count?.let { NumberFormat.getIntegerInstance().format(it) } ?: "—",
                     yesterday = previousCount?.let { NumberFormat.getIntegerInstance().format(it) } ?: "—",
-                    change = if (data?.comparisonAvailable == true) warehouseChangePercent(count?.toDouble(), previousCount?.toDouble()) else null,
+                    change = warehouseChangePercent(comparison?.current?.count?.toDouble(), previousCount?.toDouble()),
                     modifier = Modifier.weight(1f).testTag("warehouse_count"),
                 )
                 WarehouseComparisonMetric(
-                    label = stringResource(R.string.warehouse_summary_efficiency),
-                    value = efficiency?.let { "%.1f".format(it) } ?: "—",
-                    yesterday = previousEfficiency?.let { "%.1f".format(it) } ?: "—",
-                    change = if (data?.comparisonAvailable == true) warehouseChangePercent(efficiency, previousEfficiency) else null,
+                    label = stringResource(if (data?.basis == "distinct_orders") R.string.rt_order_efficiency else R.string.warehouse_summary_efficiency),
+                    value = efficiency?.let { "%.2f".format(it) } ?: "—",
+                    yesterday = previousEfficiency?.let { "%.2f".format(it) } ?: "—",
+                    change = warehouseChangePercent(comparison?.current?.efficiency, previousEfficiency),
                     modifier = Modifier.weight(1f).testTag("warehouse_efficiency"),
                 )
             }
@@ -94,7 +95,7 @@ internal fun WarehouseSummaryCard(state: LoadState<WarehouseWorkbench>, offline:
             val notice = when {
                 data?.status == "no_permission" -> stringResource(R.string.style_no_access)
                 offline && data != null -> stringResource(R.string.warehouse_summary_offline)
-                state.error != null && data != null -> stringResource(R.string.warehouse_summary_delayed)
+                (state.error != null || data?.status == "delayed") && data != null -> stringResource(R.string.warehouse_summary_delayed)
                 state.error != null -> stringResource(R.string.style_data_unavailable)
                 state.loading && data == null -> stringResource(R.string.connecting_fscm)
                 data?.metric == null -> stringResource(R.string.warehouse_summary_missing)
@@ -106,6 +107,7 @@ internal fun WarehouseSummaryCard(state: LoadState<WarehouseWorkbench>, offline:
                     captured.takeIf { it.isNotBlank() }?.let { stringResource(R.string.warehouse_summary_as_of, it) },
                     notice.takeIf { it.isNotBlank() },
                     stringResource(R.string.warehouse_summary_basis),
+                    stringResource(R.string.rt_work_comparison, data?.comparison?.cutoff?.ifBlank { "—" } ?: "—"),
                 ).filterNotNull().joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White.copy(alpha = 0.85f),

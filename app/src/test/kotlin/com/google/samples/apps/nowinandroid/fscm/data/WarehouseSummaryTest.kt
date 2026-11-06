@@ -58,6 +58,30 @@ class WarehouseSummaryTest {
     }
 
     @Test
+    fun hourlyComparisonDecodesAndClearsAtBusinessMidnight() {
+        val payload = """{"scope":"workspace","date":"2026-10-08","timezone":"Asia/Bangkok","comparison":{"mode":"completed_hours","cutoff":"14:00","available":true,"current":{"count":120,"efficiency":8},"previous":{"count":100,"efficiency":10}}}"""
+        val data = Json.decodeFromString<WarehouseWorkbench>(payload)
+        assertEquals(120, data.comparison?.current?.count)
+        assertEquals(100, data.comparison?.previous?.count)
+        assertNull(data.forCurrentBusinessDate(Instant.parse("2026-10-08T17:00:00Z")).comparison)
+    }
+
+    @Test
+    fun incompleteSummaryRetainsSameScopeAndSameHourOnly() {
+        val metric = WarehouseMetric(count = 120, efficiency = 8.0, available = true, efficiencyAvailable = true)
+        val old = WarehouseWorkbench(date = "2026-10-08", timezone = "Asia/Bangkok", metric = metric, basis = "orders_and_replenishments", statisticsScope = "scope", comparison = RealtimeWorkComparison(cutoff = "14:00", available = true))
+        val fresh = old.copy(metric = null, comparison = RealtimeWorkComparison(cutoff = "14:00"))
+        val kept = retainWarehouseSummary(old, fresh)
+        assertEquals(metric, kept.metric)
+        assertEquals(old.comparison, kept.comparison)
+        assertEquals("delayed", kept.status)
+        val otherScope = fresh.copy(statisticsScope = "changed")
+        assertSame(otherScope, retainWarehouseSummary(old, otherScope))
+        val nextHour = old.copy(comparison = RealtimeWorkComparison(cutoff = "15:00"))
+        assertSame(nextHour, retainWarehouseSummary(old, nextHour))
+    }
+
+    @Test
     fun summaryPermissionIsSeparateFromAppAccess() {
         assertFalse(canReadWarehouseSummary(SessionState(permissions = listOf("workbench", "mobile-app:receiving"))))
         assertTrue(canReadWarehouseSummary(SessionState(permissions = listOf("order_statistics"))))

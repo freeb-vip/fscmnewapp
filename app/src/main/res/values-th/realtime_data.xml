@@ -29,13 +29,13 @@
     <string name="rt_quantity">จำนวนขาย</string>
     <string name="rt_work">แพ็กแล้ววันนี้</string>
     <string name="rt_efficiency">ประสิทธิภาพวันนี้</string>
-    <string name="rt_efficiency_unit">คำสั่งซื้อ/คน/ชั่วโมง</string>
+    <string name="rt_efficiency_unit">ครั้ง/คน-ชั่วโมง</string>
     <string name="rt_previous_time">เวลาเดียวกันเมื่อวาน</string>
     <string name="rt_previous_period">ช่วงเวลาเดียวกันเมื่อวาน</string>
     <string name="rt_yesterday_total">รวมเมื่อวาน</string>
     <string name="rt_sales_context">ยอดขาย · %1$s · ปักกิ่ง UTC+8</string>
-    <string name="rt_work_context">งาน · %1$s · %2$s · เทียบรวมเมื่อวาน</string>
-    <string name="rt_work_basis">จำนวนใช้คำสั่งซื้อที่แพ็กแล้ว ประสิทธิภาพใช้สถิติคำสั่งซื้อรวม</string>
+    <string name="rt_work_context">งาน · %1$s · %2$s · ช่วงเดียวกันเมื่อวาน</string>
+    <string name="rt_work_basis">จำนวนงานและประสิทธิภาพใช้สถิติคำสั่งซื้อ รวมงานเติมสินค้า</string>
     <string name="rt_new">เพิ่มใหม่</string>
     <string name="rt_flat">ไม่เปลี่ยนแปลง</string>
     <string name="rt_retry">ลองอีกครั้ง</string>
@@ -45,4 +45,8 @@
     <string name="rt_work_delayed">ข้อมูลงานล่าช้า แสดงข้อมูลล่าสุดที่สำเร็จ</string>
     <string name="rt_work_unavailable">ข้อมูลงานไม่พร้อมใช้งานชั่วคราว</string>
     <string name="rt_work_incomplete">ข้อมูลงานยังไม่ครบ แสดงข้อมูลครบถ้วนล่าสุด</string>
+    <string name="rt_work_unit">ครั้ง</string>
+    <string name="rt_order_efficiency_unit">คำสั่งซื้อ/คน-ชั่วโมง</string>
+    <string name="rt_order_efficiency">ประสิทธิภาพคำสั่งซื้อ</string>
+    <string name="rt_work_comparison">เทียบช่วงเดียวกันเมื่อวาน ถึง %1$s</string>
 </resources>

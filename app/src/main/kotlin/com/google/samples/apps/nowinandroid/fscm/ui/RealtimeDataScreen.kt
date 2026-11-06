@@ -277,30 +277,34 @@ private fun RealtimeMetrics(state: RealtimeUiState, expanded: Boolean) {
     )
     if (state.showWork) {
         val work = requireNotNull(state.work)
+        val workComparison = work.comparison?.takeIf { it.available }
+        val workLabel = stringResource(R.string.rt_work_comparison, work.comparison?.cutoff?.ifBlank { "—" } ?: "—")
         HorizontalDivider(color = Color.White.copy(alpha = 0.2f))
         RealtimeColumns(
             first = {
                 RealtimeMetric(
                     stringResource(R.string.rt_work),
-                    work.today.packed?.toString(),
-                    stringResource(R.string.rt_order_unit),
+                    work.today.count?.toString(),
+                    stringResource(R.string.rt_work_unit),
                     if (expanded) 24 else 20,
                     0,
-                    realtimeChange(work.today.packed?.toString(), work.yesterday.packed?.toString()),
-                    listOf(stringResource(R.string.rt_yesterday_total) to realtimeNumber(work.yesterday.packed?.toString(), 0)),
+                    realtimeChange(workComparison?.current?.count?.toString(), workComparison?.previous?.count?.toString()),
+                    listOf(stringResource(R.string.rt_previous_period) to realtimeNumber(workComparison?.previous?.count?.toString(), 0)),
                     prominent = true,
+                    comparisonLabel = workLabel,
                 )
             },
             second = {
                 RealtimeMetric(
-                    stringResource(R.string.rt_efficiency),
+                    stringResource(if (work.today.basis == "distinct_orders") R.string.rt_order_efficiency else R.string.rt_efficiency),
                     work.today.efficiency?.toString(),
-                    stringResource(R.string.rt_efficiency_unit),
+                    stringResource(if (work.today.basis == "distinct_orders") R.string.rt_order_efficiency_unit else R.string.rt_efficiency_unit),
                     if (expanded) 24 else 20,
                     2,
-                    realtimeChange(work.today.efficiency?.toString(), work.yesterday.efficiency?.toString()),
-                    listOf(stringResource(R.string.rt_yesterday_total) to realtimeNumber(work.yesterday.efficiency?.toString())),
+                    realtimeChange(workComparison?.current?.efficiency?.toString(), workComparison?.previous?.efficiency?.toString()),
+                    listOf(stringResource(R.string.rt_previous_period) to realtimeNumber(workComparison?.previous?.efficiency?.toString())),
                     prominent = true,
+                    comparisonLabel = workLabel,
                 )
             },
         )

@@ -46,6 +46,7 @@ import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmTheme
 import com.google.samples.apps.nowinandroid.fscm.data.RealtimeProduct
 import com.google.samples.apps.nowinandroid.fscm.data.RealtimeShop
+import com.google.samples.apps.nowinandroid.fscm.data.RealtimeWorkComparison
 import com.google.samples.apps.nowinandroid.fscm.data.RealtimeWorkDay
 import com.google.samples.apps.nowinandroid.fscm.data.RealtimeWorkSummary
 import com.google.samples.apps.nowinandroid.fscm.data.SalesAccount
@@ -156,8 +157,14 @@ class RealtimeDataScreenTest {
             products = listOf(RealtimeProduct(id = "p", sku = "DEMO-SKU-001", shopId = "s", shopName = "Demo shop", name = "Long product name for mobile layout verification", imageUrl = "", quantity = 320, amount = "42000.00")),
         ),
         work = RealtimeWorkSummary(
-            today = RealtimeWorkDay("2026-10-09", "Asia/Bangkok", 638, 55.42, "ready"),
+            today = RealtimeWorkDay("2026-10-09", "Asia/Bangkok", 638, 55.42, "ready", count = 720, basis = "orders_and_replenishments", scope = "fixture"),
             yesterday = RealtimeWorkDay("2026-10-08", "Asia/Bangkok", 1042, 48.20, "ready"),
+            comparison = RealtimeWorkComparison(
+                cutoff = "14:00",
+                available = true,
+                current = RealtimeWorkDay(count = 600, efficiency = 50.0),
+                previous = RealtimeWorkDay(count = 500, efficiency = 40.0),
+            ),
         ),
     )
 }

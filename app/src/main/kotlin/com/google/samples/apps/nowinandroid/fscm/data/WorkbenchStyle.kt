@@ -58,12 +58,15 @@ data class WarehouseWorkbench(
     @SerialName("yesterday_captured_at") val yesterdayCapturedAt: String = "",
     @SerialName("yesterday_metric") val yesterdayMetric: WarehouseMetric? = null,
     @SerialName("comparison_available") val comparisonAvailable: Boolean = false,
+    val basis: String = "",
+    @SerialName("statistics_scope") val statisticsScope: String = "",
+    val comparison: RealtimeWorkComparison? = null,
     @Transient val cached: Boolean = false,
 )
 
 internal fun WarehouseWorkbench.forCurrentBusinessDate(now: Instant = Instant.now()): WarehouseWorkbench {
     val today = runCatching { now.atZone(ZoneId.of(timezone)).toLocalDate() }.getOrNull()
-        ?: return copy(metric = null, yesterdayMetric = null, comparisonAvailable = false)
+        ?: return copy(metric = null, yesterdayMetric = null, comparisonAvailable = false, comparison = null)
     if (date == today.toString()) return this
     val previous = today.minusDays(1).toString()
     return copy(
@@ -75,7 +78,28 @@ internal fun WarehouseWorkbench.forCurrentBusinessDate(now: Instant = Instant.no
         yesterdayCapturedAt = capturedAt.takeIf { date == previous }.orEmpty(),
         yesterdayMetric = metric.takeIf { date == previous },
         comparisonAvailable = false,
+        comparison = null,
     )
+}
+
+internal fun retainWarehouseSummary(previous: WarehouseWorkbench?, fresh: WarehouseWorkbench): WarehouseWorkbench {
+    if (previous == null || previous.date != fresh.date || previous.timezone != fresh.timezone ||
+        fresh.statisticsScope.isBlank() || previous.statisticsScope != fresh.statisticsScope || previous.basis != fresh.basis
+    ) {
+        return fresh
+    }
+    var result = fresh
+    if (previous.metric?.available == true && previous.metric.efficiencyAvailable == true &&
+        (fresh.metric?.available != true || fresh.metric.efficiencyAvailable != true)
+    ) {
+        result = fresh.copy(metric = previous.metric, capturedAt = previous.capturedAt, status = "delayed")
+    }
+    if (previous.comparison?.available == true && fresh.comparison?.available != true &&
+        previous.comparison.cutoff == fresh.comparison?.cutoff
+    ) {
+        result = result.copy(comparison = previous.comparison, status = "delayed")
+    }
+    return result
 }
 
 internal fun warehouseChangePercent(current: Double?, previous: Double?): Double? {
@@ -229,7 +253,7 @@ class WorkbenchStyleRepository @Inject constructor(
 
     suspend fun cachedWarehouse(session: SessionState): WarehouseWorkbench? {
         if (!canReadWarehouseSummary(session)) return WarehouseWorkbench(scope = "workspace", status = "no_permission")
-        return offlineCacheDao.find(session.user?.id ?: 0, session.currentNamespace?.id ?: 0, "warehouse_summary_v1")
+        return offlineCacheDao.find(session.user?.id ?: 0, session.currentNamespace?.id ?: 0, "warehouse_summary_v2")
             ?.let { runCatching { json.decodeFromString<WarehouseWorkbench>(it.payload) }.getOrNull() }
             ?.takeIf { it.scope == "workspace" }
             ?.copy(cached = true)
@@ -238,19 +262,20 @@ class WorkbenchStyleRepository @Inject constructor(
 
     suspend fun warehouse(session: SessionState): WarehouseWorkbench {
         if (!canReadWarehouseSummary(session)) return WarehouseWorkbench(scope = "workspace", status = "no_permission")
-        val fresh = try {
+        val response = try {
             api.get<WarehouseWorkbench>("mobile/app/workbench/warehouse-summary")
         } catch (error: FscmApiException) {
             if (error.statusCode != 401 && error.statusCode != 403) throw error
             WarehouseWorkbench(scope = "workspace", status = "no_permission")
         }
+        val fresh = retainWarehouseSummary(cachedWarehouse(session), response)
         val active = sessionStore.current()
         if (active.user?.id == session.user?.id && active.currentNamespace?.id == session.currentNamespace?.id) {
             offlineCacheDao.upsert(
                 OfflineCacheEntity(
                     userId = session.user?.id ?: 0,
                     namespaceId = session.currentNamespace?.id ?: 0,
-                    cacheKey = "warehouse_summary_v1",
+                    cacheKey = "warehouse_summary_v2",
                     payload = json.encodeToString(fresh),
                     updatedAt = System.currentTimeMillis(),
                 ),

@@ -29,13 +29,13 @@
     <string name="rt_quantity">ရောင်းချအရေအတွက်</string>
     <string name="rt_work">ယနေ့ထုပ်ပိုးပြီး</string>
     <string name="rt_efficiency">ယနေ့လုပ်အားထိရောက်မှု</string>
-    <string name="rt_efficiency_unit">အမှာစာ/လူ/နာရီ</string>
+    <string name="rt_efficiency_unit">ကြိမ်/လူ-နာရီ</string>
     <string name="rt_previous_time">မနေ့က အချိန်တူ</string>
     <string name="rt_previous_period">မနေ့က အချိန်ကာလတူ</string>
     <string name="rt_yesterday_total">မနေ့က တစ်နေ့လုံး</string>
     <string name="rt_sales_context">ရောင်းအား · %1$s · ပေကျင်း UTC+8</string>
-    <string name="rt_work_context">လုပ်ငန်း · %1$s · %2$s · မနေ့ကတစ်နေ့လုံးနှိုင်းယှဉ်</string>
-    <string name="rt_work_basis">ထုပ်ပိုးပြီးအမှာစာကိုရေတွက်ပြီး အမှာစာစာရင်း၏ စုစုပေါင်းလုပ်အားထိရောက်မှုကို အသုံးပြုသည်။</string>
+    <string name="rt_work_context">အလုပ် · %1$s · %2$s · မနေ့က အချိန်တူ</string>
+    <string name="rt_work_basis">အလုပ်အရေအတွက်နှင့် စွမ်းဆောင်ရည်တွင် အော်ဒါနှင့် ပစ္စည်းဖြည့်အလုပ် ပါဝင်သည်။</string>
     <string name="rt_new">အသစ်</string>
     <string name="rt_flat">မပြောင်းလဲ</string>
     <string name="rt_retry">ထပ်ကြိုးစားရန်</string>
@@ -45,4 +45,8 @@
     <string name="rt_work_delayed">လုပ်ငန်းဒေတာနှောင့်နှေး၍ နောက်ဆုံးအောင်မြင်ဒေတာကို ပြထားသည်</string>
     <string name="rt_work_unavailable">လုပ်ငန်းဒေတာ ယာယီမရနိုင်ပါ</string>
     <string name="rt_work_incomplete">လုပ်ငန်းဒေတာမပြည့်စုံသေး၍ နောက်ဆုံးပြည့်စုံဒေတာကို ပြထားသည်</string>
+    <string name="rt_work_unit">ကြိမ်</string>
+    <string name="rt_order_efficiency_unit">အော်ဒါ/လူ-နာရီ</string>
+    <string name="rt_order_efficiency">အော်ဒါစွမ်းဆောင်ရည်</string>
+    <string name="rt_work_comparison">မနေ့က အချိန်တူနှင့် နှိုင်းယှဉ်၊ %1$s အထိ</string>
 </resources>

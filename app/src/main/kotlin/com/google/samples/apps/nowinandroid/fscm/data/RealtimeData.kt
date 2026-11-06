@@ -58,10 +58,28 @@ data class RealtimeWorkDay(
     val status: String = "missing",
     val packedAt: String? = null,
     val efficiencyAt: String? = null,
+    val count: Long? = null,
+    val countAt: String? = null,
+    val basis: String = "",
+    val scope: String = "",
 )
 
 @Serializable
-data class RealtimeWorkSummary(val today: RealtimeWorkDay, val yesterday: RealtimeWorkDay)
+data class RealtimeWorkSummary(
+    val today: RealtimeWorkDay,
+    val yesterday: RealtimeWorkDay,
+    val comparison: RealtimeWorkComparison? = null,
+)
+
+@Serializable
+data class RealtimeWorkComparison(
+    val mode: String = "completed_hours",
+    val cutoff: String = "",
+    val available: Boolean = false,
+    val reason: String = "",
+    val current: RealtimeWorkDay = RealtimeWorkDay(),
+    val previous: RealtimeWorkDay = RealtimeWorkDay(),
+)
 
 @Serializable
 private data class RealtimeAccounts(val items: List<SalesAccount> = emptyList())

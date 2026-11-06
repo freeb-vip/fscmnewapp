@@ -49,3 +49,10 @@ Repository 使用统一 FscmApiClient 请求 `mobile/app/realtime-data/connectio
 两项构建命令均成功，仪器测试在 API 28 模拟器执行。另设置 `adb shell wm size 864x1920`，通过 `am instrument` 重跑 3 项交互测试后恢复尺寸。JBR 25 与既有 JaCoCo 组合有 JDK 类插桩兼容警告；测试结果为 332/332 通过，不将该日志视为覆盖率完整的证明。
 
 产物为 `app/build/outputs/apk/demo/debug/app-demo-debug.apk`，沿用本机现有 demo 后端地址配置。截图为测试页面内容，不包含外层业务导航栏。真实设备验收前，目标后端须已提供新接口与权限。
+
+## 作业汇总与同期比较（2026-11-05）
+
+今日作业改读后端 count 与 efficiency，统一为订单统计作业汇总（含补货），不用 packed 替代作业数。新增 comparison 按双方相同整点累计指标计算涨跌，显示截止小时；缺失时显示未知，不回退昨日全天。补货数据缺失时明确显示订单人效。仓库首页同样使用实时 metric 及 comparison，人效显示两位小数，缓存键改为 warehouse_summary_v2。跨日、范围/口径变化时清空旧比较，同小时来源失败时完整保留配对并标注延迟。旧后端响应可解析，但没有 comparison 时不显示涨跌。
+
+
+本次验证（2026-11-05）：`testDemoDebugUnitTest` 455 项全部通过，`spotlessKotlinCheck` 和 `assembleDemoDebug` 通过。检查 320dp 大字体仓库首页截图，实时值、昨日整点同期值和比较截止时间显示正常。未执行真机 instrumentation 测试，未用已登录业务账户对账或发布生产。后端和 Web 验证限制见 FSCM 仓库 `docs/features/realtime-data.md` 同日记录。

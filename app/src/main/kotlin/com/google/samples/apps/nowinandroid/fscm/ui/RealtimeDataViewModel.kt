@@ -64,7 +64,7 @@ internal data class RealtimeUiState(
     val workError: UiText? = null,
 ) {
     val loading: Boolean get() = salesLoading || workLoading
-    val showWork: Boolean get() = work?.today?.let { (it.packed ?: 0) > 0 || (it.efficiency ?: 0.0) > 0 } == true
+    val showWork: Boolean get() = work?.today?.let { (it.count ?: 0) > 0 || (it.efficiency ?: 0.0) > 0 } == true
 }
 
 @HiltViewModel
@@ -289,12 +289,21 @@ internal fun realtimeDate(millis: Long, timezone: String): String? = runCatching
 
 internal fun retainCompleteWork(previous: RealtimeWorkSummary?, fresh: RealtimeWorkSummary): RealtimeWorkSummary {
     val old = previous?.today ?: return fresh
-    if (old.date == fresh.today.date && old.timezone == fresh.today.timezone && old.packed != null && old.efficiency != null &&
-        (fresh.today.packed == null || fresh.today.efficiency == null)
+    if (old.date != fresh.today.date || old.timezone != fresh.today.timezone ||
+        fresh.today.scope.isBlank() || old.scope != fresh.today.scope || old.basis != fresh.today.basis
     ) {
-        return fresh.copy(today = old.copy(status = "delayed"))
+        return fresh
     }
-    return fresh
+    var result = fresh
+    if (old.count != null && old.efficiency != null && (fresh.today.count == null || fresh.today.efficiency == null)) {
+        result = fresh.copy(today = old.copy(status = "delayed"))
+    }
+    if (previous.comparison?.available == true && fresh.comparison?.available != true &&
+        previous.comparison.cutoff == fresh.comparison?.cutoff
+    ) {
+        result = result.copy(comparison = previous.comparison, today = result.today.copy(status = "delayed"))
+    }
+    return result
 }
 
 internal fun SalesOverview.yesterdayTotal() = runCatching {

@@ -29,13 +29,13 @@
     <string name="rt_quantity">销量</string>
     <string name="rt_work">今日作业数</string>
     <string name="rt_efficiency">今日作业人效</string>
-    <string name="rt_efficiency_unit">单/人/小时</string>
+    <string name="rt_efficiency_unit">次/人时</string>
     <string name="rt_previous_time">昨日同时刻</string>
     <string name="rt_previous_period">昨日同时段</string>
     <string name="rt_yesterday_total">昨日全天</string>
     <string name="rt_sales_context">销售 · %1$s · 北京时间 UTC+8</string>
-    <string name="rt_work_context">作业 · %1$s · %2$s · 较昨日全天</string>
-    <string name="rt_work_basis">作业数按已包装数量；人效沿用订单统计总体人效。</string>
+    <string name="rt_work_context">作业 · %1$s · %2$s · 昨日同时段</string>
+    <string name="rt_work_basis">作业数及人效沿用订单统计作业汇总，包含补货。</string>
     <string name="rt_new">新增</string>
     <string name="rt_flat">持平</string>
     <string name="rt_retry">重试</string>
@@ -45,4 +45,8 @@
     <string name="rt_work_delayed">作业更新延迟，保留最后成功数据</string>
     <string name="rt_work_unavailable">作业数据暂不可用</string>
     <string name="rt_work_incomplete">作业数据尚未完整，保留上一时刻完整数据</string>
+    <string name="rt_work_unit">次</string>
+    <string name="rt_order_efficiency_unit">单/人时</string>
+    <string name="rt_order_efficiency">今日订单人效</string>
+    <string name="rt_work_comparison">较昨日同时段，截至 %1$s</string>
 </resources>

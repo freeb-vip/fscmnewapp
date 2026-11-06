@@ -36,6 +36,8 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmTheme
 import com.google.samples.apps.nowinandroid.fscm.data.MobileAppEntry
 import com.google.samples.apps.nowinandroid.fscm.data.NamespaceProfile
+import com.google.samples.apps.nowinandroid.fscm.data.RealtimeWorkComparison
+import com.google.samples.apps.nowinandroid.fscm.data.RealtimeWorkDay
 import com.google.samples.apps.nowinandroid.fscm.data.SessionState
 import com.google.samples.apps.nowinandroid.fscm.data.UserProfile
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseMetric
@@ -68,7 +70,12 @@ class WarehouseHomeScreenTest {
         metric = WarehouseMetric(count = 1200, efficiency = 80.0, available = true, efficiencyAvailable = true),
         yesterdayDate = "2026-10-08",
         yesterdayMetric = WarehouseMetric(count = 1000, efficiency = 100.0, available = true, efficiencyAvailable = true),
-        comparisonAvailable = true,
+        comparison = RealtimeWorkComparison(
+            cutoff = "14:00",
+            available = true,
+            current = RealtimeWorkDay(count = 600, efficiency = 40.0),
+            previous = RealtimeWorkDay(count = 500, efficiency = 50.0),
+        ),
     )
 
     @Test
@@ -76,7 +83,8 @@ class WarehouseHomeScreenTest {
         render()
         compose.onNodeWithText("今日全仓作业").assertIsDisplayed()
         compose.onNodeWithText("1,200").assertIsDisplayed()
-        compose.onNodeWithText("昨日 1,000").assertIsDisplayed()
+        compose.onNodeWithText("80.00").assertIsDisplayed()
+        compose.onNodeWithText("昨日同时段 500").assertIsDisplayed()
         compose.onNodeWithText("↑ 20.0%").assertIsDisplayed()
         compose.onNodeWithText("↓ 20.0%").assertIsDisplayed()
         assertTwoColumns()
@@ -99,7 +107,8 @@ class WarehouseHomeScreenTest {
     fun refreshFailurePreservesTodayAndYesterday() {
         render(state = LoadState(data = summary.copy(cached = true), error = UiText.Dynamic("network error")))
         compose.onNodeWithText("1,200").assertIsDisplayed()
-        compose.onNodeWithText("昨日 1,000").assertIsDisplayed()
+        compose.onNodeWithText("80.00").assertIsDisplayed()
+        compose.onNodeWithText("昨日同时段 500").assertIsDisplayed()
         compose.onNodeWithText("重试").assertIsDisplayed()
         capture("home-cached")
     }

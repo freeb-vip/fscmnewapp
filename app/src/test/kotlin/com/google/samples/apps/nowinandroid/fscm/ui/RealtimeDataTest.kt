@@ -21,6 +21,7 @@ import com.google.samples.apps.nowinandroid.fscm.data.MobileAppEntry
 import com.google.samples.apps.nowinandroid.fscm.data.MobileWorkbenchOverview
 import com.google.samples.apps.nowinandroid.fscm.data.NamespaceProfile
 import com.google.samples.apps.nowinandroid.fscm.data.RealtimeDataSource
+import com.google.samples.apps.nowinandroid.fscm.data.RealtimeWorkComparison
 import com.google.samples.apps.nowinandroid.fscm.data.RealtimeWorkDay
 import com.google.samples.apps.nowinandroid.fscm.data.RealtimeWorkSummary
 import com.google.samples.apps.nowinandroid.fscm.data.SalesAccount
@@ -89,6 +90,21 @@ class RealtimeDataTest {
         assertSame(tomorrow, retainCompleteWork(old, tomorrow))
         val otherZone = missing.copy(today = missing.today.copy(timezone = "Asia/Bangkok"))
         assertSame(otherZone, retainCompleteWork(old, otherZone))
+    }
+
+    @Test
+    fun comparisonRetentionNeverMixesHoursOrScopes() {
+        val old = work().copy(comparison = RealtimeWorkComparison(cutoff = "14:00", available = true, current = work().today, previous = work().yesterday))
+        val missing = work().copy(comparison = RealtimeWorkComparison(cutoff = "14:00"))
+        val kept = retainCompleteWork(old, missing)
+        assertEquals(old.comparison, kept.comparison)
+        assertEquals("delayed", kept.today.status)
+        val nextHour = missing.copy(comparison = RealtimeWorkComparison(cutoff = "15:00"))
+        assertSame(nextHour, retainCompleteWork(old, nextHour))
+        val otherScope = missing.copy(today = missing.today.copy(scope = "changed", efficiency = null))
+        assertSame(otherScope, retainCompleteWork(old, otherScope))
+        val legacy = RealtimeWorkSummary(RealtimeWorkDay(packed = 100), RealtimeWorkDay())
+        assertFalse(RealtimeUiState(work = legacy).showWork)
     }
 
     @Test
@@ -248,7 +264,7 @@ class RealtimeDataTest {
 
     private fun sales(id: String) = SalesOverview(connectionId = id, date = "2026-10-09", timezone = "Asia/Shanghai", summary = SalesSummary(orders = 10, amount = "123.45"))
     private fun work(packed: Long? = 20, efficiency: Double? = 2.5) = RealtimeWorkSummary(
-        today = RealtimeWorkDay("2026-10-09", "Asia/Shanghai", packed, efficiency, "ready", "2026-10-09T04:00:00Z", "2026-10-09T04:01:00Z"),
+        today = RealtimeWorkDay("2026-10-09", "Asia/Shanghai", packed, efficiency, "ready", "2026-10-09T04:00:00Z", "2026-10-09T04:01:00Z", count = packed, basis = "orders_and_replenishments", scope = "scope"),
         yesterday = RealtimeWorkDay("2026-10-08", "Asia/Shanghai", 100, 3.0),
     )
 
