@@ -232,8 +232,12 @@ internal fun validateSkuResolutionResult(result: MobileSkuResolveResult, request
             (aliases + skuCode + baseCode).any { foldCatalogCode(it) == foldCatalogCode(code) }
         val direct = candidates.filter { it.matchesCode(resolution.requestedCode) }
         val fallbackCodes = legacySkuFallbackCodes(resolution.requestedCode)
-        check(candidates.all { candidate -> candidate.id > 0 && candidate.productId > 0 && candidate.productCode.isNotBlank() && candidate.skuCode.isNotBlank() &&
-            (if (direct.isNotEmpty()) candidate.matchesCode(resolution.requestedCode) else fallbackCodes.any { candidate.matchesCode(it) }) }) { "SKU 查询身份无效" }
+        check(
+            candidates.all { candidate ->
+                candidate.id > 0 && candidate.productId > 0 && candidate.productCode.isNotBlank() && candidate.skuCode.isNotBlank() &&
+                    (if (direct.isNotEmpty()) candidate.matchesCode(resolution.requestedCode) else fallbackCodes.any { candidate.matchesCode(it) })
+            },
+        ) { "SKU 查询身份无效" }
         check(candidates.distinctBy { it.id }.size == candidates.size) { "SKU 查询身份重复" }
         val sameBase = candidates.map { foldCatalogCode(it.baseCode.ifBlank { it.skuCode }) }.distinct().size <= 1
         val exact = if (sameBase) candidates.filter { normalizeCatalogCode(it.skuCode) == resolution.requestedCode || normalizeCatalogCode(it.baseCode) == resolution.requestedCode } else emptyList()
@@ -314,8 +318,11 @@ class LocalSkuCatalogRepository @Inject constructor(
         val user = session.user?.id ?: 0
         val namespace = session.currentNamespace?.id ?: 0
         if (!session.isOffline) {
-            try { withTimeoutOrNull(REFERENCE_LOOKUP_TIMEOUT_MS) { verifyPolicy(user, namespace) } ?: throw IOException("中心编码规则查询超时") }
-            catch (error: Exception) { if (!error.canUseReferenceCache()) throw error }
+            try {
+                withTimeoutOrNull(REFERENCE_LOOKUP_TIMEOUT_MS) { verifyPolicy(user, namespace) } ?: throw IOException("中心编码规则查询超时")
+            } catch (error: Exception) {
+                if (!error.canUseReferenceCache()) throw error
+            }
         }
         suspend fun readCache(): SkuCatalogCache = database.withTransaction {
             val folded = normalized.flatMap { listOf(it) + legacySkuFallbackCodes(it) }.map(::foldCatalogCode).distinct()
