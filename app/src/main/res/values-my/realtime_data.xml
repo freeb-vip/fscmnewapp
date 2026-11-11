@@ -49,4 +49,12 @@
     <string name="rt_order_efficiency_unit">အော်ဒါ/လူ-နာရီ</string>
     <string name="rt_order_efficiency">အော်ဒါစွမ်းဆောင်ရည်</string>
     <string name="rt_work_comparison">မနေ့က အချိန်တူနှင့် နှိုင်းယှဉ်၊ %1$s အထိ</string>
+    <string name="rt_wave_work">ယနေ့လုပ်ငန်း · ကိုးကားတန်ဖိုး</string>
+    <string name="rt_wave_basis">ဝေ့ဗ်အလိုက် အော်ဒါအရေအတွက်နှင့် ပစ္စည်းဖြည့်လုပ်ငန်းများ။ ညပိုင်းဒေတာပြည့်စုံပြီးမှ ထပ်နေသောအော်ဒါများကို ဖယ်ရှား၍ အတည်ပြုမည်</string>
+    <string name="rt_wave_reference">လက်ရှိကိုးကားတန်ဖိုး</string>
+    <string name="rt_wave_pending">အတည်ပြုရန်စောင့်ဆိုင်း · %1$d/%2$d ဝေ့ဗ်</string>
+    <string name="rt_wave_final">အတည်ပြုပြီး · %1$s</string>
+    <string name="rt_wave_reconciled">စာရင်းစစ်ဆေးချိန် · %1$s</string>
+    <string name="rt_wave_waiting">ဒေတာပြည့်စုံမှုနှင့် စစ်ဆေးမှုကို စောင့်ဆိုင်းနေသည်</string>
+    <string name="rt_wave_previous">မနေ့က: %1$s</string>
 </resources>

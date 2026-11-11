@@ -62,6 +62,19 @@ data class RealtimeWorkDay(
     val countAt: String? = null,
     val basis: String = "",
     val scope: String = "",
+    val collection: WaveCollectionStatus? = null,
+)
+
+@Serializable
+data class WaveCollectionStatus(
+    val status: String = "collecting",
+    val basis: String = "",
+    @kotlinx.serialization.SerialName("list_as_of") val listAsOf: String? = null,
+    @kotlinx.serialization.SerialName("reconciled_at") val reconciledAt: String? = null,
+    @kotlinx.serialization.SerialName("finalized_at") val finalizedAt: String? = null,
+    val completed: Long = 0,
+    val total: Long = 0,
+    val reason: String = "",
 )
 
 @Serializable

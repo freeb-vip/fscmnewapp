@@ -49,4 +49,12 @@
     <string name="rt_order_efficiency_unit">คำสั่งซื้อ/คน-ชั่วโมง</string>
     <string name="rt_order_efficiency">ประสิทธิภาพคำสั่งซื้อ</string>
     <string name="rt_work_comparison">เทียบช่วงเดียวกันเมื่อวาน ถึง %1$s</string>
+    <string name="rt_wave_work">งานวันนี้ · ค่าอ้างอิง</string>
+    <string name="rt_wave_basis">จำนวนคำสั่งซื้อในแต่ละเวฟ + งานเติมสินค้า; สรุปผลงานแบบไม่ซ้ำหลังเก็บข้อมูลกลางคืนครบ</string>
+    <string name="rt_wave_reference">ค่าอ้างอิงปัจจุบัน</string>
+    <string name="rt_wave_pending">รอยืนยัน · %1$d/%2$d เวฟ</string>
+    <string name="rt_wave_final">ยืนยันแล้ว · %1$s</string>
+    <string name="rt_wave_reconciled">ตรวจสอบรายการ · %1$s</string>
+    <string name="rt_wave_waiting">รอข้อมูลครบและตรวจสอบ</string>
+    <string name="rt_wave_previous">เมื่อวาน: %1$s</string>
 </resources>

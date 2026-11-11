@@ -283,7 +283,7 @@ private fun RealtimeMetrics(state: RealtimeUiState, expanded: Boolean) {
         RealtimeColumns(
             first = {
                 RealtimeMetric(
-                    stringResource(R.string.rt_work),
+                    stringResource(if (work.today.basis == "wave_orders_and_replenishments") R.string.rt_wave_work else R.string.rt_work),
                     work.today.count?.toString(),
                     stringResource(R.string.rt_work_unit),
                     if (expanded) 24 else 20,
@@ -308,6 +308,12 @@ private fun RealtimeMetrics(state: RealtimeUiState, expanded: Boolean) {
                 )
             },
         )
+        waveCollectionNotice(work.today.collection, work.today.timezone)?.let {
+            Text(it, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall)
+        }
+        waveCollectionNotice(work.yesterday.collection, work.yesterday.timezone)?.let {
+            Text(stringResource(R.string.rt_wave_previous, it), color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
 

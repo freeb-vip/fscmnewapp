@@ -49,4 +49,12 @@
     <string name="rt_order_efficiency_unit">单/人时</string>
     <string name="rt_order_efficiency">今日订单人效</string>
     <string name="rt_work_comparison">较昨日同时段，截至 %1$s</string>
+    <string name="rt_wave_work">今日作业数 · 实时参考</string>
+    <string name="rt_wave_basis">波次订单数＋补货任务数；次日采集完整后核定去重绩效</string>
+    <string name="rt_wave_reference">实时参考</string>
+    <string name="rt_wave_pending">待核定 · %1$d/%2$d 波次</string>
+    <string name="rt_wave_final">已核定 · %1$s</string>
+    <string name="rt_wave_reconciled">列表核对 · %1$s</string>
+    <string name="rt_wave_waiting">等待数据补齐与校验</string>
+    <string name="rt_wave_previous">昨日：%1$s</string>
 </resources>

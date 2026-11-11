@@ -106,7 +106,9 @@ internal fun WarehouseSummaryCard(state: LoadState<WarehouseWorkbench>, offline:
                 listOf(
                     captured.takeIf { it.isNotBlank() }?.let { stringResource(R.string.warehouse_summary_as_of, it) },
                     notice.takeIf { it.isNotBlank() },
-                    stringResource(R.string.warehouse_summary_basis),
+                    waveCollectionNotice(data?.collection, data?.timezone.orEmpty()),
+                    waveCollectionNotice(data?.yesterdayCollection, data?.timezone.orEmpty())?.let { stringResource(R.string.rt_wave_previous, it) },
+                    stringResource(if (data?.basis == "wave_orders_and_replenishments") R.string.rt_wave_basis else R.string.warehouse_summary_basis),
                     stringResource(R.string.rt_work_comparison, data?.comparison?.cutoff?.ifBlank { "—" } ?: "—"),
                 ).filterNotNull().joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
@@ -147,3 +149,15 @@ private fun WarehouseComparisonMetric(label: String, value: String, yesterday: S
 internal fun warehouseSummaryTime(value: String, timezone: String): String = runCatching {
     DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.of(timezone)).format(Instant.parse(value))
 }.getOrDefault("")
+
+@Composable
+internal fun waveCollectionNotice(value: com.google.samples.apps.nowinandroid.fscm.data.WaveCollectionStatus?, timezone: String): String? {
+    if (value == null) return null
+    val status = when {
+        value.status == "pending_finalization" -> stringResource(R.string.rt_wave_pending, value.completed, value.total)
+        value.status == "finalized" && value.basis == "orders_and_replenishments" -> stringResource(R.string.rt_wave_final, warehouseSummaryTime(value.finalizedAt.orEmpty(), timezone).orEmpty())
+        else -> stringResource(R.string.rt_wave_reference)
+    }
+    val checked = value.reconciledAt?.let { stringResource(R.string.rt_wave_reconciled, warehouseSummaryTime(it, timezone).orEmpty()) }
+    return listOfNotNull(status, checked, value.reason.takeIf { it.isNotBlank() }?.let { stringResource(R.string.rt_wave_waiting) }).joinToString(" · ")
+}

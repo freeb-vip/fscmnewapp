@@ -61,6 +61,8 @@ data class WarehouseWorkbench(
     val basis: String = "",
     @SerialName("statistics_scope") val statisticsScope: String = "",
     val comparison: RealtimeWorkComparison? = null,
+    val collection: WaveCollectionStatus? = null,
+    @SerialName("yesterday_collection") val yesterdayCollection: WaveCollectionStatus? = null,
     @Transient val cached: Boolean = false,
 )
 

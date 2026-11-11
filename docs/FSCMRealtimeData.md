@@ -1,5 +1,11 @@
 # 实时数据
 
+## 波次两阶段口径（2026-11-11，开发实现）
+
+实时页和仓库摘要读取后端 `collection`／`yesterday_collection`，展示实时参考、待核定进度及已核定时间。当天 `wave_orders_and_replenishments` 表示波次订单数＋补货，次日完整补采后才能作为去重绩效；客户端不自行合并或重算两种口径。保留后端的范围／小时比较兼容判断，缺失值继续显示不可用。
+
+DTO 向后兼容无 collection 的历史响应；中文、英文、泰文、缅文词条同步。验证：460 项 demoDebug 单元测试、Kotlin 格式检查、Demo Debug APK 构建通过；尚未进行设备端完整昼夜联调和生产发布。
+
 通用与运营首页共用今日数据摘要，点击打开原生实时数据应用；详情为今日大卡及店铺、商品排行榜 Tab。首页搜索通过标题栏图标进入，支持原应用搜索与扫码。仓库首页没有新增指标卡。
 
 ## 权限和接口
@@ -56,3 +62,5 @@ Repository 使用统一 FscmApiClient 请求 `mobile/app/realtime-data/connectio
 
 
 本次验证（2026-11-05）：`testDemoDebugUnitTest` 455 项全部通过，`spotlessKotlinCheck` 和 `assembleDemoDebug` 通过。检查 320dp 大字体仓库首页截图，实时值、昨日整点同期值和比较截止时间显示正常。未执行真机 instrumentation 测试，未用已登录业务账户对账或发布生产。后端和 Web 验证限制见 FSCM 仓库 `docs/features/realtime-data.md` 同日记录。
+
+2026-11-11 发布准备：正式包版本 1.3.5（versionCode 35），沿用既有生产签名及 com.fscm.app 包名；后端、Web 更新完成后发布 App 更新。最低支持版本不提高，不强制升级。

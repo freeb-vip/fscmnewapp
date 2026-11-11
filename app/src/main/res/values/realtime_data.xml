@@ -49,4 +49,12 @@
     <string name="rt_order_efficiency_unit">orders/person-hour</string>
     <string name="rt_order_efficiency">Order efficiency</string>
     <string name="rt_work_comparison">Compared with yesterday, through %1$s</string>
+    <string name="rt_wave_work">Today’s work · reference</string>
+    <string name="rt_wave_basis">Wave order counts + completed replenishments; deduplicated performance is finalized after complete overnight collection</string>
+    <string name="rt_wave_reference">Live reference</string>
+    <string name="rt_wave_pending">Pending finalization · %1$d/%2$d waves</string>
+    <string name="rt_wave_final">Finalized · %1$s</string>
+    <string name="rt_wave_reconciled">List checked · %1$s</string>
+    <string name="rt_wave_waiting">Awaiting complete, verified data</string>
+    <string name="rt_wave_previous">Yesterday: %1$s</string>
 </resources>
