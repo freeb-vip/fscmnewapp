@@ -20,8 +20,6 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.samples.apps.nowinandroid.fscm.data.ExceptionGrant
-import com.google.samples.apps.nowinandroid.fscm.data.ExceptionGrantOptions
 import com.google.samples.apps.nowinandroid.fscm.data.ExceptionScope
 import com.google.samples.apps.nowinandroid.fscm.data.FscmApiException
 import com.google.samples.apps.nowinandroid.fscm.data.OrderExceptionsRepository
@@ -52,11 +50,6 @@ data class ExceptionsListState(
     val page: Int = 0,
     val loading: Boolean = false,
     val error: String? = null,
-    val canManage: Boolean = false,
-    val grants: ExceptionGrantOptions? = null,
-    val grantUser: Long? = null,
-    val selectedGrants: Set<String> = emptySet(),
-    val grantBusy: Boolean = false,
 )
 
 @HiltViewModel
@@ -90,49 +83,10 @@ class OrderExceptionsListViewModel @Inject constructor(private val repository: O
             try {
                 val actor = scope ?: repository.scope().also { scope = it }
                 val result = repository.list(actor, before.resolved, filters, page)
-                if (epoch == generation) mutable.update { it.copy(rows = if (more) (it.rows + result.items).distinctBy(WarehouseException::id) else result.items, total = result.total, open = result.open, completed = result.resolved, page = page, loading = false, canManage = result.canManage) }
+                if (epoch == generation) mutable.update { it.copy(rows = if (more) (it.rows + result.items).distinctBy(WarehouseException::id) else result.items, total = result.total, open = result.open, completed = result.resolved, page = page, loading = false) }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 if (epoch == generation) mutable.update { it.copy(loading = false, rows = emptyList(), error = error.exceptionMessage()) }
-            }
-        }
-    }
-
-    fun grantOptions(user: Long? = null) {
-        if (state.value.grantBusy) return
-        mutable.update { it.copy(grantBusy = true, error = null) }
-        viewModelScope.launch {
-            try {
-                val actor = scope ?: repository.scope().also { scope = it }
-                val result = repository.grants(actor, user)
-                mutable.update { it.copy(grants = result, grantUser = user, grantBusy = false, selectedGrants = result.grants.map { g -> "${g.source}:${g.warehouse}" }.toSet()) }
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                mutable.update { it.copy(grantBusy = false, error = error.exceptionMessage()) }
-            }
-        }
-    }
-
-    fun toggleGrant(key: String, checked: Boolean) {
-        mutable.update { it.copy(selectedGrants = if (checked) it.selectedGrants + key else it.selectedGrants - key) }
-    }
-    fun closeGrants() {
-        if (!state.value.grantBusy) mutable.update { it.copy(grants = null) }
-    }
-    fun saveGrants() {
-        val before = state.value
-        val user = before.grantUser ?: return
-        if (before.grantBusy) return
-        mutable.update { it.copy(grantBusy = true) }
-        viewModelScope.launch {
-            try {
-                val grants = before.grants?.warehouses.orEmpty().filter { it.key in before.selectedGrants }.map { ExceptionGrant(it.source, it.warehouse) }
-                repository.saveGrants(requireNotNull(scope), user, grants)
-                mutable.update { it.copy(grantBusy = false, grants = null) }
-                refresh()
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                mutable.update { it.copy(grantBusy = false, error = error.exceptionMessage()) }
             }
         }
     }

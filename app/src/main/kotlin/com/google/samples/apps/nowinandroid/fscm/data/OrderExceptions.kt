@@ -118,34 +118,7 @@ data class WarehouseExceptionPage(
     val total: Long = 0,
     val open: Long = 0,
     val resolved: Long = 0,
-    @SerialName("can_manage") val canManage: Boolean = false,
 )
-
-@Serializable
-data class ExceptionGrantMember(@SerialName("user_id") val id: Long, val name: String, @SerialName("employee_code") val code: String = "")
-
-@Serializable
-data class ExceptionGrantWarehouse(
-    @SerialName("source_id") val source: Long,
-    @SerialName("source_name") val sourceName: String = "",
-    @SerialName("warehouse_id") val warehouse: String,
-    @SerialName("warehouse_name") val name: String = "",
-) {
-    val key: String get() = "$source:$warehouse"
-}
-
-@Serializable
-data class ExceptionGrant(@SerialName("source_id") val source: Long, @SerialName("warehouse_id") val warehouse: String)
-
-@Serializable
-data class ExceptionGrantOptions(
-    val members: List<ExceptionGrantMember> = emptyList(),
-    val warehouses: List<ExceptionGrantWarehouse> = emptyList(),
-    val grants: List<ExceptionGrant> = emptyList(),
-)
-
-@Serializable
-private data class ExceptionGrantRequest(@SerialName("user_id") val user: Long, val grants: List<ExceptionGrant>)
 
 @Serializable
 data class WarehouseExceptionForm(
@@ -192,16 +165,6 @@ class OrderExceptionsRepository @Inject constructor(
 
     private suspend fun verify(scope: ExceptionScope) {
         check(scope == scope())
-    }
-
-    suspend fun grants(scope: ExceptionScope, user: Long?): ExceptionGrantOptions {
-        verify(scope)
-        return api.get("mobile/order-exceptions/warehouse-grants", if (user == null) emptyMap() else mapOf("user_id" to user.toString()), headers = scope.headers())
-    }
-
-    suspend fun saveGrants(scope: ExceptionScope, user: Long, grants: List<ExceptionGrant>) {
-        verify(scope)
-        api.put<kotlinx.serialization.json.JsonElement>("mobile/order-exceptions/warehouse-grants", headers = scope.headers(), body = json.encodeToJsonElement(ExceptionGrantRequest.serializer(), ExceptionGrantRequest(user, grants)))
     }
 
     suspend fun list(scope: ExceptionScope, resolved: Boolean, filters: Map<String, String>, page: Int): WarehouseExceptionPage {

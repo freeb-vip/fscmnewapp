@@ -98,39 +98,12 @@ fun OrderExceptionsListScreen(scopeKey: String, onOpen: (Long) -> Unit) {
     var employee by rememberSaveable(scopeKey) { mutableStateOf("") }
     var filtersOpen by rememberSaveable { mutableStateOf(false) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refresh() }
-    state.grants?.let { options ->
-        ScanAwareAlertDialog(
-            onDismissRequest = viewModel::closeGrants,
-            title = { Text("异常订单仓库授权") },
-            text = {
-                LazyColumn(Modifier.heightIn(max = 480.dp)) {
-                    state.error?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
-                    if (state.grantUser == null) {
-                        item { Text("选择员工，再设置其可访问的发货仓") }
-                        items(options.members, key = { it.id }) { member -> TextButton(onClick = { viewModel.grantOptions(member.id) }, enabled = !state.grantBusy) { Text("${member.name} · ${member.code}") } }
-                    } else {
-                        item { Text(options.members.firstOrNull { it.id == state.grantUser }?.name.orEmpty()) }
-                        if (options.warehouses.isEmpty()) item { Text("暂无已识别的自有发货仓，请等待订单仓库资料同步") }
-                        items(options.warehouses.distinctBy { it.key }, key = { it.key }) { warehouse ->
-                            Row {
-                                Checkbox(checked = warehouse.key in state.selectedGrants, enabled = !state.grantBusy, onCheckedChange = { viewModel.toggleGrant(warehouse.key, it) })
-                                Text("${warehouse.sourceName} · ${warehouse.name}", Modifier.padding(top = 12.dp))
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = { if (state.grantUser != null) TextButton(onClick = viewModel::saveGrants, enabled = !state.grantBusy) { Text("保存授权") } },
-            dismissButton = { TextButton(onClick = viewModel::closeGrants, enabled = !state.grantBusy) { Text("关闭") } },
-        )
-    }
     Column(Modifier.fillMaxSize().background(FscmPageTop)) {
         PrimaryTabRow(selectedTabIndex = if (state.resolved) 1 else 0) {
             Tab(selected = !state.resolved, onClick = { viewModel.select(false) }, text = { Text("待处理 (${state.open})") })
             Tab(selected = state.resolved, onClick = { viewModel.select(true) }, text = { Text("已处理 (${state.completed})") })
         }
         TextButton(onClick = { filtersOpen = !filtersOpen }) { Text(if (filtersOpen) "收起查询条件" else "按订单号、运单号、SKU、工号查询") }
-        if (state.canManage) TextButton(onClick = { viewModel.grantOptions() }, enabled = !state.grantBusy) { Text("仓库授权") }
         if (filtersOpen) {
             Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 OutlinedTextField(order, { order = it }, label = { Text("订单号") }, singleLine = true, modifier = Modifier.fillMaxWidth())
