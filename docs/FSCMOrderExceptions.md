@@ -43,3 +43,14 @@
 核心文件：`OrderExceptionsScreens.kt`负责列表及详情国际化、移除责任表单、入口和提交确认；`OrderExceptionDialogs.kt`负责高分辨率图片预览、手势及键盘适配编辑器；`OrderExceptionsViewModels.kt`负责无责任提交校验与本地化错误；`OrderExceptions.kt`负责新提交DTO及草稿兼容；四份`strings_order_exceptions.xml`负责四语文案；`OrderExceptionsTest.kt`与`OrderExceptionDialogsTest.kt`覆盖请求、恢复及界面交互。后端仅在WSL最新工程修改，包含362迁移、可选责任字段和作业证据冻结、相关事务及迁移测试。
 
 边界：未实测摄像头／相册选图后的真实上传、上传中断或弱网端到端链路；既有归属检查和上传失败重试逻辑保留。生产未迁移、App未生产发布、已纳入本地提交（编号见 Git 历史），未推送，无设计约束偏离。
+
+
+## 异常订单与线下发货列表图文卡片（2026-11-12）
+
+异常订单和App“线下发货”的待处理／已处理列表改用独立白色圆角卡片，保留浅蓝页面间隔。顶部用蓝色粗体展示单号，状态单独显示为标签；中间展示代表商品图片、加粗标题、SKU和多商品项数；底部保留异常类型、仓库、运单、登记时间，或发货SKU及件数。长标题／单号限制行数并省略，详情仍可查看完整内容；图片缺失或加载失败使用统一占位图，不补造产品照片。共用FSCM颜色及间距风格，固定文案提供中英泰缅四种资源。
+
+API在列表项增加可选`product_preview`：`title/sku/image_url/item_count`。异常来源是同空间销售订单明细，线下发货来源是同空间该阶段实际商品项（待发取剩余项，已发取拣货记录）。每页一次本地批量查询摘要，优先选择带图片的商品，同一行的图片、标题和SKU一起返回；不逐订单请求详情或上游。旧服务未返回摘要时App仍能打开列表，显示缺失信息；要显示真实图文须同步更新后端。既有筛选、数量、权限、状态和处理流程保持不变。
+
+主要文件：`OrderListCards.kt`实现共用卡片与两个业务卡片；`OrderExceptionsScreens.kt`和`OfflineShippingScreens.kt`接入卡片；`OrderProductPreview.kt`、异常及发货DTO适配摘要；四份`strings_order_cards.xml`提供文案；`OrderProductPreviewTest.kt`验证新旧协议及前导零，`OrderListCardsTest.kt`验证双列表点击、大字体和缺失商品，并生成仅用于验收的实机截图。
+
+Windows验证：`:app:testDemoDebugUnitTest`464项通过，`:app:spotlessKotlinCheck`、`:app:assembleDemoDebug`通过。i6310/API25执行`:app:connectedDemoDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.google.samples.apps.nowinandroid.fscm.ui.OrderListCardsTest`，2项通过；截图为隔离测试商品，不代表真实订单或产品。JBR25/JaCoCo既有告警不作为覆盖率结果。后端在WSL最新工程完成，PostgreSQL相关回归通过。已纳入本地提交（编号见 Git 历史）、未推送、未发布生产；没有修改数据库结构、权限或真实订单数据。未在生产账号上验收新接口和远程产品图加载；无设计约束偏离。

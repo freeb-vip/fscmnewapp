@@ -146,16 +146,7 @@ fun OrderExceptionsListScreen(scopeKey: String, onOpen: (Long) -> Unit) {
                 }
                 if (!state.loading && state.error == null && state.rows.isEmpty()) item { Text(stringResource(R.string.oe_empty), Modifier.padding(16.dp)) }
                 items(state.rows, key = { it.id }) { report ->
-                    Card(onClick = { onOpen(report.id) }, modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(report.order.number, fontWeight = FontWeight.Bold)
-                            Text(report.types.joinToString("、") { it.name }, color = MaterialTheme.colorScheme.primary)
-                            Text(stringResource(R.string.oe_tracking_value, report.order.tracking.joinToString(", ").ifBlank { stringResource(R.string.oe_not_recorded) }))
-                            Text(stringResource(R.string.oe_warehouse_value, report.warehouse.name.ifBlank { stringResource(R.string.oe_not_recorded) }))
-                            Text(stringResource(R.string.oe_registered_value, report.createdAt))
-                            Text(if (report.status == "resolved") stringResource(R.string.oe_resolved) else stringResource(R.string.oe_open))
-                        }
-                    }
+                    ExceptionOrderListCard(report) { onOpen(report.id) }
                 }
                 if (state.rows.size < state.total) item { OutlinedButton(onClick = { viewModel.refresh(true) }, enabled = !state.loading, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.oe_load_more)) } }
             }

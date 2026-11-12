@@ -43,6 +43,7 @@ import javax.inject.Singleton
 
 @Serializable
 data class ShippingTask(
+    @SerialName("product_preview") val productPreview: OrderProductPreview? = null,
     @SerialName("order_id") val orderId: Long,
     @SerialName("order_no") val orderNo: String = "",
     val warehouse: String = "",

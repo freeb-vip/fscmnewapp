@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="order_card_product_missing">ไม่มีข้อมูลสินค้า</string>
+    <string name="order_card_image_missing">ไม่มีรูปสินค้า</string>
+    <string name="order_card_products">สินค้า %1$d รายการ</string>
+    <string name="order_card_warehouse">คลังสินค้า: %1$s</string>
+    <string name="order_card_registered">ลงทะเบียน: %1$s</string>
+</resources>

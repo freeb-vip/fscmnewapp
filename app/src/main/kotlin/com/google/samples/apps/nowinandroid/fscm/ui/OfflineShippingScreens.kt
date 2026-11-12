@@ -115,14 +115,7 @@ fun OfflineShippingListScreen(scopeKey: String, onOpen: (Long) -> Unit) {
                 state.error?.let { item { ShippingErrorNotice(it) { viewModel.refresh() } } }
                 if (!state.loading && state.rows.isEmpty()) item { Text(stringResource(R.string.shipping_empty), Modifier.padding(16.dp)) }
                 items(state.rows, key = ShippingTask::orderId) { task ->
-                    Card(onClick = { onOpen(task.orderId) }, modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(task.orderNo, fontWeight = FontWeight.Bold)
-                            Text(task.warehouse)
-                            Text(stringResource(R.string.shipping_task_counts, task.skuCount, task.quantity))
-                            Text(stringResource(shippingStageLabel(task.stage)), color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
+                    ShippingOrderListCard(task) { onOpen(task.orderId) }
                 }
                 if (state.rows.size < state.total) {
                     item {

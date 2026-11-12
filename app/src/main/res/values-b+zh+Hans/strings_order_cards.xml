@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="order_card_product_missing">暂无商品信息</string>
+    <string name="order_card_image_missing">暂无商品图片</string>
+    <string name="order_card_products">共 %1$d 项商品</string>
+    <string name="order_card_warehouse">仓库：%1$s</string>
+    <string name="order_card_registered">登记：%1$s</string>
+</resources>

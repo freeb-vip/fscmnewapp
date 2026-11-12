@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="order_card_product_missing">ကုန်ပစ္စည်းအချက်အလက် မရှိပါ</string>
+    <string name="order_card_image_missing">ကုန်ပစ္စည်းပုံ မရှိပါ</string>
+    <string name="order_card_products">ကုန်ပစ္စည်း %1$d မျိုး</string>
+    <string name="order_card_warehouse">ဂိုဒေါင်: %1$s</string>
+    <string name="order_card_registered">မှတ်တမ်းတင်ချိန်: %1$s</string>
+</resources>

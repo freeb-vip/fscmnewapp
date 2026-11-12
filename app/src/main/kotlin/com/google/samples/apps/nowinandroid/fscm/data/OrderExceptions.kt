@@ -92,6 +92,7 @@ data class WarehouseExceptionCollaborator(@SerialName("user_id") val userId: Lon
 
 @Serializable
 data class WarehouseException(
+    @SerialName("product_preview") val productPreview: OrderProductPreview? = null,
     @SerialName("scope_items") val scopeItems: List<TicketScopeItem> = emptyList(),
     val id: Long,
     val version: Long = 0,
