@@ -29,6 +29,19 @@ class OrderExceptionsTest {
     private val json = Json { ignoreUnknownKeys = true }
 
     @Test
+    fun authorizedExceptionEntrySurvivesApplicationCatalogFiltering() {
+        val entry = MobileAppEntry(key = "order_exceptions", title = "异常订单", permission = "mobile-app:order-exceptions", sort = 44)
+        val permissions = listOf(entry.permission)
+        val overview = MobileWorkbenchOverview(appConfig = MobileAppConfig(apps = listOf(entry)))
+        assertEquals(listOf(entry.key), visibleMobileApps(overview, permissions).map { it.key })
+        assertEquals(listOf(entry.key), visibleMobileApps(MobileWorkbenchOverview(apps = listOf(entry)), permissions).map { it.key })
+        assertEquals(emptyList(), visibleMobileApps(overview, emptyList()))
+        assertEquals(emptyList(), visibleMobileApps(overview, permissions, SessionMode.Offline))
+        assertEquals(emptyList(), visibleMobileApps(overview.copy(appConfig = MobileAppConfig(apps = listOf(entry.copy(visible = false)))), permissions))
+        assertEquals(emptyList(), visibleMobileApps(null, permissions))
+    }
+
+    @Test
     fun resolutionIncludesRequiredDefaultResponsibilityAndStableRequest() {
         val form = WarehouseExceptionForm(requestId = "11111111-1111-4111-8111-111111111111", version = 3, problemType = "operation", participantIds = listOf("scan:1"))
         val first = encodeWarehouseExceptionForm(json, form).jsonObject
