@@ -42,10 +42,12 @@ class OrderExceptionsTest {
     }
 
     @Test
-    fun resolutionIncludesRequiredDefaultResponsibilityAndStableRequest() {
-        val form = WarehouseExceptionForm(requestId = "11111111-1111-4111-8111-111111111111", version = 3, problemType = "operation", participantIds = listOf("scan:1"))
+    fun resolutionOmitsLiabilityFieldsAndKeepsStableRequest() {
+        val form = WarehouseExceptionForm(requestId = "11111111-1111-4111-8111-111111111111", version = 3, problemType = "operation")
         val first = encodeWarehouseExceptionForm(json, form).jsonObject
-        assertEquals("person", first.getValue("responsibility_type").jsonPrimitive.content)
+        assertFalse("responsibility_type" in first)
+        assertFalse("responsibility_note" in first)
+        assertFalse("participant_ids" in first)
         assertEquals(0, first.getValue("attachment_keys").jsonArray.size)
         assertEquals("", first.getValue("measures").jsonPrimitive.content)
         assertEquals(first, encodeWarehouseExceptionForm(json, form))
@@ -62,8 +64,8 @@ class OrderExceptionsTest {
     }
 
     @Test
-    fun nonPersonnelResponsibilityAndPhotoReferencesSurviveDraftRestore() {
-        val form = WarehouseExceptionForm(version = 3, problemType = "courier", responsibilityType = "courier", responsibilityNote = "运输破损", attachmentKeys = listOf("private/photo"))
+    fun measuresAndPhotoReferencesSurviveDraftRestore() {
+        val form = WarehouseExceptionForm(version = 3, problemType = "courier", measures = "改进包装", attachmentKeys = listOf("private/photo"))
         val encoded = encodeWarehouseExceptionForm(json, form)
         assertEquals(form, json.decodeFromJsonElement(WarehouseExceptionForm.serializer(), encoded))
     }
@@ -77,13 +79,12 @@ class OrderExceptionsTest {
 
     @Test
     fun refreshedParticipantsPreserveUnsubmittedMeasuresAndPhotos() {
-        val draft = WarehouseExceptionForm(version = 1, problemType = "operation", participantIds = listOf("scan:old"), measures = "更换包装", attachmentKeys = listOf("private/photo"), terminateCollaborations = true)
+        val draft = WarehouseExceptionForm(version = 1, problemType = "operation", measures = "更换包装", attachmentKeys = listOf("private/photo"), terminateCollaborations = true)
         val latest = WarehouseException(id = 1, version = 3, operations = listOf(WarehouseExceptionOperation("scan:new")), collaborationVersion = 7)
         val restored = restoreWarehouseExceptionForm(latest, draft)
         assertEquals(draft.requestId, restored.requestId)
         assertEquals("更换包装", restored.measures)
         assertEquals(draft.attachmentKeys, restored.attachmentKeys)
-        assertEquals(emptyList(), restored.participantIds)
         assertEquals(3L, restored.version)
         assertEquals(7L, restored.collaborationVersion)
         assertFalse(restored.terminateCollaborations)
@@ -91,7 +92,7 @@ class OrderExceptionsTest {
 
     @Test
     fun reopeningAfterAmbiguousSuccessStartsANewProcessingRound() {
-        val draft = WarehouseExceptionForm(version = 1, problemType = "operation", participantIds = listOf("scan:1"), attachmentKeys = listOf("photo"))
+        val draft = WarehouseExceptionForm(version = 1, problemType = "operation", attachmentKeys = listOf("photo"))
         val latest = WarehouseException(id = 1, version = 4, resolutions = listOf(WarehouseExceptionResolution(id = 1, problemType = "operation", responsibilityType = "person", requestId = draft.requestId)))
         val restored = restoreWarehouseExceptionForm(latest, draft)
         assertNotEquals(draft.requestId, restored.requestId)

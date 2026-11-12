@@ -20,6 +20,7 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.fscm.data.ExceptionScope
 import com.google.samples.apps.nowinandroid.fscm.data.FscmApiException
 import com.google.samples.apps.nowinandroid.fscm.data.OrderExceptionsRepository
@@ -37,9 +38,16 @@ import kotlinx.serialization.json.Json
 import java.io.File
 import javax.inject.Inject
 
-private fun Throwable.exceptionMessage(): String = (this as? FscmApiException)?.serverMessage
-    ?: message?.takeIf { this is IllegalArgumentException }
-    ?: "请求失败，请检查网络或访问权限后重试"
+private fun Throwable.exceptionMessage(): UiText = UiText.Resource(
+    when {
+        message == "exception_photo_large" -> R.string.oe_photo_large
+        message == "exception_photo_size" -> R.string.oe_photo_size
+        (this as? FscmApiException)?.statusCode == 409 -> R.string.oe_conflict
+        (this as? FscmApiException)?.statusCode in listOf(401, 403) -> R.string.oe_permission_error
+        (this as? FscmApiException)?.statusCode == 400 -> R.string.oe_invalid_input
+        else -> R.string.oe_request_error
+    },
+)
 
 data class ExceptionsListState(
     val rows: List<WarehouseException> = emptyList(),
@@ -49,7 +57,7 @@ data class ExceptionsListState(
     val completed: Long = 0,
     val page: Int = 0,
     val loading: Boolean = false,
-    val error: String? = null,
+    val error: UiText? = null,
 )
 
 @HiltViewModel
@@ -96,7 +104,7 @@ data class ExceptionDetailState(
     val detail: WarehouseException? = null,
     val form: WarehouseExceptionForm = WarehouseExceptionForm(),
     val busy: Boolean = false,
-    val error: String? = null,
+    val error: UiText? = null,
     val pending: Boolean = false,
     val failedUpload: Uri? = null,
     val uploadedNames: Map<String, String> = emptyMap(),
@@ -177,8 +185,8 @@ class OrderExceptionDetailViewModel @Inject constructor(
         val current = state.value
         if (current.busy || current.failedUpload != null) return
         val form = saved.get<String>("pending")?.let { json.decodeFromString(WarehouseExceptionForm.serializer(), it) } ?: current.form
-        if (form.problemType.isEmpty() || (form.responsibilityType == "person" && form.participantIds.isEmpty()) || (form.responsibilityType != "person" && form.responsibilityNote.isBlank())) {
-            mutable.update { it.copy(error = "请选择问题类型并填写责任归属") }
+        if (form.problemType.isEmpty()) {
+            mutable.update { it.copy(error = UiText.Resource(R.string.oe_select_problem)) }
             return
         }
         saved["pending"] = json.encodeToString(WarehouseExceptionForm.serializer(), form)
@@ -195,7 +203,7 @@ class OrderExceptionDetailViewModel @Inject constructor(
                 val responseStatus = (error as? FscmApiException)?.statusCode
                 val definite = responseStatus != null && responseStatus in 400..499
                 if (definite) saved.remove<String>("pending")
-                mutable.update { it.copy(busy = false, pending = !definite, error = if (definite) error.exceptionMessage() else "尚未确认提交结果，请点击“确认处理结果”使用原请求重试") }
+                mutable.update { it.copy(busy = false, pending = !definite, error = if (definite) error.exceptionMessage() else UiText.Resource(R.string.oe_pending_result)) }
                 if ((error as? FscmApiException)?.statusCode == 409) {
                     try {
                         val latest = repository.detail(requireNotNull(scope), reportId)

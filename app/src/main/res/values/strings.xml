@@ -73,6 +73,6 @@
     <string name="device_jifeng_box_label">Jifeng carton</string>
     <string name="device_box_label_mapping_offline_warning">Local Jifeng mapping. Status and ownership will be validated when online.</string>
     <string name="device_supplier_box_label">Supplier carton</string>
-    <string name="order_exceptions_title">异常订单</string>
-    <string name="order_exceptions_description">查看异常订单并登记整改结果</string>
+    <string name="order_exceptions_title">Order exceptions</string>
+    <string name="order_exceptions_description">Review order exceptions and record corrections</string>
 </resources>

@@ -36,7 +36,7 @@ import javax.inject.Singleton
 @Serializable
 data class WarehouseExceptionFile(
     @SerialName("object_key") val key: String,
-    val name: String = "图片",
+    val name: String = "",
     @SerialName("mime_type") val mimeType: String = "image/jpeg",
 )
 
@@ -65,7 +65,7 @@ data class WarehouseExceptionOperation(
 data class WarehouseExceptionResolution(
     val id: Long,
     @SerialName("problem_type") val problemType: String,
-    @SerialName("responsibility_type") val responsibilityType: String,
+    @SerialName("responsibility_type") val responsibilityType: String = "",
     @SerialName("responsibility_note") val responsibilityNote: String = "",
     val measures: String = "",
     @SerialName("actor_name") val actor: String = "",
@@ -125,9 +125,6 @@ data class WarehouseExceptionForm(
     @SerialName("request_id") val requestId: String = UUID.randomUUID().toString(),
     val version: Long = 0,
     @SerialName("problem_type") val problemType: String = "",
-    @SerialName("responsibility_type") val responsibilityType: String = "person",
-    @SerialName("participant_ids") val participantIds: List<String> = emptyList(),
-    @SerialName("responsibility_note") val responsibilityNote: String = "",
     val measures: String = "",
     @SerialName("attachment_keys") val attachmentKeys: List<String> = emptyList(),
     @SerialName("terminate_collaborations") val terminateCollaborations: Boolean = false,
@@ -139,8 +136,7 @@ internal fun restoreWarehouseExceptionForm(report: WarehouseException, draft: Wa
     if (draft == null || committed || report.status != "open") {
         return WarehouseExceptionForm(version = report.version, collaborationVersion = report.collaborationVersion)
     }
-    val available = report.operations.map { it.id }.toSet()
-    return draft.copy(version = report.version, collaborationVersion = report.collaborationVersion, terminateCollaborations = false, participantIds = draft.participantIds.filter { it in available })
+    return draft.copy(version = report.version, collaborationVersion = report.collaborationVersion, terminateCollaborations = false)
 }
 
 internal fun encodeWarehouseExceptionForm(json: Json, form: WarehouseExceptionForm) =
@@ -214,14 +210,14 @@ class OrderExceptionsRepository @Inject constructor(
                         val count = source.read(buffer)
                         if (count < 0) break
                         total += count
-                        require(total <= 25 * 1024 * 1024) { "原图过大，请选择较小图片" }
+                        require(total <= 25 * 1024 * 1024) { "exception_photo_large" }
                         target.write(buffer, 0, count)
                     }
                 }
             }
             prepared = normalizeShippingPhoto(file)
-            require(prepared.length() in 1L..(5L * 1024 * 1024)) { "图片需小于5MB" }
-            val part = MultipartBody.Part.createFormData("file", "整改照片.jpg", prepared.readBytes().toRequestBody("image/jpeg".toMediaType()))
+            require(prepared.length() in 1L..(5L * 1024 * 1024)) { "exception_photo_size" }
+            val part = MultipartBody.Part.createFormData("file", "correction.jpg", prepared.readBytes().toRequestBody("image/jpeg".toMediaType()))
             val result: WarehouseExceptionFile = api.upload("mobile/order-exceptions/$id/attachments?request_id=$requestId", part, headers = scope.headers())
             verify(scope)
             result

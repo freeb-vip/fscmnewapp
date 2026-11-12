@@ -22,6 +22,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -29,13 +30,18 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddAPhoto
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -55,6 +61,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -64,27 +71,31 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmPageTop
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseExceptionFile
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseExceptionOperation
 import kotlinx.coroutines.CancellationException
 
-internal fun exceptionProblemLabel(code: String): String = when (code) {
-    "operation" -> "作业问题"
-    "courier" -> "快递问题"
-    "process" -> "流程问题"
-    "person" -> "作业人员"
-    else -> "其它"
-}
+@Composable
+internal fun exceptionProblemLabel(code: String): String = stringResource(
+    when (code) {
+        "operation" -> R.string.oe_problem_operation
+        "courier" -> R.string.oe_problem_courier
+        "process" -> R.string.oe_problem_process
+        else -> R.string.oe_problem_other
+    },
+)
 
-private fun WarehouseExceptionOperation.displayName() = name.ifBlank { operator }.ifBlank { "未记录" }
-private fun WarehouseExceptionOperation.stageName() = operation.ifBlank {
-    when (code.uppercase()) {
-        "PICKING" -> "拣货"
-        "PACKING" -> "打包"
-        "INSPECTION" -> "验货"
-        else -> code
-    }
+@Composable
+private fun WarehouseExceptionOperation.displayName() = name.ifBlank { operator }.ifBlank { stringResource(R.string.oe_not_recorded) }
+
+@Composable
+private fun WarehouseExceptionOperation.stageName() = when (code.uppercase()) {
+    "PICKING" -> stringResource(R.string.oe_picking)
+    "PACKING" -> stringResource(R.string.oe_packing)
+    "INSPECTION" -> stringResource(R.string.oe_inspection)
+    else -> operation.ifBlank { code }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -100,28 +111,28 @@ fun OrderExceptionsListScreen(scopeKey: String, onOpen: (Long) -> Unit) {
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refresh() }
     Column(Modifier.fillMaxSize().background(FscmPageTop)) {
         PrimaryTabRow(selectedTabIndex = if (state.resolved) 1 else 0) {
-            Tab(selected = !state.resolved, onClick = { viewModel.select(false) }, text = { Text("待处理 (${state.open})") })
-            Tab(selected = state.resolved, onClick = { viewModel.select(true) }, text = { Text("已处理 (${state.completed})") })
+            Tab(selected = !state.resolved, onClick = { viewModel.select(false) }, text = { Text(stringResource(R.string.oe_open_count, state.open)) })
+            Tab(selected = state.resolved, onClick = { viewModel.select(true) }, text = { Text(stringResource(R.string.oe_resolved_count, state.completed)) })
         }
-        TextButton(onClick = { filtersOpen = !filtersOpen }) { Text(if (filtersOpen) "收起查询条件" else "按订单号、运单号、SKU、工号查询") }
+        TextButton(onClick = { filtersOpen = !filtersOpen }) { Text(if (filtersOpen) stringResource(R.string.oe_hide_filters) else stringResource(R.string.oe_filters)) }
         if (filtersOpen) {
             Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedTextField(order, { order = it }, label = { Text("订单号") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(tracking, { tracking = it }, label = { Text("运单号") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(order, { order = it }, label = { Text(stringResource(R.string.oe_order)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(tracking, { tracking = it }, label = { Text(stringResource(R.string.oe_tracking)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(sku, { sku = it }, label = { Text("SKU") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(employee, { employee = it }, label = { Text("员工工号") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(employee, { employee = it }, label = { Text(stringResource(R.string.oe_employee)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = {
                         viewModel.search(mapOf("order_no" to order, "tracking_no" to tracking, "sku" to sku, "employee_code" to employee))
                         filtersOpen = false
-                    }) { Text("查询") }
+                    }) { Text(stringResource(R.string.oe_search)) }
                     TextButton(onClick = {
                         order = ""
                         tracking = ""
                         sku = ""
                         employee = ""
                         viewModel.search(emptyMap())
-                    }) { Text("清空") }
+                    }) { Text(stringResource(R.string.oe_clear)) }
                 }
             }
         }
@@ -129,24 +140,24 @@ fun OrderExceptionsListScreen(scopeKey: String, onOpen: (Long) -> Unit) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 state.error?.let { message ->
                     item {
-                        Text(message, color = MaterialTheme.colorScheme.error)
-                        TextButton(onClick = { viewModel.refresh() }) { Text("重试") }
+                        Text(message.resolve(), color = MaterialTheme.colorScheme.error)
+                        TextButton(onClick = { viewModel.refresh() }) { Text(stringResource(R.string.oe_retry)) }
                     }
                 }
-                if (!state.loading && state.error == null && state.rows.isEmpty()) item { Text("暂无符合条件的异常订单", Modifier.padding(16.dp)) }
+                if (!state.loading && state.error == null && state.rows.isEmpty()) item { Text(stringResource(R.string.oe_empty), Modifier.padding(16.dp)) }
                 items(state.rows, key = { it.id }) { report ->
                     Card(onClick = { onOpen(report.id) }, modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(report.order.number, fontWeight = FontWeight.Bold)
                             Text(report.types.joinToString("、") { it.name }, color = MaterialTheme.colorScheme.primary)
-                            Text("运单：${report.order.tracking.joinToString("、").ifBlank { "未记录" }}")
-                            Text("发货仓：${report.warehouse.name.ifBlank { "未记录" }}")
-                            Text("登记：${report.createdAt}")
-                            Text(if (report.status == "resolved") "已处理" else "待处理")
+                            Text(stringResource(R.string.oe_tracking_value, report.order.tracking.joinToString(", ").ifBlank { stringResource(R.string.oe_not_recorded) }))
+                            Text(stringResource(R.string.oe_warehouse_value, report.warehouse.name.ifBlank { stringResource(R.string.oe_not_recorded) }))
+                            Text(stringResource(R.string.oe_registered_value, report.createdAt))
+                            Text(if (report.status == "resolved") stringResource(R.string.oe_resolved) else stringResource(R.string.oe_open))
                         }
                     }
                 }
-                if (state.rows.size < state.total) item { OutlinedButton(onClick = { viewModel.refresh(true) }, enabled = !state.loading, modifier = Modifier.fillMaxWidth()) { Text("加载更多") } }
+                if (state.rows.size < state.total) item { OutlinedButton(onClick = { viewModel.refresh(true) }, enabled = !state.loading, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.oe_load_more)) } }
             }
         }
     }
@@ -157,6 +168,7 @@ private fun ExceptionPhotos(files: List<WarehouseExceptionFile>, viewModel: Orde
     files.forEach { file ->
         var bytes by remember(file.key) { mutableStateOf<ByteArray?>(null) }
         var failed by remember(file.key) { mutableStateOf(false) }
+        var preview by remember(file.key) { mutableStateOf(false) }
         var attempt by remember(file.key) { mutableStateOf(0) }
         LaunchedEffect(file.key, attempt) {
             failed = false
@@ -167,8 +179,12 @@ private fun ExceptionPhotos(files: List<WarehouseExceptionFile>, viewModel: Orde
                 failed = true
             }
         }
-        if (failed) TextButton(onClick = { attempt++ }) { Text("图片加载失败，点击重试") }
-        bytes?.let { AsyncImage(model = it, contentDescription = file.name, modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp)) }
+        if (failed) TextButton(onClick = { attempt++ }) { Text(stringResource(R.string.oe_photo_retry)) }
+        bytes?.let { image ->
+            AsyncImage(model = image, contentDescription = stringResource(R.string.oe_photo_hint), modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp).clickable { preview = true })
+            Text(stringResource(R.string.oe_photo_hint), style = MaterialTheme.typography.labelSmall)
+            if (preview) ExceptionPhotoViewer(image, file.name) { preview = false }
+        }
     }
 }
 
@@ -182,22 +198,33 @@ fun OrderExceptionDetailScreen(id: Long, scopeKey: String) {
         val uri = cameraUri?.let(Uri::parse)
         if (success && uri != null) viewModel.upload(uri)
     }
-    var cameraError by remember { mutableStateOf<String?>(null) }
+    var cameraError by remember { mutableStateOf<UiText?>(null) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) cameraUri?.let { camera.launch(Uri.parse(it)) } else cameraError = "请允许相机权限后拍照，也可以从相册选择图片"
+        if (granted) cameraUri?.let { uri -> runCatching { camera.launch(Uri.parse(uri)) }.onFailure { cameraError = UiText.Resource(R.string.oe_camera_error) } } else cameraError = UiText.Resource(R.string.oe_camera_permission)
     }
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> if (uri != null) viewModel.upload(uri) }
     var handling by rememberSaveable(id, scopeKey) { mutableStateOf(false) }
+    var editingMeasures by rememberSaveable(id, scopeKey) { mutableStateOf(false) }
+    var confirming by rememberSaveable(id, scopeKey) { mutableStateOf(false) }
+    if (editingMeasures && !state.pending) {
+        ExceptionMeasuresEditor(state.form.measures, { text -> viewModel.edit { it.copy(measures = text) } }, { editingMeasures = false })
+    }
+    if (confirming && !state.busy && state.detail?.status == "open") {
+        ExceptionCorrectionConfirmation(onConfirm = {
+            confirming = false
+            viewModel.submit()
+        }, onDismiss = { confirming = false })
+    }
     LaunchedEffect(id, scopeKey) { viewModel.load(id) }
     val detail = state.detail
     val editable = !state.busy && !state.pending
-    LazyColumn(Modifier.fillMaxSize().background(FscmPageTop), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        cameraError?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
+    LazyColumn(Modifier.fillMaxSize().background(FscmPageTop).imePadding(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        cameraError?.let { item { Text(it.resolve(), color = MaterialTheme.colorScheme.error) } }
         if (state.busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         state.error?.let { message ->
             item {
-                Text(message, color = MaterialTheme.colorScheme.error)
-                if (!state.pending) TextButton(onClick = { viewModel.load(id) }, enabled = !state.busy) { Text(if (detail == null) "重试" else "重新加载详情") }
+                Text(message.resolve(), color = MaterialTheme.colorScheme.error)
+                if (!state.pending) TextButton(onClick = { viewModel.load(id) }, enabled = !state.busy) { Text(if (detail == null) stringResource(R.string.oe_retry) else stringResource(R.string.oe_reload)) }
             }
         }
         if (detail != null) {
@@ -205,113 +232,106 @@ fun OrderExceptionDetailScreen(id: Long, scopeKey: String) {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(detail.order.number, style = MaterialTheme.typography.titleLarge)
-                        Text(if (detail.status == "resolved") "已处理" else "待处理", color = MaterialTheme.colorScheme.primary)
-                        Text("发货仓：${detail.warehouse.name.ifBlank { "未记录" }}")
-                        Text("运单号：${detail.order.tracking.joinToString("、").ifBlank { "未记录" }}")
-                        Text("SKU：${detail.skus.joinToString("、").ifBlank { "未记录" }}")
-                        Text("异常类型：${detail.types.joinToString("、") { it.name }}")
+                        Text(if (detail.status == "resolved") stringResource(R.string.oe_resolved) else stringResource(R.string.oe_open), color = MaterialTheme.colorScheme.primary)
+                        Text(stringResource(R.string.oe_warehouse_value, detail.warehouse.name.ifBlank { stringResource(R.string.oe_not_recorded) }))
+                        Text(stringResource(R.string.oe_tracking_value, detail.order.tracking.joinToString(", ").ifBlank { stringResource(R.string.oe_not_recorded) }))
+                        Text("SKU：${detail.skus.joinToString("、").ifBlank { stringResource(R.string.oe_not_recorded) }}")
+                        Text(stringResource(R.string.oe_types_value, detail.types.joinToString(", ") { it.name }))
                         TicketScopeRows(detail.scopeItems)
                         if (detail.description.isNotBlank()) Text(detail.description)
                         detail.ticket?.let {
-                            Text(
-                                "关联工单：${it.number} · ${when (it.status) {
-                                    "open" -> "待处理"
-                                    "in_progress" -> "处理中"
-                                    "pending" -> "挂起"
-                                    "resolved" -> "已解决"
-                                    "closed" -> "已关闭"
-                                    else -> it.status
-                                }}",
-                            )
+                            Text(stringResource(R.string.oe_ticket_value, it.number, localizedStatusText(it.status)))
                         }
                         ExceptionPhotos(detail.attachments, viewModel)
                     }
                 }
             }
-            item { Text("订单作业人员", style = MaterialTheme.typography.titleMedium) }
+            item { Text(stringResource(R.string.oe_operations), style = MaterialTheme.typography.titleMedium) }
             items(detail.operations, key = { it.id }) { operation ->
-                Text("${operation.displayName()} · ${operation.employeeCode.ifBlank { "工号未记录" }}\n${operation.stageName()} · ${operation.occurredAt ?: "${operation.date}（操作时间未记录）"}")
+                Text("${operation.displayName()} · ${operation.employeeCode.ifBlank { stringResource(R.string.oe_employee_missing) }}\n${operation.stageName()} · ${operation.occurredAt ?: stringResource(R.string.oe_time_missing, operation.date)}")
             }
             detail.resolutions.forEach { result ->
                 item(key = "resolution-${result.id}") {
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("处理结果 · ${exceptionProblemLabel(result.problemType)}", fontWeight = FontWeight.Bold)
-                            Text("责任归属：${if (result.responsibilityType == "person") result.participants.joinToString("、") { it.displayName() } else result.responsibilityNote}")
-                            if (result.measures.isNotBlank()) Text("整改措施：${result.measures}")
-                            Text("处理人：${result.actor} · ${result.createdAt}")
+                            Text(stringResource(R.string.oe_result, exceptionProblemLabel(result.problemType)), fontWeight = FontWeight.Bold)
+                            if (result.measures.isNotBlank()) Text(stringResource(R.string.oe_measures_value, result.measures))
+                            Text(stringResource(R.string.oe_actor_value, result.actor, result.createdAt))
                             ExceptionPhotos(result.attachments, viewModel)
                         }
                     }
                 }
             }
-            if (detail.resolutions.isEmpty() && detail.handlingNote.isNotBlank()) item { Text("历史处理说明：${detail.handlingNote}") }
+            if (detail.resolutions.isEmpty() && detail.handlingNote.isNotBlank()) item { Text(stringResource(R.string.oe_history_value, detail.handlingNote)) }
             if (detail.status == "open" && detail.canResolve) {
-                if (!handling && !state.pending) item { Button(onClick = { handling = true }, modifier = Modifier.fillMaxWidth()) { Text("处理异常") } }
+                if (!handling && !state.pending) item { Button(onClick = { handling = true }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.oe_handle)) } }
                 if (handling || state.pending) {
-                    item { Text("问题类型（必填）", fontWeight = FontWeight.Bold) }
+                    item { Text(stringResource(R.string.oe_problem_required), fontWeight = FontWeight.Bold) }
                     items(listOf("operation", "courier", "process", "other")) { code ->
                         Row {
                             RadioButton(selected = state.form.problemType == code, enabled = editable, onClick = { viewModel.edit { it.copy(problemType = code) } })
                             Text(exceptionProblemLabel(code), Modifier.padding(top = 12.dp))
                         }
                     }
-                    item { Text("责任归属（必填）", fontWeight = FontWeight.Bold) }
-                    items(listOf("person", "courier", "process", "other")) { code ->
-                        Row {
-                            RadioButton(selected = state.form.responsibilityType == code, enabled = editable, onClick = { viewModel.edit { it.copy(responsibilityType = code, participantIds = emptyList(), responsibilityNote = "") } })
-                            Text(if (code == "process") "流程／部门" else exceptionProblemLabel(code), Modifier.padding(top = 12.dp))
-                        }
-                    }
-                    if (state.form.responsibilityType == "person") {
-                        items(detail.operations, key = { "choose-${it.id}" }) { person ->
-                            Row {
-                                Checkbox(checked = person.id in state.form.participantIds, enabled = editable, onCheckedChange = { checked -> viewModel.edit { it.copy(participantIds = if (checked) it.participantIds + person.id else it.participantIds - person.id) } })
-                                Text("${person.displayName()} · ${person.stageName()}", Modifier.padding(top = 12.dp))
-                            }
-                        }
-                    } else {
-                        item { OutlinedTextField(state.form.responsibilityNote, { text -> if (text.length <= 500) viewModel.edit { it.copy(responsibilityNote = text) } }, enabled = editable, label = { Text("责任对象或说明（必填）") }, modifier = Modifier.fillMaxWidth()) }
-                    }
-                    item { OutlinedTextField(state.form.measures, { text -> if (text.length <= 2000) viewModel.edit { it.copy(measures = text) } }, enabled = editable, label = { Text("整改措施（可选，最多2000字）") }, minLines = 3, modifier = Modifier.fillMaxWidth()) }
                     item {
-                        Text("整改照片（可选，最多9张）")
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(enabled = editable && state.form.attachmentKeys.size < 9, onClick = {
-                                val file = viewModel.cameraFile()
-                                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                                cameraUri = uri.toString()
-                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) camera.launch(uri) else permission.launch(Manifest.permission.CAMERA)
-                            }) { Text("拍照") }
-                            OutlinedButton(enabled = editable && state.form.attachmentKeys.size < 9, onClick = { gallery.launch("image/*") }) { Text("相册") }
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(stringResource(R.string.oe_measures), fontWeight = FontWeight.Bold)
+                            Card(onClick = { editingMeasures = true }, enabled = editable, modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp)) {
+                                Text(state.form.measures.ifBlank { stringResource(R.string.oe_measures_hint) }, Modifier.padding(16.dp), maxLines = 6, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            }
+                            OutlinedButton(onClick = { editingMeasures = true }, enabled = editable, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.oe_edit_measures)) }
+                        }
+                    }
+                    item {
+                        Text(stringResource(R.string.oe_photos))
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), enabled = editable && state.form.attachmentKeys.size < 9, onClick = {
+                                cameraError = null
+                                try {
+                                    val file = viewModel.cameraFile()
+                                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                    cameraUri = uri.toString()
+                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) camera.launch(uri) else permission.launch(Manifest.permission.CAMERA)
+                                } catch (_: Exception) {
+                                    cameraError = UiText.Resource(R.string.oe_camera_error)
+                                }
+                            }) {
+                                Icon(Icons.Default.AddAPhoto, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                                Text(stringResource(R.string.oe_camera))
+                            }
+                            OutlinedButton(modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), enabled = editable && state.form.attachmentKeys.size < 9, onClick = { gallery.launch("image/*") }) {
+                                Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                                Text(stringResource(R.string.oe_gallery))
+                            }
                         }
                     }
                     items(state.form.attachmentKeys, key = { "draft-$it" }) { key ->
                         Row {
-                            Text("已上传照片 ${state.form.attachmentKeys.indexOf(key) + 1}", Modifier.weight(1f))
-                            TextButton(enabled = editable, onClick = { viewModel.edit { it.copy(attachmentKeys = it.attachmentKeys - key) } }) { Text("移除") }
+                            Text(stringResource(R.string.oe_uploaded, state.form.attachmentKeys.indexOf(key) + 1), Modifier.weight(1f))
+                            TextButton(enabled = editable, onClick = { viewModel.edit { it.copy(attachmentKeys = it.attachmentKeys - key) } }) { Text(stringResource(R.string.oe_remove)) }
                         }
                     }
                     state.failedUpload?.let { uri ->
                         item {
                             Row {
-                                TextButton(onClick = { viewModel.upload(uri) }, enabled = !state.busy) { Text("重试上传") }
-                                TextButton(onClick = viewModel::removeFailedUpload, enabled = !state.busy) { Text("移除失败图片") }
+                                TextButton(onClick = { viewModel.upload(uri) }, enabled = !state.busy) { Text(stringResource(R.string.oe_retry_upload)) }
+                                TextButton(onClick = viewModel::removeFailedUpload, enabled = !state.busy) { Text(stringResource(R.string.oe_remove_failed)) }
                             }
                         }
                     }
                     if (detail.pendingCollaborators.isNotEmpty()) {
                         item {
-                            Text("关联工单有 ${detail.pendingCollaborators.size} 名未完成协作人员。提交后将终止这些协作并关闭工单。")
-                            Text(detail.pendingCollaborators.joinToString("、") { it.user?.let { user -> user.name.ifBlank { user.username } } ?: "未记录" })
+                            Text(stringResource(R.string.oe_collaboration_warning, detail.pendingCollaborators.size))
+                            Text(detail.pendingCollaborators.map { it.user?.let { user -> user.name.ifBlank { user.username } } ?: stringResource(R.string.oe_not_recorded) }.joinToString(", "))
                             Row {
                                 Checkbox(checked = state.form.terminateCollaborations, enabled = editable, onCheckedChange = { checked -> viewModel.edit { it.copy(terminateCollaborations = checked) } })
-                                Text("确认统一收尾", Modifier.padding(top = 12.dp))
+                                Text(stringResource(R.string.oe_collaboration_confirm), Modifier.padding(top = 12.dp))
                             }
                         }
                     }
                     item {
-                        Button(onClick = viewModel::submit, enabled = !state.busy && state.failedUpload == null && (state.pending || detail.pendingCollaborators.isEmpty() || state.form.terminateCollaborations), modifier = Modifier.fillMaxWidth()) { Text(if (state.pending) "确认处理结果" else "提交处理并完结关联工单") }
+                        state.error?.let { Text(it.resolve(), color = MaterialTheme.colorScheme.error) }
+                        Button(onClick = { if (state.pending) viewModel.submit() else confirming = true }, enabled = !state.busy && state.failedUpload == null && (state.pending || detail.pendingCollaborators.isEmpty() || state.form.terminateCollaborations), modifier = Modifier.fillMaxWidth()) { Text(if (state.pending) stringResource(R.string.oe_check_result) else stringResource(R.string.oe_submit)) }
                     }
                 }
             }
