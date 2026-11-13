@@ -108,7 +108,7 @@ class PurchaseInsightViewModel @Inject constructor(
     private var catalogRequest: Job? = null
     private var detailRequest: Job? = null
     private var historyRequest: Job? = null
-    private var poll: Job? = null
+    private var catalogLoadedAt = 0L
     private val preferenceMutex = Mutex()
     private var demandGeneration = 0
     private var demandRequest: Job? = null
@@ -125,6 +125,7 @@ class PurchaseInsightViewModel @Inject constructor(
         if (scope != state.value.scope || allowed != state.value.allowed) {
             stop()
             active = true
+            catalogLoadedAt = 0L
             mutableState.value = PurchaseInsightState(scope = scope, allowed = allowed)
         }
         mutableState.update { it.copy(canConfigure = "purchase-insights-config" in session.permissions) }
@@ -132,7 +133,11 @@ class PurchaseInsightViewModel @Inject constructor(
         if (state.value.product.trim() != state.value.appliedProduct) {
             mutableState.update { it.copy(appliedProduct = it.product.trim(), data = null) }
         }
-        loadCatalog()
+        if (!state.value.initialized || System.nanoTime() - catalogLoadedAt >= 300_000_000_000L) {
+            loadCatalog()
+        } else if (state.value.data == null && state.value.detail == null) {
+            load(false)
+        }
     }
 
     fun stop() {
@@ -147,11 +152,10 @@ class PurchaseInsightViewModel @Inject constructor(
         catalogRequest?.cancel()
         detailRequest?.cancel()
         historyRequest?.cancel()
-        poll?.cancel()
         mutableState.update { it.copy(loading = false, loadingMore = false, detailLoading = false, historyLoading = false) }
     }
 
-    private fun loadCatalog() {
+    private fun loadCatalog(force: Boolean = false) {
         if (!state.value.allowed || !active) return
         val own = ++catalogGeneration
         catalogRequest?.cancel()
@@ -160,14 +164,18 @@ class PurchaseInsightViewModel @Inject constructor(
             try {
                 val current = state.value
                 val saved = if (current.initialized) InsightPreferences(current.metrics, current.filter.copy(warehouses = if (current.selectAllByDefault) null else current.filter.warehouses)) else preferences.read(current.scope)
-                val catalog = source.catalog()
+                val catalog = source.catalog(current.scope, force)
                 if (own != catalogGeneration) return@launch
+                if (catalog.options.isEmpty() && catalog.errors.isNotEmpty() && !current.initialized) {
+                    mutableState.update { it.copy(catalogPending = catalog.pending, catalogWarnings = catalog.errors, loading = false, error = "仓库目录暂不可用，请重试") }
+                    return@launch
+                }
                 // While the catalog is still warming, keep the saved selection until it can be validated.
                 if (catalog.pending && catalog.options.isEmpty()) {
                     mutableState.update { it.copy(catalogPending = true, catalogWarnings = catalog.errors, loading = false) }
-                    scheduleCatalog()
                     return@launch
                 }
+                catalogLoadedAt = System.nanoTime()
                 val ids = catalog.options.map { it.id }
                 val selected = saved.filter.warehouses?.filter { it in ids } ?: ids
                 val changed = selected != current.filter.warehouses
@@ -191,20 +199,16 @@ class PurchaseInsightViewModel @Inject constructor(
                 } else {
                     load(false)
                 }
-                if (catalog.pending) scheduleCatalog()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (own == catalogGeneration) mutableState.update { it.copy(loading = false, data = null, detail = null, history = null, error = message(e)) }
+                if (own == catalogGeneration) {
+                    mutableState.update {
+                        val denied = e is SessionExpiredException || e is FscmApiException && e.statusCode in listOf(401, 403)
+                        it.copy(loading = false, initialized = if (denied) false else it.initialized, warehouses = if (denied) emptyList() else it.warehouses, data = if (denied) null else it.data, detail = if (denied) null else it.detail, history = if (denied) null else it.history, error = message(e))
+                    }
+                }
             }
-        }
-    }
-
-    private fun scheduleCatalog() {
-        poll?.cancel()
-        poll = viewModelScope.launch {
-            delay(5000)
-            if (active) loadCatalog()
         }
     }
 
@@ -212,16 +216,14 @@ class PurchaseInsightViewModel @Inject constructor(
         search?.cancel()
         generation++
         request?.cancel()
-        poll?.cancel()
         closeDetail()
-        mutableState.update { it.copy(data = null, loadingMore = false, appliedProduct = it.product.trim()) }
-        loadCatalog()
+        mutableState.update { it.copy(loadingMore = false, appliedProduct = it.product.trim()) }
+        loadCatalog(force = true)
     }
 
     fun product(value: String, immediate: Boolean = false) {
         if (value == state.value.product && !immediate) return
         search?.cancel()
-        poll?.cancel()
         request?.cancel()
         generation++
         mutableState.update { it.copy(product = value, data = null, error = null, loading = true, loadingMore = false) }
@@ -362,7 +364,7 @@ class PurchaseInsightViewModel @Inject constructor(
     }
     fun more() = load(true)
     fun retry() {
-        if (!state.value.initialized) loadCatalog() else load(false)
+        if (!state.value.initialized) loadCatalog(force = true) else load(false)
     }
 
     private fun load(append: Boolean) {
@@ -371,7 +373,6 @@ class PurchaseInsightViewModel @Inject constructor(
         if (append && (current.loading || current.loadingMore || current.data == null || current.data.items.size >= current.data.total)) return
         val own = ++generation
         request?.cancel()
-        poll?.cancel()
         if (current.filter.warehouses.isNullOrEmpty()) {
             mutableState.update { it.copy(data = null, loading = false, loadingMore = false, error = null) }
             return
@@ -391,12 +392,6 @@ class PurchaseInsightViewModel @Inject constructor(
                 val items = if (append) (current.data!!.items + result.items).distinctBy { it.key } else result.items
                 check(!append || (result.page == page && (items.size > current.data!!.items.size || items.size >= result.total))) { "分页数据未前进，请重新查询" }
                 mutableState.update { it.copy(data = result.copy(items = items), loading = false, loadingMore = false, expandedGroup = "", groupData = null) }
-                if ((result.job?.status in listOf("queued", "pending", "running") || result.freshness == "loading") && active) {
-                    poll = viewModelScope.launch {
-                        delay(5000)
-                        if (own == generation && state.value.detail == null) load(false)
-                    }
-                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -405,7 +400,10 @@ class PurchaseInsightViewModel @Inject constructor(
                     mutableState.update { it.copy(data = null, loadingMore = false) }
                     load(false)
                 } else {
-                    mutableState.update { it.copy(loading = false, loadingMore = false, data = if (e is FscmApiException && e.statusCode in listOf(401, 403)) null else it.data, error = message(e)) }
+                    mutableState.update {
+                        val denied = e is SessionExpiredException || e is FscmApiException && e.statusCode in listOf(401, 403)
+                        it.copy(loading = false, loadingMore = false, initialized = if (denied) false else it.initialized, warehouses = if (denied) emptyList() else it.warehouses, data = if (denied) null else it.data, error = message(e))
+                    }
                 }
             }
         }
@@ -422,7 +420,6 @@ class PurchaseInsightViewModel @Inject constructor(
         val current = state.value
         val snapshot = current.data?.snapshotId?.takeIf { it.isNotBlank() } ?: return
         val own = ++detailGeneration
-        poll?.cancel()
         request?.cancel()
         generation++
         detailRequest?.cancel()

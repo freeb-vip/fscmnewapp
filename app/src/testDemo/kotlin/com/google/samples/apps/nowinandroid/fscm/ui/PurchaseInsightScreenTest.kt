@@ -28,6 +28,7 @@ import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -71,6 +72,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
+import java.text.NumberFormat
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -88,7 +90,7 @@ class PurchaseInsightScreenTest {
         override suspend fun demandSettings(binding: Long, product: Long, year: Int) = com.google.samples.apps.nowinandroid.fscm.data.InsightDemandSettings(bindingId = binding, productId = product, year = year)
         override suspend fun saveDemandSettings(value: com.google.samples.apps.nowinandroid.fscm.data.InsightDemandSettings) = value
 
-        override suspend fun catalog() = InsightCatalog(listOf(InsightWarehouse(1, "泰国仓")))
+        override suspend fun catalog(scope: String, refresh: Boolean) = InsightCatalog(listOf(InsightWarehouse(1, "泰国仓")))
         override suspend fun query(body: JsonObject) = InsightPage(
             snapshotId = "fixed",
             sourceTimezone = "Asia/Bangkok",
@@ -119,8 +121,11 @@ class PurchaseInsightScreenTest {
         render()
         compose.onNodeWithText("采购洞察").assertIsDisplayed()
         compose.onNodeWithTag("insight-search").assertIsDisplayed()
-        compose.onNodeWithText("165,091").assertIsDisplayed()
+        compose.onAllNodesWithText("320")[0].assertIsDisplayed()
         capture("list-360")
+        compose.onNodeWithTag("insight-totals").performClick()
+        compose.onNodeWithText("165,091").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("关闭").performScrollTo().performClick()
         compose.onNodeWithTag("insight-filter").performClick()
         compose.onNodeWithText("有销量").performScrollTo().performClick()
         compose.onNodeWithText("应用").performScrollTo().performClick()
@@ -170,7 +175,7 @@ class PurchaseInsightScreenTest {
     @Config(qualifiers = "zh-rCN-w393dp-h850dp")
     fun mediumPhoneShowsCompleteNumbers() {
         render()
-        compose.onNodeWithText("165,091").assertIsDisplayed()
+        compose.onAllNodesWithText("320")[0].assertIsDisplayed()
         capture("list-393")
     }
 
@@ -178,7 +183,7 @@ class PurchaseInsightScreenTest {
     @Config(qualifiers = "zh-rCN-w430dp-h900dp")
     fun widePhoneShowsCompleteNumbers() {
         render()
-        compose.onNodeWithText("165,091").assertIsDisplayed()
+        compose.onAllNodesWithText("320")[0].assertIsDisplayed()
         capture("list-430")
     }
 
@@ -197,6 +202,32 @@ class PurchaseInsightScreenTest {
     @Test
     @Config(qualifiers = "my-w320dp-h800dp")
     fun demandBurmeseSmallLargeType() = demandSheets("my")
+
+    @Test
+    @Config(qualifiers = "en-w320dp-h800dp")
+    fun cleanEnglishListLargeType() = cleanList("en")
+
+    @Test
+    @Config(qualifiers = "th-w320dp-h800dp")
+    fun cleanThaiListLargeType() = cleanList("th")
+
+    @Test
+    @Config(qualifiers = "my-w320dp-h800dp")
+    fun cleanBurmeseListLargeType() = cleanList("my")
+
+    private fun cleanList(language: String) {
+        render(1.5f)
+        val resources = ApplicationProvider.getApplicationContext<Application>().resources
+        compose.onNodeWithText(resources.getString(R.string.pi_title)).assertIsDisplayed()
+        compose.onNodeWithTag("insight-search").assertIsDisplayed()
+        compose.onNodeWithTag("insight-list").performScrollToNode(hasTestTag("insight-row-a"))
+        val expectedSales = NumberFormat.getNumberInstance().format(1280)
+        compose.onNodeWithTag("insight-list").performScrollToNode(hasText(expectedSales))
+        compose.onAllNodesWithText(expectedSales)[0].assertIsDisplayed()
+        capture("clean-$language-320-large")
+        compose.onNodeWithTag("insight-row-actions-a").performClick()
+        compose.onNodeWithText(resources.getString(R.string.pi_demand_basis)).assertIsDisplayed()
+    }
 
     private fun demandSheets(language: String) {
         val resources = ApplicationProvider.getApplicationContext<Application>().resources

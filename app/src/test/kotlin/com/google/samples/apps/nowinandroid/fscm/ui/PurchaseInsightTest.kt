@@ -18,6 +18,7 @@ package com.google.samples.apps.nowinandroid.fscm.ui
 
 import com.google.samples.apps.nowinandroid.fscm.data.FscmApiException
 import com.google.samples.apps.nowinandroid.fscm.data.InsightCatalog
+import com.google.samples.apps.nowinandroid.fscm.data.InsightCatalogCache
 import com.google.samples.apps.nowinandroid.fscm.data.InsightFilter
 import com.google.samples.apps.nowinandroid.fscm.data.InsightHistory
 import com.google.samples.apps.nowinandroid.fscm.data.InsightHistoryRecord
@@ -96,7 +97,12 @@ class PurchaseInsightTest {
             )
         }
         var historyResponse: suspend (Long, String, List<String>) -> InsightHistory = { _, _, dates -> InsightHistory(emptyList(), emptyList(), emptyList(), dates) }
-        override suspend fun catalog() = InsightCatalog(directory)
+        var catalogCalls = 0
+        var catalogResult: suspend () -> InsightCatalog = { InsightCatalog(directory) }
+        override suspend fun catalog(scope: String, refresh: Boolean): InsightCatalog {
+            catalogCalls++
+            return catalogResult()
+        }
         override suspend fun query(body: JsonObject): InsightPage {
             queries += body
             return response(body)
@@ -104,6 +110,111 @@ class PurchaseInsightTest {
         override suspend fun detail(ids: List<Long>, snapshot: String, key: String) = InsightRow(key = key, sku = "TB1-1", localSku = "B1-1", localSkuId = 9)
         override suspend fun scopes() = listOf(InsightHistoryScope(11, 1, "A仓"), InsightHistoryScope(22, 2, "B仓"))
         override suspend fun history(scope: Long, sku: String, dates: List<String>) = historyResponse(scope, sku, dates)
+    }
+
+    @Test
+    fun catalogCacheIsScopedExpiresAndDoesNotCacheColdPending() = runTest {
+        var now = 0L
+        val cache = InsightCatalogCache { now }
+        var calls = 0
+        val load: suspend () -> InsightCatalog = {
+            calls++
+            InsightCatalog(listOf(InsightWarehouse(calls.toLong(), "warehouse")))
+        }
+        assertEquals(1L, cache.read("account-a|workspace-a", load = load).options.single().id)
+        assertEquals(1L, cache.read("account-a|workspace-a", load = load).options.single().id)
+        assertEquals(1, calls)
+        assertEquals(2L, cache.read("account-a|workspace-b", load = load).options.single().id)
+        now += 301_000_000_000L
+        cache.read("account-a|workspace-b", load = load)
+        assertEquals(3, calls)
+        cache.read("account-a|workspace-b", refresh = true, load = load)
+        assertEquals(4, calls)
+        cache.clear()
+        cache.read("account-a|workspace-b") {
+            calls++
+            InsightCatalog(pending = true)
+        }
+        cache.read("account-a|workspace-b", load = load)
+        assertEquals(6, calls)
+        try {
+            cache.read("account-a|workspace-b", refresh = true) { throw FscmApiException("forbidden", 403) }
+        } catch (_: FscmApiException) { }
+        cache.read("account-a|workspace-b", load = load)
+        assertEquals(7, calls)
+        cache.clear()
+        cache.read("account-a|workspace-b") {
+            calls++
+            InsightCatalog(errors = listOf("unavailable"))
+        }
+        cache.read("account-a|workspace-b", load = load)
+        assertEquals(9, calls)
+    }
+
+    @Test
+    fun resumeAndIdleDoNotRepeatDirectoryOrListRequests() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val source = Source()
+            source.catalogResult = { InsightCatalog(source.directory, pending = true) }
+            source.response = { InsightPage(snapshotId = "cached", freshness = "loading", items = listOf(InsightRow(key = "kept")), total = 1) }
+            val vm = PurchaseInsightViewModel(source, Store())
+            vm.enter(session())
+            runCurrent()
+            advanceTimeBy(180_000)
+            runCurrent()
+            vm.stop()
+            vm.enter(session())
+            runCurrent()
+            assertEquals(1, source.catalogCalls)
+            assertEquals(1, source.queries.size)
+            assertEquals("kept", vm.state.value.data?.items?.single()?.key)
+            vm.refresh()
+            runCurrent()
+            assertEquals(2, source.catalogCalls)
+            assertEquals(2, source.queries.size)
+            vm.stop()
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun pendingCatalogNeedsExplicitRetryAndRefreshFailureKeepsRows() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val source = Source()
+            source.catalogResult = { InsightCatalog(pending = true) }
+            val vm = PurchaseInsightViewModel(source, Store())
+            vm.enter(session())
+            runCurrent()
+            advanceTimeBy(180_000)
+            runCurrent()
+            assertEquals(1, source.catalogCalls)
+            assertTrue(source.queries.isEmpty())
+            source.catalogResult = { InsightCatalog(errors = listOf("unavailable")) }
+            vm.retry()
+            runCurrent()
+            assertNotNull(vm.state.value.error)
+            assertFalse(vm.state.value.initialized)
+            assertTrue(source.queries.isEmpty())
+            source.catalogResult = { InsightCatalog(source.directory) }
+            vm.retry()
+            runCurrent()
+            assertNotNull(vm.state.value.data)
+            source.catalogResult = { throw java.io.IOException("offline") }
+            vm.refresh()
+            runCurrent()
+            assertNotNull(vm.state.value.data)
+            assertNotNull(vm.state.value.error)
+            source.catalogResult = { throw FscmApiException("forbidden", 403) }
+            vm.refresh()
+            runCurrent()
+            assertNull(vm.state.value.data)
+            vm.stop()
+        } finally {
+            Dispatchers.resetMain()
+        }
     }
 
     @Test
@@ -151,7 +262,7 @@ class PurchaseInsightTest {
         assertEquals("exact", body["match"]?.jsonPrimitive?.content)
         assertEquals(listOf("A", "B"), body["skus"]?.jsonArray?.map { it.jsonPrimitive.content })
         assertEquals("fixed", body["snapshot_id"]?.jsonPrimitive?.content)
-        assertEquals(50, body["page_size"]?.jsonPrimitive?.int)
+        assertEquals(20, body["page_size"]?.jsonPrimitive?.int)
         assertEquals(listOf(2, 3), body["binding_ids"]?.jsonArray?.map { it.jsonPrimitive.int })
     }
 
@@ -248,7 +359,7 @@ class PurchaseInsightTest {
             val next = CompletableDeferred<InsightPage>()
             source.directory = listOf(InsightWarehouse(1, "A仓"))
             source.response = { next.await() }
-            vm.enter(session())
+            vm.refresh()
             runCurrent()
             assertNull(vm.state.value.data)
             next.complete(InsightPage(snapshotId = "single", items = listOf(InsightRow(key = "allowed")), total = 1))

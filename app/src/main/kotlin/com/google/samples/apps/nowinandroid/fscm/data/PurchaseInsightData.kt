@@ -26,6 +26,8 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -189,7 +191,7 @@ data class InsightFilter(
         put("producing_only", producing)
         put("anomalies_only", anomalies)
         put("page", page)
-        put("page_size", 50)
+        put("page_size", 20)
         put("sort", sort)
         put("order", if (ascending) "asc" else "desc")
         if (!snapshot.isNullOrBlank()) put("snapshot_id", snapshot)
@@ -274,7 +276,7 @@ interface PurchaseInsightSource {
     suspend fun demandSettings(binding: Long, product: Long, year: Int): InsightDemandSettings
     suspend fun saveDemandSettings(value: InsightDemandSettings): InsightDemandSettings
 
-    suspend fun catalog(): InsightCatalog
+    suspend fun catalog(scope: String = "", refresh: Boolean = false): InsightCatalog
     suspend fun query(body: JsonObject): InsightPage
     suspend fun detail(ids: List<Long>, snapshot: String, key: String): InsightRow
     suspend fun scopes(): List<InsightHistoryScope>
@@ -286,6 +288,33 @@ internal fun insightDetailParameters(ids: List<Long>, snapshot: String): Map<Str
     put("snapshot_id", snapshot)
     // The existing endpoint accepts binding_ids only for a merged (2+ warehouse) snapshot.
     if (ids.size > 1) put("binding_ids", ids.joinToString(",", "[", "]"))
+}
+
+// Session/namespace scoped and shared by successive screen instances. Only
+// successful directories are cached; pending empty responses remain retryable.
+internal class InsightCatalogCache(private val now: () -> Long = System::nanoTime) {
+    private val mutex = Mutex()
+    private var scope = ""
+    private var value: InsightCatalog? = null
+    private var expires = 0L
+    suspend fun read(key: String, refresh: Boolean = false, load: suspend () -> InsightCatalog): InsightCatalog = mutex.withLock {
+        if (key != scope) {
+            value = null
+            scope = key
+        }
+        val cached = value
+        if (!refresh && cached != null && now() < expires) return@withLock cached
+        val result = try {
+            load()
+        } catch (e: Exception) {
+            if (e is SessionExpiredException || e is FscmApiException && e.statusCode in listOf(401, 403)) value = null
+            throw e
+        }
+        value = result.takeIf { it.options.isNotEmpty() || !it.pending && it.errors.isEmpty() }
+        expires = now() + (if (result.pending || result.errors.isNotEmpty()) 60L else 300L) * 1_000_000_000
+        result
+    }
+    suspend fun clear() = mutex.withLock { value = null }
 }
 
 @Singleton
@@ -301,8 +330,16 @@ class PurchaseInsightRepository @Inject constructor(private val api: FscmApiClie
             put("factors", JsonArray(value.factors.map { it?.let(::JsonPrimitive) ?: JsonNull }))
         },
     )
-    override suspend fun catalog(): InsightCatalog = api.post("purchase-insights/warehouse-catalog")
-    override suspend fun query(body: JsonObject): InsightPage = api.post("purchase-insights/query", body)
+    private val catalogCache = InsightCatalogCache()
+    override suspend fun catalog(scope: String, refresh: Boolean): InsightCatalog = catalogCache.read(scope, refresh) {
+        api.post("purchase-insights/warehouse-catalog")
+    }
+    override suspend fun query(body: JsonObject): InsightPage = try {
+        api.post("purchase-insights/query", body)
+    } catch (e: FscmApiException) {
+        if (e.statusCode in listOf(401, 403)) catalogCache.clear()
+        throw e
+    }
     override suspend fun detail(ids: List<Long>, snapshot: String, key: String): InsightRow = api.get(
         "purchase-insights/skus/" + URLEncoder.encode(key, "UTF-8").replace("+", "%20"),
         insightDetailParameters(ids, snapshot),
