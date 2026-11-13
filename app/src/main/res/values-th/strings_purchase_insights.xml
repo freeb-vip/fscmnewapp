@@ -2,4 +2,11 @@
 <resources>
     <string name="pi_title">ข้อมูลเชิงลึกการจัดซื้อ</string>
     <string name="pi_description">ยอดขาย สินค้าคงคลัง สินค้าระหว่างทาง และแนวโน้มยอดขาย SKU</string>
+    <string name="pi_rank_products">สินค้า</string>
+    <string name="pi_rank_all">ทั้งหมด</string>
+    <string name="pi_rank_sku_count">%1$d SKU · แตะเพื่อขยาย</string>
+    <string name="pi_rank_more">SKU เพิ่มเติม</string>
+    <string name="pi_rank_today">วันนี้</string>
+    <string name="pi_rank_yesterday">เมื่อวาน</string>
+    <string name="pi_rank_items">%1$d รายการ</string>
 </resources>

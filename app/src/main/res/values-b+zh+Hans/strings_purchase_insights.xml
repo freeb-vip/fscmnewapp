@@ -2,4 +2,11 @@
 <resources>
     <string name="pi_title">采购洞察</string>
     <string name="pi_description">销量、库存、在途与 SKU 销量曲线</string>
+    <string name="pi_rank_products">产品</string>
+    <string name="pi_rank_all">全部</string>
+    <string name="pi_rank_sku_count">%1$d 个 SKU · 点击展开</string>
+    <string name="pi_rank_more">更多 SKU</string>
+    <string name="pi_rank_today">今天</string>
+    <string name="pi_rank_yesterday">昨天</string>
+    <string name="pi_rank_items">共 %1$d 项</string>
 </resources>

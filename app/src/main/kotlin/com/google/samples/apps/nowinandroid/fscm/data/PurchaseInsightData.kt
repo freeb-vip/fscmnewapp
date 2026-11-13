@@ -67,6 +67,10 @@ data class InsightOrder(
 
 @Serializable
 data class InsightRow(
+    @SerialName("group_key") val groupKey: String = "",
+    val rank: Int = 0,
+    val incomplete: Boolean = false,
+
     @SerialName("row_key") val key: String = "",
     val sku: String = "",
     @SerialName("local_sku") val localSku: String = "",
@@ -112,6 +116,9 @@ data class InsightRow(
 
 @Serializable
 data class InsightPage(
+    @SerialName("analysis_snapshot_id") val analysisSnapshotId: String = "",
+    @SerialName("order_calculated_at") val orderCalculatedAt: String? = null,
+
     @SerialName("snapshot_id") val snapshotId: String = "",
     @SerialName("source_time") val sourceTime: String = "",
     @SerialName("source_timezone") val sourceTimezone: String = "",
@@ -125,21 +132,28 @@ data class InsightPage(
     val warnings: List<String> = emptyList(),
 )
 data class InsightMetric(val key: String, val label: String, val group: String, val additive: Boolean = true)
-val insightMetrics = listOf(3, 7, 15, 30, 60, 90).map { InsightMetric("sales$it", "${it}天销量", "销量") } + listOf(
+val insightMetrics = listOf(InsightMetric("salestoday", "Today", "销量"), InsightMetric("salesyesterday", "Yesterday", "销量")) + listOf(3, 7, 30, 60).map { InsightMetric("sales$it", "${it}天销量", "销量") } + listOf(
     InsightMetric("onHand", "当前库存", "库存"), InsightMetric("allocated", "占用库存", "库存"), InsightMetric("available", "可用库存", "库存"),
     InsightMetric("externalTransit", "BigSeller 在途", "在途"), InsightMetric("production", "本地在途未入仓", "在途"), InsightMetric("transit", "总在途", "在途"),
     InsightMetric("forecast", "预测日均", "预测", false), InsightMetric("reference", "BigSeller 参考日均", "预测", false),
     InsightMetric("demand", "未来30天需求", "预测", false), InsightMetric("coverage", "现货可售天数", "预测", false), InsightMetric("transitCoverage", "含在途理论天数", "预测", false),
 )
 val defaultInsightMetrics = listOf("sales30", "available", "transit")
-val insightSorts = linkedMapOf("sales30" to "30天销量", "sales7" to "7天销量", "sales15" to "15天销量", "sales3" to "3天销量", "sales60" to "60天销量", "sales90" to "90天销量", "sku" to "SKU", "available" to "可用库存", "production" to "本地在途", "transit" to "总在途", "forecast" to "预测日均", "coverage" to "现货可售天数")
+val insightSorts = linkedMapOf("salestoday" to "Today", "salesyesterday" to "Yesterday", "sales30" to "30天销量", "sales7" to "7天销量", "sales3" to "3天销量", "sales60" to "60天销量", "sku" to "SKU", "available" to "可用库存", "production" to "本地在途", "transit" to "总在途", "forecast" to "预测日均", "coverage" to "现货可售天数")
 val insightStatuses = linkedMapOf("" to "全部状态", "normal" to "正常", "hot" to "爆品", "surge" to "销量异动", "stockout" to "缺货", "stockout_risk" to "缺货风险", "stockout_no_transit" to "缺货无在途", "stockout_no_transit_15" to "15天缺货无在途", "stockout_no_transit_30" to "30天缺货无在途", "warning" to "数据异常")
 fun insightNumber(value: Number?): String = value?.toString()?.let { DecimalFormat("#,##0.################").format(BigDecimal(it)) } ?: "—"
-fun normalizedInsightMetrics(keys: List<String>): List<String> = keys.filter { key -> insightMetrics.any { it.key == key } }.distinct().take(6).ifEmpty { defaultInsightMetrics }
+fun normalizedInsightMetrics(keys: List<String>): List<String> {
+    val valid = keys.filter { key -> insightMetrics.any { it.key == key } }.distinct().take(6)
+    if (valid.isEmpty()) return defaultInsightMetrics
+    return if (valid.size < keys.distinct().size) (valid + defaultInsightMetrics).distinct().take(keys.size.coerceIn(1, 6)) else valid
+}
 fun canAccessPurchaseInsights(session: SessionState): Boolean = session.sessionMode == SessionMode.Online && "purchase-insights" in session.permissions
 
 @Serializable
 data class InsightFilter(
+    val dimension: String = "product",
+    val topLimit: Int = 0,
+
     val warehouses: List<Long>? = null,
     val sku: String = "",
     val exact: Boolean = false,
@@ -151,10 +165,15 @@ data class InsightFilter(
     val anomalies: Boolean = false,
 ) {
     fun count(totalWarehouses: Int): Int = listOf(warehouses?.size != totalWarehouses, sku.isNotBlank(), batch.isNotBlank(), status.isNotBlank(), hasSales, producing, anomalies).count { it }
-    fun query(product: String, page: Int, sort: String, ascending: Boolean, snapshot: String?): JsonObject = buildJsonObject {
+    fun query(product: String, page: Int, sort: String, ascending: Boolean, snapshot: String?, analysisSnapshot: String? = null, groupKey: String? = null): JsonObject = buildJsonObject {
         put("binding_id", warehouses?.firstOrNull() ?: 0)
         put("binding_ids", JsonArray(warehouses.orEmpty().map(::JsonPrimitive)))
         put("product", product.trim())
+        put("dimension", dimension)
+        put("sales_period", if (sort.startsWith("sales")) sort.removePrefix("sales") else "30")
+        if (topLimit > 0) put("top_limit", topLimit)
+        if (!analysisSnapshot.isNullOrBlank()) put("analysis_snapshot_id", analysisSnapshot)
+        if (!groupKey.isNullOrBlank()) put("group_key", groupKey)
         put("sku", sku.trim())
         put("match", if (exact) "exact" else "contains")
         put("skus", JsonArray(batch.split(Regex("[,，\\s]+")).filter { it.isNotBlank() }.distinct().map(::JsonPrimitive)))

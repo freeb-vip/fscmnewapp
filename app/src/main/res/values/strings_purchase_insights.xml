@@ -2,4 +2,11 @@
 <resources>
     <string name="pi_title">Purchase insights</string>
     <string name="pi_description">Sales, inventory, transit and SKU sales trends</string>
+    <string name="pi_rank_products">Products</string>
+    <string name="pi_rank_all">All</string>
+    <string name="pi_rank_sku_count">%1$d SKUs · tap to expand</string>
+    <string name="pi_rank_more">More SKUs</string>
+    <string name="pi_rank_today">Today</string>
+    <string name="pi_rank_yesterday">Yesterday</string>
+    <string name="pi_rank_items">%1$d items</string>
 </resources>

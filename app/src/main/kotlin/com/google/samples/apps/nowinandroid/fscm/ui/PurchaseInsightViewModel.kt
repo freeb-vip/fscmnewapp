@@ -51,6 +51,10 @@ import java.time.ZoneId
 import javax.inject.Inject
 
 data class PurchaseInsightState(
+    val expandedGroup: String = "",
+    val groupData: InsightPage? = null,
+    val groupLoading: Boolean = false,
+
     val scope: String = "",
     val allowed: Boolean = false,
     val initialized: Boolean = false,
@@ -256,6 +260,36 @@ class PurchaseInsightViewModel @Inject constructor(
             }
         }
     }
+    fun ranking(dimension: String = state.value.filter.dimension, top: Int = state.value.filter.topLimit) {
+        mutableState.update { it.copy(filter = it.filter.copy(dimension = dimension, topLimit = top), expandedGroup = "", groupData = null) }
+        load(false)
+    }
+
+    fun expandGroup(row: InsightRow, more: Boolean = false) {
+        val current = state.value
+        if (!more && current.expandedGroup == row.groupKey) {
+            mutableState.update { it.copy(expandedGroup = "", groupData = null) }
+            return
+        }
+        val snapshot = current.data ?: return
+        val group = row.groupKey
+        val page = if (more) (current.groupData?.page ?: 0) + 1 else 1
+        mutableState.update { it.copy(expandedGroup = group, groupLoading = true, groupData = if (more) it.groupData else null) }
+        viewModelScope.launch {
+            try {
+                val result = source.query(current.filter.query(current.appliedProduct, page, current.sort, false, snapshot.snapshotId, snapshot.analysisSnapshotId, group))
+                if (state.value.expandedGroup == group && state.value.data?.analysisSnapshotId == snapshot.analysisSnapshotId) {
+                    mutableState.update { it.copy(groupLoading = false, groupData = result.copy(items = if (more) current.groupData.orEmptyItems() + result.items else result.items)) }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                if (state.value.expandedGroup == group) mutableState.update { it.copy(groupLoading = false, error = "SKU details unavailable") }
+            }
+        }
+    }
+
+    private fun InsightPage?.orEmptyItems(): List<InsightRow> = this?.items.orEmpty()
+
     fun sort(key: String, ascending: Boolean) {
         if (key !in insightSorts) return
         search?.cancel()
@@ -282,7 +316,7 @@ class PurchaseInsightViewModel @Inject constructor(
         mutableState.update { it.copy(loading = !append, loadingMore = append, error = null) }
         request = viewModelScope.launch {
             try {
-                val result = source.query(current.filter.query(current.appliedProduct, page, current.sort, current.ascending, if (append) current.data?.snapshotId else null))
+                val result = source.query(current.filter.query(current.appliedProduct, page, current.sort, current.ascending, if (append) current.data?.snapshotId else null, if (append) current.data?.analysisSnapshotId else null))
                 if (own != generation) return@launch
                 if (append && result.snapshotId != current.data?.snapshotId) {
                     mutableState.update { it.copy(data = null, loadingMore = false, error = "数据版本已更新，正在重新加载") }
@@ -292,7 +326,7 @@ class PurchaseInsightViewModel @Inject constructor(
                 check(!append || result.items.isNotEmpty() || current.data!!.items.size >= result.total) { "分页数据不完整，请重试" }
                 val items = if (append) (current.data!!.items + result.items).distinctBy { it.key } else result.items
                 check(!append || (result.page == page && (items.size > current.data!!.items.size || items.size >= result.total))) { "分页数据未前进，请重新查询" }
-                mutableState.update { it.copy(data = result.copy(items = items), loading = false, loadingMore = false) }
+                mutableState.update { it.copy(data = result.copy(items = items), loading = false, loadingMore = false, expandedGroup = "", groupData = null) }
                 if ((result.job?.status in listOf("queued", "pending", "running") || result.freshness == "loading") && active) {
                     poll = viewModelScope.launch {
                         delay(5000)

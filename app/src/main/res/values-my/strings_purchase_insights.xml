@@ -2,4 +2,11 @@
 <resources>
     <string name="pi_title">ဝယ်ယူရေးဆိုင်ရာ သုံးသပ်ချက်</string>
     <string name="pi_description">ရောင်းအား၊ လက်ကျန်၊ သယ်ယူဆဲနှင့် SKU ရောင်းအားလမ်းကြောင်း</string>
+    <string name="pi_rank_products">ထုတ်ကုန်များ</string>
+    <string name="pi_rank_all">အားလုံး</string>
+    <string name="pi_rank_sku_count">SKU %1$d · ချဲ့ရန်နှိပ်ပါ</string>
+    <string name="pi_rank_more">နောက်ထပ် SKU များ</string>
+    <string name="pi_rank_today">ယနေ့</string>
+    <string name="pi_rank_yesterday">မနေ့က</string>
+    <string name="pi_rank_items">%1$d ခု</string>
 </resources>

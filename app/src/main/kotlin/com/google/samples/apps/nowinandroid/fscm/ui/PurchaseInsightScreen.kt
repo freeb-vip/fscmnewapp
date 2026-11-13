@@ -78,6 +78,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -86,6 +87,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandDeep
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandMain
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandSoft
@@ -202,8 +204,17 @@ internal fun PurchaseInsightContent(state: PurchaseInsightState, vm: PurchaseIns
                         }
                         item {
                             Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("共 ${state.data?.total ?: 0} 个 SKU", style = MaterialTheme.typography.bodySmall)
-                                TextButton(onClick = { sheet = "sort" }) { Text("${insightSorts[state.sort]} ${if (state.ascending) "↑" else "↓"}") }
+                                Text(stringResource(R.string.pi_rank_items, state.data?.total ?: 0), style = MaterialTheme.typography.bodySmall)
+                                TextButton(onClick = { sheet = "sort" }) { Text("${insightMetricLabel(state.sort, insightSorts[state.sort].orEmpty())} ${if (state.ascending) "↑" else "↓"}") }
+                            }
+                        }
+                        item {
+                            FlowRow {
+                                TextButton(onClick = { vm.ranking(dimension = "product") }) { Text(stringResource(R.string.pi_rank_products)) }
+                                TextButton(onClick = { vm.ranking(dimension = "sku") }) { Text("SKU") }
+                                listOf(0, 30, 50).forEach { limit ->
+                                    TextButton(onClick = { vm.ranking(top = limit) }) { Text(if (limit == 0) stringResource(R.string.pi_rank_all) else "TOP$limit") }
+                                }
                             }
                         }
                         state.data?.totals?.let { totals ->
@@ -233,12 +244,25 @@ internal fun PurchaseInsightContent(state: PurchaseInsightState, vm: PurchaseIns
                             }
                         }
                         items(state.data?.items.orEmpty(), key = { it.key }) { row ->
-                            Column(Modifier.fillMaxWidth().background(FscmSurfaceRaised).clickable { vm.openDetail(row) }.padding(12.dp).testTag("insight-row-${row.key}")) {
+                            Column(Modifier.fillMaxWidth().background(FscmSurfaceRaised).clickable { if (row.groupKey.isNotBlank()) vm.expandGroup(row) else vm.openDetail(row) }.padding(12.dp).testTag("insight-row-${row.key}")) {
                                 Text(row.sku, fontWeight = FontWeight.SemiBold, color = FscmBrandDeep, modifier = Modifier.fillMaxWidth())
                                 val labels = row.dataStatuses.filter { it != "normal" }.mapNotNull { insightStatuses[it] }
                                 if (labels.isNotEmpty() || row.warnings.isNotEmpty()) Text((labels + if (row.warnings.isNotEmpty()) listOf("${row.warnings.size} 项提示") else emptyList()).joinToString(" · "), color = FscmDanger, style = MaterialTheme.typography.labelSmall)
                                 Spacer(Modifier.height(6.dp))
                                 InsightMetricGrid(row, state.metrics)
+                                if (row.groupKey.isNotBlank()) Text(stringResource(R.string.pi_rank_sku_count, row.skuCount))
+                                if (row.groupKey.isNotBlank() && state.expandedGroup == row.groupKey) {
+                                    if (state.groupLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                                    state.groupData?.items.orEmpty().forEach { child ->
+                                        Column(Modifier.fillMaxWidth().clickable { vm.openDetail(child) }.padding(8.dp)) {
+                                            Text(child.sku, color = FscmBrandDeep)
+                                            InsightMetricGrid(child, state.metrics)
+                                        }
+                                    }
+                                    state.groupData?.let { group ->
+                                        if (group.items.size < group.total) TextButton(onClick = { vm.expandGroup(row, true) }, enabled = !state.groupLoading) { Text(stringResource(R.string.pi_rank_more)) }
+                                    }
+                                }
                             }
                             HorizontalDivider(color = FscmStrokeSoft)
                         }
@@ -276,7 +300,7 @@ internal fun PurchaseInsightContent(state: PurchaseInsightState, vm: PurchaseIns
                 TextButton(onClick = {
                     vm.sort(key, state.ascending)
                     sheet = ""
-                }, modifier = Modifier.fillMaxWidth()) { Text(label + if (key == state.sort) " ✓" else "") }
+                }, modifier = Modifier.fillMaxWidth()) { Text(insightMetricLabel(key, label) + if (key == state.sort) " ✓" else "") }
             }
         }
         "totals" -> InsightSheet("全部匹配结果总计", { sheet = "" }) {
@@ -313,7 +337,7 @@ internal fun InsightMetricGrid(row: InsightRow, keys: List<String>, total: Boole
                         else -> FscmSurfaceRaised
                     }
                     Column(Modifier.weight(1f).background(background).padding(horizontal = 4.dp, vertical = 5.dp)) {
-                        Text(metric.label, style = MaterialTheme.typography.labelSmall, color = FscmInkSoft)
+                        Text(insightMetricLabel(metric.key, metric.label), style = MaterialTheme.typography.labelSmall, color = FscmInkSoft)
                         Text(
                             if (total && !metric.additive) "不汇总" else insightNumber(row.metric(metric.key)),
                             style = MaterialTheme.typography.bodyMedium,
@@ -357,7 +381,7 @@ internal fun InsightMetricSheet(selected: List<String>, dismiss: () -> Unit, app
             Text(group, fontWeight = FontWeight.Bold)
             metrics.forEach { metric ->
                 val checked = metric.key in draft
-                InsightCheck(metric.label + if (checked) " · ${draft.indexOf(metric.key) + 1}" else "", checked, checked || draft.size < 6) {
+                InsightCheck(insightMetricLabel(metric.key, metric.label) + if (checked) " · ${draft.indexOf(metric.key) + 1}" else "", checked, checked || draft.size < 6) {
                     draft = if (checked) draft - metric.key else draft + metric.key
                 }
             }
@@ -403,10 +427,17 @@ private fun InsightFilterSheet(state: PurchaseInsightState, dismiss: () -> Unit,
         OutlinedTextField(draft.batch, { draft = draft.copy(batch = it) }, label = { Text("批量 SKU，逗号或换行分隔") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
         InsightChoice("数据状态", insightStatuses.toList(), draft.status) { draft = draft.copy(status = it) }
         InsightCheck("有销量", draft.hasSales) { draft = draft.copy(hasSales = it) }
-        if (draft.hasSales) InsightChoice("销量过滤周期", listOf(3, 7, 15, 30, 60, 90).map { it to "${it}天" }, draft.salesDays) { draft = draft.copy(salesDays = it) }
+        if (draft.hasSales) InsightChoice("销量过滤周期", listOf(3, 7, 30, 60).map { it to "${it}天" }, draft.salesDays) { draft = draft.copy(salesDays = it) }
         InsightCheck("有本地在途数量", draft.producing) { draft = draft.copy(producing = it) }
         InsightCheck("仅看异常", draft.anomalies) { draft = draft.copy(anomalies = it) }
         TextButton(onClick = { draft = InsightFilter(warehouses = state.warehouses.map { it.id }) }) { Text("重置筛选") }
         Button(onClick = { apply(draft) }, modifier = Modifier.fillMaxWidth()) { Text("应用") }
     }
+}
+
+@Composable
+private fun insightMetricLabel(key: String, fallback: String): String = when (key) {
+    "salestoday" -> stringResource(R.string.pi_rank_today)
+    "salesyesterday" -> stringResource(R.string.pi_rank_yesterday)
+    else -> fallback
 }

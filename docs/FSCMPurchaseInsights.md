@@ -50,3 +50,10 @@
 - 当前没有连接 Android 设备，网页会话停留在登录页。因此真实账号数据与网页的明细/跨页总计核对、真实仓库权限撤销、四个主标签的真机回归尚未执行；发布前应完成这些验收。
 
 构建日志保存在 `.artifacts/purchase-insight-final.log`，完整首轮测试日志为 `.artifacts/purchase-insight-validation.log`，全量格式结果为 `.artifacts/purchase-insight-spotless.log`。这些日志及 `app/build` 截图不纳入源码提交。
+
+
+## 产品排名与日订单销量（2026-11-13）
+
+列表默认产品折叠，支持产品/SKU、全部/TOP30/TOP50。排序中选择今天、昨天、3/7/30/60天销量；展开使用相同分析快照，并按所选销量周期降序独立加载SKU。旧15/90天展示偏好迁移为有效指标，历史曲线周期保留。日销量来自销售订单，库存和滚动窗口仍来自采购快照；未知值保持空缺。
+
+API增加 analysis_snapshot_id、group_key、sales_period、dimension、top_limit，分页保持订单及库存版本。新增文案维护四语资源。设备与真实账号验收边界见本次交付说明。

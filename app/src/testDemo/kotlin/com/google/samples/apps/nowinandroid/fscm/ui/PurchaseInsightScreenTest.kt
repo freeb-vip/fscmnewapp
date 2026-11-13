@@ -134,7 +134,7 @@ class PurchaseInsightScreenTest {
     fun selectionSupportsSixItemsAndRestoresDefaults() {
         render()
         compose.onNodeWithTag("insight-metrics").performClick()
-        listOf("7天销量", "15天销量", "当前库存").forEach { compose.onNodeWithText(it).performScrollTo().performClick() }
+        listOf("7天销量", "昨天", "当前库存").forEach { compose.onNodeWithText(it).performScrollTo().performClick() }
         compose.onNodeWithText("展示项 · 已选 6/6").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("应用").performScrollTo().performClick()
         assertEquals(6, vm.state.value.metrics.size)
@@ -149,7 +149,7 @@ class PurchaseInsightScreenTest {
     @Config(qualifiers = "zh-rCN-w320dp-h800dp")
     fun narrowScreenLargeTypeCanReachActions() {
         render(1.5f)
-        compose.runOnIdle { vm.metrics(listOf("sales30", "available", "transit", "sales7", "sales15", "onHand")) }
+        compose.runOnIdle { vm.metrics(listOf("sales30", "available", "transit", "sales7", "salesyesterday", "onHand")) }
         capture("list-320-large")
         compose.onNodeWithTag("insight-filter").performClick()
         compose.onNodeWithText("应用").performScrollTo().assertIsDisplayed()
