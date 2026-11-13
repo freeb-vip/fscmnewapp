@@ -57,3 +57,14 @@
 列表默认产品折叠，支持产品/SKU、全部/TOP30/TOP50。排序中选择今天、昨天、3/7/30/60天销量；展开使用相同分析快照，并按所选销量周期降序独立加载SKU。旧15/90天展示偏好迁移为有效指标，历史曲线周期保留。日销量来自销售订单，库存和滚动窗口仍来自采购快照；未知值保持空缺。
 
 API增加 analysis_snapshot_id、group_key、sales_period、dimension、top_limit，分页保持订单及库存版本。新增文案维护四语资源。设备与真实账号验收边界见本次交付说明。
+
+
+## 月份系数与预测（2026-11-13）
+
+新增预测未来30天销量（demand）默认指标、超过365天覆盖标识、部分预测合计和固定快照预测依据。单仓具备purchase-insights-config权限时可编辑仓库默认或产品覆盖的指定年份12个月系数，复制上一年只填充草稿；空白继承，默认1。系数表示月总量环比，例如1月0.8为12月总量的80%；服务端校正月份天数并积分未来曲线。可靠SKU/产品往年历史优先于人工设置。产品模型组件可逐项查看，避免同时渲染全部成员。
+
+PurchaseInsightData.kt补充DTO/API；PurchaseInsightViewModel.kt处理权限、请求代次、空间/仓库切换与409版本冲突；PurchaseInsightScreen.kt和InsightDemandSheets.kt提供原生指标、配置和详情；四语strings_purchase_insights.xml提供新增文案。原有无关修改保留。
+
+验证：:app:spotlessKotlinCheck、:app:assembleDemoDebug、:app:testDemoDebugUnitTest --tests '*PurchaseInsight*'成功，11项逻辑和9项界面测试无失败。新增四语320dp/1.5倍字体测试覆盖预测依据、12月字段及保存入口的可达性；截图位于build/outputs/purchase-insights/demand-*，未纳入源码。JDK25的既有JaCoCo插桩警告不影响测试结果，不据此声明覆盖率。本轮未连接真机或核对登录态业务数据。
+
+先发布含372/373迁移的兼容服务端，再发布Web和Android。本轮按用户要求纳入本地提交，提交号见Git历史；尚未发布生产，无设计约束偏离。

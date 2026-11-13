@@ -136,6 +136,7 @@ internal fun PurchaseInsightScreen(session: SessionState, onBack: () -> Unit, vi
 @Composable
 internal fun PurchaseInsightContent(state: PurchaseInsightState, vm: PurchaseInsightViewModel, onBack: () -> Unit) {
     var sheet by rememberSaveable(state.scope) { mutableStateOf("") }
+    var forecastRow by remember(state.scope, state.filter.warehouses) { mutableStateOf<InsightRow?>(null) }
     val listState = rememberLazyListState()
     val keyboard = LocalSoftwareKeyboardController.current
     val currentState by rememberUpdatedState(state)
@@ -212,6 +213,7 @@ internal fun PurchaseInsightContent(state: PurchaseInsightState, vm: PurchaseIns
                             FlowRow {
                                 TextButton(onClick = { vm.ranking(dimension = "product") }) { Text(stringResource(R.string.pi_rank_products)) }
                                 TextButton(onClick = { vm.ranking(dimension = "sku") }) { Text("SKU") }
+                                if (state.canConfigure && state.filter.warehouses?.size == 1) TextButton(onClick = { vm.loadDemandSettings() }) { Text(stringResource(R.string.pi_demand_settings)) }
                                 listOf(0, 30, 50).forEach { limit ->
                                     TextButton(onClick = { vm.ranking(top = limit) }) { Text(if (limit == 0) stringResource(R.string.pi_rank_all) else "TOP$limit") }
                                 }
@@ -250,6 +252,10 @@ internal fun PurchaseInsightContent(state: PurchaseInsightState, vm: PurchaseIns
                                 if (labels.isNotEmpty() || row.warnings.isNotEmpty()) Text((labels + if (row.warnings.isNotEmpty()) listOf("${row.warnings.size} 项提示") else emptyList()).joinToString(" · "), color = FscmDanger, style = MaterialTheme.typography.labelSmall)
                                 Spacer(Modifier.height(6.dp))
                                 InsightMetricGrid(row, state.metrics)
+                                FlowRow {
+                                    TextButton(onClick = { forecastRow = row }) { Text(stringResource(R.string.pi_demand_basis)) }
+                                    if (state.canConfigure && state.filter.warehouses?.size == 1 && row.productId > 0) TextButton(onClick = { vm.loadDemandSettings(row.productId) }) { Text(stringResource(R.string.pi_demand_product_manual)) }
+                                }
                                 if (row.groupKey.isNotBlank()) Text(stringResource(R.string.pi_rank_sku_count, row.skuCount))
                                 if (row.groupKey.isNotBlank() && state.expandedGroup == row.groupKey) {
                                     if (state.groupLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -282,6 +288,8 @@ internal fun PurchaseInsightContent(state: PurchaseInsightState, vm: PurchaseIns
             }
         }
     }
+    forecastRow?.let { InsightDemandForecastSheet(it) { forecastRow = null } }
+    if (state.demandSettings != null || state.demandLoading || state.demandError) InsightDemandSettingsSheet(state, vm)
     when (sheet) {
         "metrics" -> InsightMetricSheet(state.metrics, { sheet = "" }) {
             vm.metrics(it)
@@ -310,7 +318,7 @@ internal fun PurchaseInsightContent(state: PurchaseInsightState, vm: PurchaseIns
                     InsightMetricGrid(totals, metrics.map { it.key }, true)
                 }
             }
-            Text("总计覆盖全部筛选结果，不受当前分页影响；未知数量按 0 汇总。预测与覆盖天数不累加。", style = MaterialTheme.typography.bodySmall)
+            Text("总计覆盖全部筛选结果，不受当前分页影响；未知数量按 0 汇总。预测需求按成员求和；覆盖天数不累加。", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -339,7 +347,15 @@ internal fun InsightMetricGrid(row: InsightRow, keys: List<String>, total: Boole
                     Column(Modifier.weight(1f).background(background).padding(horizontal = 4.dp, vertical = 5.dp)) {
                         Text(insightMetricLabel(metric.key, metric.label), style = MaterialTheme.typography.labelSmall, color = FscmInkSoft)
                         Text(
-                            if (total && !metric.additive) "不汇总" else insightNumber(row.metric(metric.key)),
+                            if (metric.key == "coverage" && row.coverageBeyond || metric.key == "transitCoverage" && row.transitCoverageBeyond) {
+                                stringResource(R.string.pi_demand_beyond)
+                            } else if (total && metric.key == "demand" && row.forecastIncomplete) {
+                                stringResource(R.string.pi_demand_partial, insightNumber(row.demand))
+                            } else if (total && !metric.additive) {
+                                "不汇总"
+                            } else {
+                                insightNumber(row.metric(metric.key))
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = if (metric.key == "available" && row.available != null) FscmDanger else FscmInkStrong,
@@ -437,6 +453,7 @@ private fun InsightFilterSheet(state: PurchaseInsightState, dismiss: () -> Unit,
 
 @Composable
 private fun insightMetricLabel(key: String, fallback: String): String = when (key) {
+    "demand", "forecast30" -> stringResource(R.string.pi_demand_next30)
     "salestoday" -> stringResource(R.string.pi_rank_today)
     "salesyesterday" -> stringResource(R.string.pi_rank_yesterday)
     else -> fallback

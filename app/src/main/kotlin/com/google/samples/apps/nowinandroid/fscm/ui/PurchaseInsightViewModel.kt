@@ -19,6 +19,7 @@ package com.google.samples.apps.nowinandroid.fscm.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.samples.apps.nowinandroid.fscm.data.FscmApiException
+import com.google.samples.apps.nowinandroid.fscm.data.InsightDemandSettings
 import com.google.samples.apps.nowinandroid.fscm.data.InsightFilter
 import com.google.samples.apps.nowinandroid.fscm.data.InsightHistory
 import com.google.samples.apps.nowinandroid.fscm.data.InsightHistoryScope
@@ -51,6 +52,11 @@ import java.time.ZoneId
 import javax.inject.Inject
 
 data class PurchaseInsightState(
+    val canConfigure: Boolean = false,
+    val demandSettings: InsightDemandSettings? = null,
+    val demandLoading: Boolean = false,
+    val demandError: Boolean = false,
+    val demandConflict: Boolean = false,
     val expandedGroup: String = "",
     val groupData: InsightPage? = null,
     val groupLoading: Boolean = false,
@@ -104,6 +110,8 @@ class PurchaseInsightViewModel @Inject constructor(
     private var historyRequest: Job? = null
     private var poll: Job? = null
     private val preferenceMutex = Mutex()
+    private var demandGeneration = 0
+    private var demandRequest: Job? = null
     private var generation = 0
     private var detailGeneration = 0
     private var historyGeneration = 0
@@ -119,6 +127,7 @@ class PurchaseInsightViewModel @Inject constructor(
             active = true
             mutableState.value = PurchaseInsightState(scope = scope, allowed = allowed)
         }
+        mutableState.update { it.copy(canConfigure = "purchase-insights-config" in session.permissions) }
         if (!allowed) return
         if (state.value.product.trim() != state.value.appliedProduct) {
             mutableState.update { it.copy(appliedProduct = it.product.trim(), data = null) }
@@ -128,6 +137,7 @@ class PurchaseInsightViewModel @Inject constructor(
 
     fun stop() {
         active = false
+        closeDemandSettings()
         generation++
         detailGeneration++
         historyGeneration++
@@ -223,6 +233,7 @@ class PurchaseInsightViewModel @Inject constructor(
     }
 
     fun applyFilter(filter: InsightFilter) {
+        closeDemandSettings()
         if (!state.value.initialized) return
         catalogGeneration++
         catalogRequest?.cancel()
@@ -241,6 +252,59 @@ class PurchaseInsightViewModel @Inject constructor(
         savePreferences()
         load(false)
     }
+    fun closeDemandSettings() {
+        demandGeneration++
+        demandRequest?.cancel()
+        mutableState.update { it.copy(demandSettings = null, demandLoading = false, demandError = false, demandConflict = false) }
+    }
+
+    fun loadDemandSettings(product: Long = 0, year: Int = LocalDate.now().year, copyPrevious: Boolean = false) {
+        val current = state.value
+        val binding = current.filter.warehouses?.singleOrNull() ?: return
+        if (!active || !current.canConfigure) return
+        val own = ++demandGeneration
+        demandRequest?.cancel()
+        mutableState.update { it.copy(demandSettings = if (copyPrevious) current.demandSettings else InsightDemandSettings(bindingId = binding, productId = product, year = year), demandLoading = true, demandError = false, demandConflict = false) }
+        demandRequest = viewModelScope.launch {
+            try {
+                val value = source.demandSettings(binding, product, if (copyPrevious) year - 1 else year)
+                if (own == demandGeneration && state.value.scope == current.scope) {
+                    mutableState.update { it.copy(demandSettings = if (copyPrevious) current.demandSettings?.copy(factors = value.factors) else value) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                if (own == demandGeneration) mutableState.update { it.copy(demandError = true) }
+            } finally {
+                if (own == demandGeneration) mutableState.update { it.copy(demandLoading = false) }
+            }
+        }
+    }
+
+    fun saveDemandSettings(factors: List<Double?>) {
+        val current = state.value
+        val value = current.demandSettings ?: return
+        if (!active || !current.canConfigure || current.demandLoading || factors.size != 12 || factors.any { it != null && (!it.isFinite() || it <= 0 || it > 10) }) return
+        if (current.filter.warehouses?.singleOrNull() != value.bindingId) return
+        val own = ++demandGeneration
+        mutableState.update { it.copy(demandLoading = true, demandError = false, demandConflict = false) }
+        demandRequest = viewModelScope.launch {
+            try {
+                source.saveDemandSettings(value.copy(factors = factors))
+                if (own == demandGeneration && state.value.scope == current.scope) {
+                    closeDemandSettings()
+                    refresh()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (own == demandGeneration) mutableState.update { it.copy(demandError = true, demandConflict = e is FscmApiException && e.statusCode == 409) }
+            } finally {
+                if (own == demandGeneration) mutableState.update { it.copy(demandLoading = false) }
+            }
+        }
+    }
+
     fun metrics(keys: List<String>) {
         mutableState.update { it.copy(metrics = normalizedInsightMetrics(keys)) }
         savePreferences()

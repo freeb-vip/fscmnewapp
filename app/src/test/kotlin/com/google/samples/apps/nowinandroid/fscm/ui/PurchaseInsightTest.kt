@@ -79,6 +79,9 @@ class PurchaseInsightTest {
         }
     }
     private open class Source : PurchaseInsightSource {
+        override suspend fun demandSettings(binding: Long, product: Long, year: Int) = com.google.samples.apps.nowinandroid.fscm.data.InsightDemandSettings(bindingId = binding, productId = product, year = year)
+        override suspend fun saveDemandSettings(value: com.google.samples.apps.nowinandroid.fscm.data.InsightDemandSettings) = value
+
         var directory = listOf(InsightWarehouse(1, "A仓"), InsightWarehouse(2, "B仓"))
         val queries = mutableListOf<JsonObject>()
         var response: suspend (JsonObject) -> InsightPage = { body ->
@@ -104,7 +107,7 @@ class PurchaseInsightTest {
     }
 
     @Test
-    fun metricsPreserveNullZeroPrecisionAndNeverSumPredictions() {
+    fun metricsPreserveUnknownPrecisionAndSumOnlyDemandQuantities() {
         val json = Json {
             ignoreUnknownKeys = true
             coerceInputValues = true
@@ -115,9 +118,23 @@ class PurchaseInsightTest {
         assertEquals("9,007,199,254,740,993", insightNumber(page.items.single().available))
         assertEquals("1.125", insightNumber(page.items.single().forecast))
         assertEquals(52, page.totals?.skuCount)
-        assertTrue(insightMetrics.filter { it.group == "预测" }.none { it.additive })
+        assertEquals(listOf("demand"), insightMetrics.filter { it.group == "预测" && it.additive }.map { it.key })
         assertEquals(defaultInsightMetrics, normalizedInsightMetrics(listOf("removed")))
         assertEquals(6, normalizedInsightMetrics(insightMetrics.map { it.key }).size)
+    }
+
+    @Test
+    fun forecastContractRetainsUnknownAndBeyondHorizon() {
+        val json = Json { ignoreUnknownKeys = true }
+        val page = json.decodeFromString<InsightPage>("""{"items":[{"row_key":"a","forecast_demand_30":120.5,"coverage_days":365,"coverage_beyond_365":true,"forecast_model":{"method":"rolling_exposure","confidence":"low","months":[{"month":"2026-12","total_ratio":1.5,"daily_ratio":1.4516129,"source":"warehouse_manual"}]}}],"totals":{"forecast_demand_30":120.5,"forecast_incomplete":true}}""")
+        val row = page.items.single()
+        assertTrue(row.coverageBeyond)
+        assertEquals(120.5, row.demand)
+        assertEquals("warehouse_manual", row.forecastModel?.months?.single()?.source)
+        assertEquals(1.5, row.forecastModel?.months?.single()?.totalRatio)
+        assertTrue(page.totals?.forecastIncomplete == true)
+        assertNull(row.transitCoverage)
+        assertTrue("demand" in defaultInsightMetrics)
     }
 
     @Test

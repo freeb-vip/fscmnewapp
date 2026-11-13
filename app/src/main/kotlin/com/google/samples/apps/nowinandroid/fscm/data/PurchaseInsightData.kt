@@ -31,6 +31,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -67,6 +68,11 @@ data class InsightOrder(
 
 @Serializable
 data class InsightRow(
+    @SerialName("product_id") val productId: Long = 0,
+    @SerialName("forecast_model") val forecastModel: InsightDemandForecast? = null,
+    @SerialName("coverage_beyond_365") val coverageBeyond: Boolean = false,
+    @SerialName("transit_coverage_beyond_365") val transitCoverageBeyond: Boolean = false,
+    @SerialName("forecast_incomplete") val forecastIncomplete: Boolean = false,
     @SerialName("group_key") val groupKey: String = "",
     val rank: Int = 0,
     val incomplete: Boolean = false,
@@ -136,10 +142,10 @@ val insightMetrics = listOf(InsightMetric("salestoday", "Today", "销量"), Insi
     InsightMetric("onHand", "当前库存", "库存"), InsightMetric("allocated", "占用库存", "库存"), InsightMetric("available", "可用库存", "库存"),
     InsightMetric("externalTransit", "BigSeller 在途", "在途"), InsightMetric("production", "本地在途未入仓", "在途"), InsightMetric("transit", "总在途", "在途"),
     InsightMetric("forecast", "预测日均", "预测", false), InsightMetric("reference", "BigSeller 参考日均", "预测", false),
-    InsightMetric("demand", "未来30天需求", "预测", false), InsightMetric("coverage", "现货可售天数", "预测", false), InsightMetric("transitCoverage", "含在途理论天数", "预测", false),
+    InsightMetric("demand", "Forecast next 30 days", "预测"), InsightMetric("coverage", "现货可售天数", "预测", false), InsightMetric("transitCoverage", "含在途理论天数", "预测", false),
 )
-val defaultInsightMetrics = listOf("sales30", "available", "transit")
-val insightSorts = linkedMapOf("salestoday" to "Today", "salesyesterday" to "Yesterday", "sales30" to "30天销量", "sales7" to "7天销量", "sales3" to "3天销量", "sales60" to "60天销量", "sku" to "SKU", "available" to "可用库存", "production" to "本地在途", "transit" to "总在途", "forecast" to "预测日均", "coverage" to "现货可售天数")
+val defaultInsightMetrics = listOf("sales30", "available", "transit", "demand")
+val insightSorts = linkedMapOf("salestoday" to "Today", "salesyesterday" to "Yesterday", "sales30" to "30天销量", "sales7" to "7天销量", "sales3" to "3天销量", "sales60" to "60天销量", "sku" to "SKU", "available" to "可用库存", "production" to "本地在途", "transit" to "总在途", "forecast30" to "Forecast next 30 days", "forecast" to "预测日均", "coverage" to "现货可售天数")
 val insightStatuses = linkedMapOf("" to "全部状态", "normal" to "正常", "hot" to "爆品", "surge" to "销量异动", "stockout" to "缺货", "stockout_risk" to "缺货风险", "stockout_no_transit" to "缺货无在途", "stockout_no_transit_15" to "15天缺货无在途", "stockout_no_transit_30" to "30天缺货无在途", "warning" to "数据异常")
 fun insightNumber(value: Number?): String = value?.toString()?.let { DecimalFormat("#,##0.################").format(BigDecimal(it)) } ?: "—"
 fun normalizedInsightMetrics(keys: List<String>): List<String> {
@@ -234,7 +240,40 @@ fun insightHistoryPoints(records: List<InsightHistoryRecord>, dates: List<String
     return dates.map { date -> byDate[date]?.singleOrNull()?.value(window) }
 }
 
+@Serializable
+data class InsightDemandMonth(
+    val month: String = "",
+    @SerialName("total_ratio") val totalRatio: Double = 1.0,
+    @SerialName("daily_ratio") val dailyRatio: Double = 1.0,
+    val source: String = "default",
+)
+
+@Serializable
+data class InsightDemandForecast(
+    val algorithm: String = "",
+    val version: String = "",
+    val start: String = "",
+    val timezone: String = "",
+    val method: String = "",
+    val confidence: String = "",
+    val months: List<InsightDemandMonth> = emptyList(),
+    val components: List<InsightDemandForecast> = emptyList(),
+)
+
+@Serializable
+data class InsightDemandSettings(
+    @SerialName("binding_id") val bindingId: Long = 0,
+    @SerialName("product_id") val productId: Long = 0,
+    val year: Int = 2026,
+    val factors: List<Double?> = List(12) { null },
+    @SerialName("warehouse_factors") val warehouseFactors: List<Double?> = List(12) { null },
+    val version: String = "",
+)
+
 interface PurchaseInsightSource {
+    suspend fun demandSettings(binding: Long, product: Long, year: Int): InsightDemandSettings
+    suspend fun saveDemandSettings(value: InsightDemandSettings): InsightDemandSettings
+
     suspend fun catalog(): InsightCatalog
     suspend fun query(body: JsonObject): InsightPage
     suspend fun detail(ids: List<Long>, snapshot: String, key: String): InsightRow
@@ -251,6 +290,17 @@ internal fun insightDetailParameters(ids: List<Long>, snapshot: String): Map<Str
 
 @Singleton
 class PurchaseInsightRepository @Inject constructor(private val api: FscmApiClient) : PurchaseInsightSource {
+    override suspend fun demandSettings(binding: Long, product: Long, year: Int): InsightDemandSettings = api.get("purchase-insights/forecast/settings", mapOf("binding_id" to binding.toString(), "product_id" to product.toString(), "year" to year.toString()))
+    override suspend fun saveDemandSettings(value: InsightDemandSettings): InsightDemandSettings = api.put(
+        "purchase-insights/forecast/settings",
+        buildJsonObject {
+            put("binding_id", value.bindingId)
+            put("product_id", value.productId)
+            put("year", value.year)
+            put("version", value.version)
+            put("factors", JsonArray(value.factors.map { it?.let(::JsonPrimitive) ?: JsonNull }))
+        },
+    )
     override suspend fun catalog(): InsightCatalog = api.post("purchase-insights/warehouse-catalog")
     override suspend fun query(body: JsonObject): InsightPage = api.post("purchase-insights/query", body)
     override suspend fun detail(ids: List<Long>, snapshot: String, key: String): InsightRow = api.get(

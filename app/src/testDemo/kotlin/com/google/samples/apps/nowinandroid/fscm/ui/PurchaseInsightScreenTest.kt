@@ -21,6 +21,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
@@ -37,12 +38,17 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.Density
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.RoborazziTaskType
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmTheme
 import com.google.samples.apps.nowinandroid.fscm.data.InsightCatalog
+import com.google.samples.apps.nowinandroid.fscm.data.InsightDemandForecast
+import com.google.samples.apps.nowinandroid.fscm.data.InsightDemandMonth
+import com.google.samples.apps.nowinandroid.fscm.data.InsightDemandSettings
 import com.google.samples.apps.nowinandroid.fscm.data.InsightHistory
 import com.google.samples.apps.nowinandroid.fscm.data.InsightHistoryCoverage
 import com.google.samples.apps.nowinandroid.fscm.data.InsightHistoryRecord
@@ -79,6 +85,9 @@ class PurchaseInsightScreenTest {
         salesQuantities = mapOf("30" to 1280, "7" to 360, "15" to 700), available = 320, transit = 600, onHand = 800, allocated = 480,
     )
     private val source = object : PurchaseInsightSource {
+        override suspend fun demandSettings(binding: Long, product: Long, year: Int) = com.google.samples.apps.nowinandroid.fscm.data.InsightDemandSettings(bindingId = binding, productId = product, year = year)
+        override suspend fun saveDemandSettings(value: com.google.samples.apps.nowinandroid.fscm.data.InsightDemandSettings) = value
+
         override suspend fun catalog() = InsightCatalog(listOf(InsightWarehouse(1, "泰国仓")))
         override suspend fun query(body: JsonObject) = InsightPage(
             snapshotId = "fixed",
@@ -171,6 +180,49 @@ class PurchaseInsightScreenTest {
         render()
         compose.onNodeWithText("165,091").assertIsDisplayed()
         capture("list-430")
+    }
+
+    @Test
+    @Config(qualifiers = "zh-rCN-w320dp-h800dp")
+    fun demandChineseSmallLargeType() = demandSheets("zh")
+
+    @Test
+    @Config(qualifiers = "en-w320dp-h800dp")
+    fun demandEnglishSmallLargeType() = demandSheets("en")
+
+    @Test
+    @Config(qualifiers = "th-w320dp-h800dp")
+    fun demandThaiSmallLargeType() = demandSheets("th")
+
+    @Test
+    @Config(qualifiers = "my-w320dp-h800dp")
+    fun demandBurmeseSmallLargeType() = demandSheets("my")
+
+    private fun demandSheets(language: String) {
+        val resources = ApplicationProvider.getApplicationContext<Application>().resources
+        val settings = mutableStateOf(false)
+        val forecast = InsightDemandForecast(start = "2026-11-13T12:00:00+07:00", timezone = "Asia/Bangkok", method = "daily_damped", confidence = "high", months = listOf(InsightDemandMonth("2026-11", 1.8, 1.86, "product_manual")))
+        compose.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1.5f)) {
+                FscmTheme {
+                    if (settings.value) {
+                        InsightDemandSettingsSheet(PurchaseInsightState(demandSettings = InsightDemandSettings(bindingId = 1, year = 2026)), vm)
+                    } else {
+                        InsightDemandForecastSheet(row.copy(demand = 5580.0, forecastModel = forecast)) {}
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText(resources.getString(R.string.pi_demand_basis)).assertIsDisplayed()
+        capture("demand-$language-320-large")
+        compose.onNodeWithText(resources.getString(R.string.pi_demand_product_manual)).performScrollTo().assertIsDisplayed()
+        compose.runOnIdle { settings.value = true }
+        compose.waitForIdle()
+        compose.onNodeWithText(resources.getString(R.string.pi_demand_settings)).assertIsDisplayed()
+        capture("demand-settings-$language-320-large")
+        compose.onNodeWithText(resources.getString(R.string.pi_demand_month, 12)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(resources.getString(R.string.pi_demand_save)).performScrollTo().assertIsDisplayed()
     }
 
     private fun render(scale: Float = 1f) {
