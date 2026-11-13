@@ -77,4 +77,8 @@
     <string name="pi_not_additive">ไม่รวมค่า</string>
     <string name="pi_retry">ลองอีกครั้ง</string>
     <string name="pi_close">ปิด</string>
+    <string name="pi_units_per_day">%1$s ชิ้น/วัน</string>
+    <string name="pi_snapshot_at">สแนปช็อต: %1$s (อัปเดตทุก 3 ชั่วโมง)</string>
+    <string name="pi_orders_at">คำนวณคำสั่งซื้อ: %1$s</string>
+    <string name="pi_daily_expired">ยอดขายรายวันกำลังรอสแนปช็อตของวันทำการใหม่</string>
 </resources>

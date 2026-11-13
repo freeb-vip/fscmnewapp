@@ -79,3 +79,13 @@ PurchaseInsightData.kt补充DTO/API；PurchaseInsightViewModel.kt处理权限、
 验证：Windows执行 `:app:spotlessKotlinCheck :app:testDemoDebugUnitTest :app:assembleDemoDebug --max-workers=1` 通过，475项测试无失败/跳过。采购洞察26项覆盖缓存到期/空间隔离/强制重试/权限变化/空闲180秒不重查/分页快照、筛选与总计面板、320/360/393/430dp；中英泰缅320dp及1.5倍字号截图已核对，相关77项资源键集合一致。JBR25与JaCoCo既有插桩警告不作为覆盖率结果。截图在 `app/build/outputs/purchase-insights`，不提交基准。
 
 用户确认设备已离线并取消本轮真机调试，因此未执行真机、弱网实测或登录态业务核对；使用Robolectric界面和数据层测试。无新权限、数据库结构或通知规则，无设计约束偏离。发布目标1.3.10（40），必须先确认服务端新版就绪，核对生产签名和APK校验和后发布；实际发布证据保存在生产发布目录。保留仓库其他修改。
+
+## 持久化只读快照与精简预测显示（2026-11-14）
+
+列表默认发送 compact=true，读取服务端已经生成的快照；服务端允许约3小时延迟。分页、产品展开、SKU详情和预测依据保留同一仓库范围、筛选、analysis_snapshot_id。预测模型和冻结明细点击后单独加载，错误可重试，不随每页重复下载。不增加目录/列表自动轮询。
+
+日预测量表示按月份系数修正后的未来需求估计，列表按2位小数和本地化“件/天”展示；可售天数保留1位，极小正数用 <0.01 区分真实零值。数据说明中显示快照时间、订单计算时间和3小时更新口径。跨业务午夜未更新的今天/昨天显示未知，保留库存与滚动销量。固定文案同步中英泰缅。
+
+文件：PurchaseInsightData.kt定义轻量请求/时间字段/数值格式；PurchaseInsightViewModel.kt通过固定查询按需获取详情；PurchaseInsightScreen.kt与InsightDemandSheets.kt实现原生按需加载、重试及信息面板；四语strings_purchase_insights.xml和PurchaseInsightTest.kt覆盖文案与数值边界。
+
+验证：:app:spotlessKotlinCheck :app:testDemoDebugUnitTest :app:assembleDemoDebug --max-workers=1 通过，476项测试0失败、0跳过。真机已离线，用户明确免除此轮真机调试；不据模拟测试声明弱网或真机性能。先确认兼容后端的生产快照已准备，再发布正式签名prodRelease。其他未提交修改保持原样，无设计约束偏离。

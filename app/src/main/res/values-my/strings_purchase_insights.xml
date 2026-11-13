@@ -77,4 +77,8 @@
     <string name="pi_not_additive">မပေါင်းပါ</string>
     <string name="pi_retry">ထပ်စမ်းရန်</string>
     <string name="pi_close">ပိတ်ရန်</string>
+    <string name="pi_units_per_day">%1$s ခု/ရက်</string>
+    <string name="pi_snapshot_at">ဒေတာမှတ်တမ်း: %1$s (၃ နာရီတိုင်း အပ်ဒိတ်)</string>
+    <string name="pi_orders_at">အော်ဒါတွက်ချက်ချိန်: %1$s</string>
+    <string name="pi_daily_expired">နေ့စဉ်ရောင်းအားအတွက် လုပ်ငန်းနေ့အသစ်၏ ဒေတာကို စောင့်နေသည်။</string>
 </resources>

@@ -283,12 +283,15 @@ internal fun PurchaseInsightContent(state: PurchaseInsightState, vm: PurchaseIns
             }
         }
     }
-    forecastRow?.let { InsightDemandForecastSheet(it) { forecastRow = null } }
+    forecastRow?.let { InsightDemandForecastSheet(it, load = { vm.forecast(it) }) { forecastRow = null } }
     if (state.demandSettings != null || state.demandLoading || state.demandError) InsightDemandSettingsSheet(state, vm)
     when (sheet) {
         "info" -> InsightSheet(stringResource(R.string.pi_data_info), { sheet = "" }) {
             Text(state.warehouseLabel.ifBlank { stringResource(R.string.pi_select_warehouses) }, color = FscmInkSoft)
             state.data?.let { Text(stringResource(R.string.pi_updated_at, it.fetchedAt ?: it.sourceTime.ifBlank { "—" }), style = MaterialTheme.typography.bodySmall) }
+            state.data?.generatedAt?.let { Text(stringResource(R.string.pi_snapshot_at, it), style = MaterialTheme.typography.bodySmall) }
+            state.data?.orderCalculatedAt?.let { Text(stringResource(R.string.pi_orders_at, it), style = MaterialTheme.typography.bodySmall) }
+            if (state.data?.dailySalesExpired == true) Text(stringResource(R.string.pi_daily_expired), style = MaterialTheme.typography.bodySmall)
             if (state.catalogPending || state.data?.freshness == "loading") Text(stringResource(R.string.pi_preparing))
             val notices = state.catalogWarnings.size + state.data?.warnings.orEmpty().size + if (state.preferenceError != null) 1 else 0
             if (notices > 0) Text(stringResource(R.string.pi_data_notices, notices))
@@ -349,7 +352,11 @@ internal fun InsightMetricGrid(row: InsightRow, keys: List<String>, total: Boole
                             } else if (total && !metric.additive) {
                                 stringResource(R.string.pi_not_additive)
                             } else {
-                                insightNumber(row.metric(metric.key))
+                                if (metric.key == "forecast" || metric.key == "reference") {
+                                    stringResource(R.string.pi_units_per_day, insightNumber(row.metric(metric.key)))
+                                } else {
+                                    insightNumber(row.metric(metric.key), if (metric.key == "coverage" || metric.key == "transitCoverage") 1 else 2)
+                                }
                             },
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.Bold,

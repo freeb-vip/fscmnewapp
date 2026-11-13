@@ -363,6 +363,14 @@ class PurchaseInsightViewModel @Inject constructor(
         load(false)
     }
     fun more() = load(true)
+    suspend fun forecast(row: InsightRow): InsightRow {
+        val current = state.value
+        val snapshot = current.data ?: error("Snapshot unavailable")
+        val group = if (row.groupKey.isBlank() && current.filter.dimension == "product") current.expandedGroup else null
+        val body = current.filter.query(current.appliedProduct, 1, current.sort, current.ascending, snapshot.snapshotId, snapshot.analysisSnapshotId, group)
+        val detail = kotlinx.serialization.json.JsonObject(body + ("forecast_row_key" to kotlinx.serialization.json.JsonPrimitive(row.key)))
+        return source.query(detail).items.firstOrNull() ?: error("Snapshot row unavailable")
+    }
     fun retry() {
         if (!state.value.initialized) loadCatalog(force = true) else load(false)
     }
@@ -433,7 +441,7 @@ class PurchaseInsightViewModel @Inject constructor(
         }
         detailRequest = viewModelScope.launch {
             try {
-                val detail = source.detail(current.filter.warehouses.orEmpty(), snapshot, row.key)
+                val detail = forecast(row)
                 if (own != detailGeneration) return@launch
                 mutableState.update { it.copy(detail = detail, detailLoading = false) }
             } catch (e: CancellationException) {

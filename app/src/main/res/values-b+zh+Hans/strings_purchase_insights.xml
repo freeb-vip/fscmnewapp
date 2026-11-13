@@ -77,4 +77,8 @@
     <string name="pi_not_additive">不汇总</string>
     <string name="pi_retry">重试</string>
     <string name="pi_close">关闭</string>
+    <string name="pi_units_per_day">%1$s 件/天</string>
+    <string name="pi_snapshot_at">快照：%1$s（每3小时更新）</string>
+    <string name="pi_orders_at">订单统计：%1$s</string>
+    <string name="pi_daily_expired">业务日期已切换，今天/昨天销量待新快照更新。</string>
 </resources>

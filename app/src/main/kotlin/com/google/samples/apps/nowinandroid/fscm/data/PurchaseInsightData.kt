@@ -125,6 +125,8 @@ data class InsightRow(
 @Serializable
 data class InsightPage(
     @SerialName("analysis_snapshot_id") val analysisSnapshotId: String = "",
+    @SerialName("snapshot_generated_at") val generatedAt: String? = null,
+    @SerialName("daily_sales_expired") val dailySalesExpired: Boolean = false,
     @SerialName("order_calculated_at") val orderCalculatedAt: String? = null,
 
     @SerialName("snapshot_id") val snapshotId: String = "",
@@ -149,7 +151,14 @@ val insightMetrics = listOf(InsightMetric("salestoday", "Today", "销量"), Insi
 val defaultInsightMetrics = listOf("sales30", "available", "transit", "demand")
 val insightSorts = linkedMapOf("salestoday" to "Today", "salesyesterday" to "Yesterday", "sales30" to "30天销量", "sales7" to "7天销量", "sales3" to "3天销量", "sales60" to "60天销量", "sku" to "SKU", "available" to "可用库存", "production" to "本地在途", "transit" to "总在途", "forecast30" to "Forecast next 30 days", "forecast" to "预测日均", "coverage" to "现货可售天数")
 val insightStatuses = linkedMapOf("" to "全部状态", "normal" to "正常", "hot" to "爆品", "surge" to "销量异动", "stockout" to "缺货", "stockout_risk" to "缺货风险", "stockout_no_transit" to "缺货无在途", "stockout_no_transit_15" to "15天缺货无在途", "stockout_no_transit_30" to "30天缺货无在途", "warning" to "数据异常")
-fun insightNumber(value: Number?): String = value?.toString()?.let { DecimalFormat("#,##0.################").format(BigDecimal(it)) } ?: "—"
+fun insightNumber(value: Number?, digits: Int = 2): String {
+    if (value == null || !value.toDouble().isFinite()) return "—"
+    val decimal = BigDecimal(value.toString())
+    if (decimal.signum() > 0 && decimal < BigDecimal.ONE.movePointLeft(digits)) {
+        return "<" + DecimalFormat("0." + "0".repeat(digits)).format(BigDecimal.ONE.movePointLeft(digits))
+    }
+    return DecimalFormat(if (digits == 0) "#,##0" else "#,##0." + "#".repeat(digits)).apply { roundingMode = java.math.RoundingMode.HALF_UP }.format(decimal)
+}
 fun normalizedInsightMetrics(keys: List<String>): List<String> {
     val valid = keys.filter { key -> insightMetrics.any { it.key == key } }.distinct().take(6)
     if (valid.isEmpty()) return defaultInsightMetrics
@@ -174,6 +183,7 @@ data class InsightFilter(
 ) {
     fun count(totalWarehouses: Int): Int = listOf(warehouses?.size != totalWarehouses, sku.isNotBlank(), batch.isNotBlank(), status.isNotBlank(), hasSales, producing, anomalies).count { it }
     fun query(product: String, page: Int, sort: String, ascending: Boolean, snapshot: String?, analysisSnapshot: String? = null, groupKey: String? = null): JsonObject = buildJsonObject {
+        put("compact", true)
         put("binding_id", warehouses?.firstOrNull() ?: 0)
         put("binding_ids", JsonArray(warehouses.orEmpty().map(::JsonPrimitive)))
         put("product", product.trim())

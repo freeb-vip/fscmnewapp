@@ -28,6 +28,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,10 +41,32 @@ import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmDanger
 import com.google.samples.apps.nowinandroid.fscm.data.InsightRow
 import com.google.samples.apps.nowinandroid.fscm.data.insightNumber
+import kotlinx.coroutines.CancellationException
 
 @Composable
-internal fun InsightDemandForecastSheet(row: InsightRow, dismiss: () -> Unit) {
+internal fun InsightDemandForecastSheet(initial: InsightRow, load: (suspend () -> InsightRow)? = null, dismiss: () -> Unit) {
+    var row by remember(initial) { mutableStateOf(initial) }
+    var loading by remember(initial) { mutableStateOf(false) }
+    var failed by remember(initial) { mutableStateOf(false) }
+    var retry by remember(initial) { mutableStateOf(0) }
+    LaunchedEffect(initial.key, retry) {
+        if (load != null && initial.forecastModel == null) {
+            loading = true
+            failed = false
+            try {
+                row = load()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                failed = true
+            } finally {
+                loading = false
+            }
+        }
+    }
     InsightSheet(stringResource(R.string.pi_demand_basis), dismiss) {
+        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (failed) TextButton(onClick = { retry++ }) { Text(stringResource(R.string.pi_demand_retry)) }
         Text(stringResource(R.string.pi_demand_rules), style = MaterialTheme.typography.bodySmall)
         Text(stringResource(R.string.pi_demand_next30) + ": " + insightNumber(row.demand))
         val model = row.forecastModel

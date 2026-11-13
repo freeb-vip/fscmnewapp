@@ -113,6 +113,31 @@ class PurchaseInsightTest {
     }
 
     @Test
+    fun forecastLoadsOnlyOnDemandUsingTheFixedListSnapshot() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val source = Source()
+            val row = InsightRow(key = "product:9", groupKey = "product:9", sku = "B1")
+            source.response = { InsightPage(snapshotId = "inventory-fixed", analysisSnapshotId = "analysis-fixed", items = listOf(row), total = 1) }
+            val vm = PurchaseInsightViewModel(source, Store())
+            vm.enter(session())
+            runCurrent()
+            assertEquals(1, source.queries.size)
+            assertEquals("true", source.queries.single()["compact"]?.jsonPrimitive?.content)
+            assertEquals(row, vm.forecast(row))
+            val query = source.queries.last()
+            assertEquals("inventory-fixed", query["snapshot_id"]?.jsonPrimitive?.content)
+            assertEquals("analysis-fixed", query["analysis_snapshot_id"]?.jsonPrimitive?.content)
+            assertEquals("product:9", query["forecast_row_key"]?.jsonPrimitive?.content)
+            assertEquals(source.queries.first()["binding_ids"], query["binding_ids"])
+            assertEquals(2, source.queries.size)
+            vm.stop()
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun catalogCacheIsScopedExpiresAndDoesNotCacheColdPending() = runTest {
         var now = 0L
         val cache = InsightCatalogCache { now }
@@ -227,7 +252,10 @@ class PurchaseInsightTest {
         assertEquals("0", insightNumber(page.items.single().metric("sales30")))
         assertEquals("—", insightNumber(page.items.single().metric("sales7")))
         assertEquals("9,007,199,254,740,993", insightNumber(page.items.single().available))
-        assertEquals("1.125", insightNumber(page.items.single().forecast))
+        assertEquals("1.13", insightNumber(page.items.single().forecast))
+        assertEquals("<0.01", insightNumber(0.000003))
+        assertEquals("3.5", insightNumber(3.456, 1))
+        assertEquals("—", insightNumber(Double.NaN))
         assertEquals(52, page.totals?.skuCount)
         assertEquals(listOf("demand"), insightMetrics.filter { it.group == "预测" && it.additive }.map { it.key })
         assertEquals(defaultInsightMetrics, normalizedInsightMetrics(listOf("removed")))
