@@ -20,6 +20,12 @@ import android.content.Context
 import android.net.Uri
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -143,8 +149,19 @@ internal fun restoreWarehouseExceptionForm(report: WarehouseException, draft: Wa
 internal fun encodeWarehouseExceptionForm(json: Json, form: WarehouseExceptionForm) =
     Json(json) { encodeDefaults = true }.encodeToJsonElement(WarehouseExceptionForm.serializer(), form)
 
+data class ExceptionChange(val scope: ExceptionScope, val detail: WarehouseException)
+
+internal fun WarehouseExceptionForm.requiresMeasures() = problemType == "other" && measures.isBlank()
+
 data class ExceptionScope(val user: Long, val namespace: Long) {
     fun headers() = mapOf("X-Namespace-ID" to namespace.toString())
+}
+
+internal interface ExceptionListSource {
+    val scopes: Flow<ExceptionScope?>
+    val changes: StateFlow<ExceptionChange?>
+    suspend fun scope(): ExceptionScope
+    suspend fun list(scope: ExceptionScope, resolved: Boolean, filters: Map<String, String>, page: Int): WarehouseExceptionPage
 }
 
 @Singleton
@@ -153,8 +170,18 @@ class OrderExceptionsRepository @Inject constructor(
     private val sessions: SessionStore,
     @param:FscmJson private val json: Json,
     @param:ApplicationContext private val context: Context,
-) {
-    suspend fun scope(): ExceptionScope {
+) : ExceptionListSource {
+    override val scopes = sessions.session.map { session ->
+        if (session.sessionMode == SessionMode.Online && session.isLoggedIn && "mobile-app:order-exceptions" in session.permissions) {
+            session.user?.id?.let { user -> session.currentNamespace?.id?.let { namespace -> ExceptionScope(user, namespace) } }
+        } else {
+            null
+        }
+    }.distinctUntilChanged()
+    private val mutableChanges = MutableStateFlow<ExceptionChange?>(null)
+    override val changes = mutableChanges.asStateFlow()
+
+    override suspend fun scope(): ExceptionScope {
         val session = sessions.current()
         check(session.sessionMode == SessionMode.Online && session.isLoggedIn && "mobile-app:order-exceptions" in session.permissions)
         return ExceptionScope(requireNotNull(session.user).id, requireNotNull(session.currentNamespace).id)
@@ -164,7 +191,7 @@ class OrderExceptionsRepository @Inject constructor(
         check(scope == scope())
     }
 
-    suspend fun list(scope: ExceptionScope, resolved: Boolean, filters: Map<String, String>, page: Int): WarehouseExceptionPage {
+    override suspend fun list(scope: ExceptionScope, resolved: Boolean, filters: Map<String, String>, page: Int): WarehouseExceptionPage {
         verify(scope)
         val result: WarehouseExceptionPage = api.get("mobile/order-exceptions", filters + mapOf("status" to if (resolved) "resolved" else "open", "page" to page.toString(), "page_size" to "20"), headers = scope.headers())
         verify(scope)
@@ -182,6 +209,7 @@ class OrderExceptionsRepository @Inject constructor(
         verify(scope)
         val result: WarehouseException = api.post("mobile/order-exceptions/$id/resolve", headers = scope.headers(), body = encodeWarehouseExceptionForm(json, form))
         verify(scope)
+        mutableChanges.value = ExceptionChange(scope, result)
         return result
     }
 

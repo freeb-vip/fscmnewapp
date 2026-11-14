@@ -119,14 +119,14 @@ internal fun ExceptionPhotoViewer(bytes: ByteArray, name: String, onClose: () ->
 }
 
 @Composable
-internal fun ExceptionMeasuresEditor(value: String, onChange: (String) -> Unit, onDone: () -> Unit) {
+internal fun ExceptionMeasuresEditor(value: String, onChange: (String) -> Unit, onDone: () -> Unit, required: Boolean = false) {
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     ScanAwareDialog(onDismissRequest = onDone, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.oe_measures), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(if (required) R.string.oe_measures_required else R.string.oe_measures), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                     Button(onClick = {
                         keyboard?.hide()
                         onDone()
@@ -136,6 +136,12 @@ internal fun ExceptionMeasuresEditor(value: String, onChange: (String) -> Unit, 
                     value = value,
                     onValueChange = { if (it.length <= 2000) onChange(it) },
                     placeholder = { Text(stringResource(R.string.oe_measures_hint)) },
+                    isError = required && value.isBlank(),
+                    supportingText = if (required && value.isBlank()) {
+                        { Text(stringResource(R.string.oe_measures_required_error)) }
+                    } else {
+                        null
+                    },
                     modifier = Modifier.fillMaxWidth().weight(1f).focusRequester(focus),
                 )
                 Text(stringResource(R.string.oe_char_count, value.length), Modifier.align(Alignment.End), style = MaterialTheme.typography.labelMedium)

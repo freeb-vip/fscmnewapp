@@ -18,6 +18,7 @@ package com.google.samples.apps.nowinandroid.fscm.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -66,9 +68,11 @@ import com.google.samples.apps.nowinandroid.fscm.data.WarehouseException
 
 @Composable
 internal fun ExceptionOrderListCard(report: WarehouseException, onOpen: () -> Unit) {
+    val copy = rememberExceptionCopy()
     val completed = report.status == "resolved"
     OrderListCard(
         number = report.order.number,
+        onCopyNumber = { copy(report.order.number) },
         status = stringResource(if (completed) R.string.oe_resolved else R.string.oe_open),
         completed = completed,
         product = report.productPreview,
@@ -97,7 +101,7 @@ internal fun ShippingOrderListCard(task: ShippingTask, onOpen: () -> Unit) {
 }
 
 @Composable
-private fun OrderListCard(number: String, status: String, completed: Boolean, product: OrderProductPreview?, onOpen: () -> Unit, footer: @Composable ColumnScope.() -> Unit) {
+private fun OrderListCard(number: String, status: String, completed: Boolean, product: OrderProductPreview?, onOpen: () -> Unit, onCopyNumber: (() -> Unit)? = null, footer: @Composable ColumnScope.() -> Unit) {
     val title = product?.title?.takeIf(String::isNotBlank) ?: product?.sku?.takeIf(String::isNotBlank) ?: stringResource(R.string.order_card_product_missing)
     val statusColor = if (completed) FscmSuccess else FscmBrandDeep
     Card(
@@ -109,7 +113,7 @@ private fun OrderListCard(number: String, status: String, completed: Boolean, pr
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(number, Modifier.weight(1f), color = FscmBrandMain, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(number, Modifier.weight(1f).then(if (onCopyNumber != null && number.isNotBlank()) Modifier.heightIn(min = 48.dp).clickable(onClickLabel = stringResource(R.string.oe_copy), onClick = onCopyNumber) else Modifier), color = FscmBrandMain, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(status, Modifier.widthIn(max = 132.dp).clip(RoundedCornerShape(8.dp)).background(statusColor.copy(alpha = 0.08f)).padding(horizontal = 10.dp, vertical = 6.dp), color = statusColor, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {

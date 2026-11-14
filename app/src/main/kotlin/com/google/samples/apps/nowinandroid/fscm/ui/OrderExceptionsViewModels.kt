@@ -17,15 +17,18 @@
 package com.google.samples.apps.nowinandroid.fscm.ui
 
 import android.net.Uri
+import android.os.SystemClock
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.samples.apps.nowinandroid.R
+import com.google.samples.apps.nowinandroid.fscm.data.ExceptionListSource
 import com.google.samples.apps.nowinandroid.fscm.data.ExceptionScope
 import com.google.samples.apps.nowinandroid.fscm.data.FscmApiException
 import com.google.samples.apps.nowinandroid.fscm.data.OrderExceptionsRepository
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseException
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseExceptionForm
+import com.google.samples.apps.nowinandroid.fscm.data.requiresMeasures
 import com.google.samples.apps.nowinandroid.fscm.data.restoreWarehouseExceptionForm
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -57,44 +60,113 @@ data class ExceptionsListState(
     val completed: Long = 0,
     val page: Int = 0,
     val loading: Boolean = false,
+    val loadingMore: Boolean = false,
+    val refreshing: Boolean = false,
+    val countsLoaded: Boolean = false,
+    val retryMore: Boolean = false,
+    val draft: Map<String, String> = emptyMap(),
     val error: UiText? = null,
 )
 
 @HiltViewModel
-class OrderExceptionsListViewModel @Inject constructor(private val repository: OrderExceptionsRepository) : ViewModel() {
+class OrderExceptionsListViewModel internal constructor(private val repository: ExceptionListSource, private val now: () -> Long) : ViewModel() {
+    @Inject constructor(repository: OrderExceptionsRepository) : this(repository, SystemClock::elapsedRealtime)
     private val mutable = MutableStateFlow(ExceptionsListState())
     val state = mutable.asStateFlow()
     private var scope: ExceptionScope? = null
     private var filters: Map<String, String> = emptyMap()
     private var job: Job? = null
     private var generation = 0
+    private var loadedAt = 0L
+    private var dirty = false
+    var scrollIndex = 0
+        private set
+    var scrollOffset = 0
+        private set
 
+    init {
+        viewModelScope.launch {
+            repository.scopes.collect { active ->
+                if (scope != null && scope != active) {
+                    job?.cancel()
+                    generation++
+                    scope = null
+                    filters = emptyMap()
+                    loadedAt = 0L
+                    dirty = false
+                    saveScroll(0, 0)
+                    mutable.value = ExceptionsListState()
+                }
+            }
+        }
+        viewModelScope.launch {
+            repository.changes.collect { change ->
+                if (change != null && change.scope == scope) {
+                    dirty = true
+                    job?.cancel()
+                    generation++
+                    mutable.update { it.copy(loading = false, loadingMore = false, refreshing = false) }
+                    val previous = state.value.rows.find { it.id == change.detail.id }
+                    if (previous != null && previous.status == "open" && change.detail.status == "resolved") {
+                        mutable.update { it.copy(rows = it.rows.filterNot { row -> row.id == previous.id }, total = (it.total - 1).coerceAtLeast(0), open = (it.open - 1).coerceAtLeast(0), completed = it.completed + 1) }
+                    }
+                }
+            }
+        }
+    }
+
+    fun saveScroll(index: Int, offset: Int) {
+        scrollIndex = index
+        scrollOffset = offset
+    }
+    fun editFilter(key: String, value: String) {
+        mutable.update { it.copy(draft = it.draft + (key to value)) }
+    }
+    fun resume() {
+        if (!state.value.loading && (dirty || loadedAt == 0L || now() - loadedAt >= 60_000)) refresh()
+    }
     fun select(resolved: Boolean) {
         if (state.value.resolved == resolved) return
-        mutable.value = ExceptionsListState(resolved = resolved)
+        mutable.update { it.copy(resolved = resolved, rows = emptyList(), page = 0, total = if (resolved) it.completed else it.open) }
+        saveScroll(0, 0)
         refresh()
     }
-
-    fun search(values: Map<String, String>) {
-        filters = values.mapValues { it.value.trim() }
+    fun search(clear: Boolean = false) {
+        if (clear) mutable.update { it.copy(draft = emptyMap()) }
+        filters = state.value.draft.mapValues { it.value.trim() }.filterValues { it.isNotBlank() }
+        mutable.update { it.copy(rows = emptyList(), page = 0, total = 0, countsLoaded = false) }
+        saveScroll(0, 0)
         refresh()
     }
-
-    fun refresh(more: Boolean = false) {
-        if (more && state.value.loading) return
+    fun retry() = refresh(more = state.value.retryMore)
+    fun refresh(more: Boolean = false, userInitiated: Boolean = false) {
+        if (more && (state.value.loading || state.value.rows.size >= state.value.total)) return
         job?.cancel()
         val epoch = ++generation
         val before = state.value
+        val requestFilters = filters.toMap()
         val page = if (more) before.page + 1 else 1
-        mutable.update { it.copy(loading = true, error = null) }
+        val refreshThrough = if (!more && !userInitiated) before.page.coerceAtLeast(1) else page
+        mutable.update { it.copy(loading = true, loadingMore = more, refreshing = userInitiated, error = null, retryMore = more) }
         job = viewModelScope.launch {
             try {
                 val actor = scope ?: repository.scope().also { scope = it }
-                val result = repository.list(actor, before.resolved, filters, page)
-                if (epoch == generation) mutable.update { it.copy(rows = if (more) (it.rows + result.items).distinctBy(WarehouseException::id) else result.items, total = result.total, open = result.open, completed = result.resolved, page = page, loading = false) }
+                var result = repository.list(actor, before.resolved, requestFilters, page)
+                val refreshedRows = result.items.toMutableList()
+                var completedPage = page
+                while (!more && completedPage < refreshThrough && refreshedRows.size < result.total) {
+                    completedPage++
+                    result = repository.list(actor, before.resolved, requestFilters, completedPage)
+                    refreshedRows.addAll(result.items)
+                }
+                if (epoch == generation) {
+                    loadedAt = now()
+                    dirty = false
+                    mutable.update { it.copy(rows = if (more) (it.rows + result.items).distinctBy(WarehouseException::id) else refreshedRows.distinctBy(WarehouseException::id), total = result.total, open = result.open, completed = result.resolved, page = completedPage, loading = false, loadingMore = false, refreshing = false, countsLoaded = true) }
+                }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                if (epoch == generation) mutable.update { it.copy(loading = false, rows = emptyList(), error = error.exceptionMessage()) }
+                if (epoch == generation) mutable.update { it.copy(loading = false, loadingMore = false, refreshing = false, error = error.exceptionMessage()) }
             }
         }
     }
@@ -107,6 +179,7 @@ data class ExceptionDetailState(
     val error: UiText? = null,
     val pending: Boolean = false,
     val failedUpload: Uri? = null,
+    val measuresError: Boolean = false,
     val uploadedNames: Map<String, String> = emptyMap(),
 )
 
@@ -153,7 +226,7 @@ class OrderExceptionDetailViewModel @Inject constructor(
         if (state.value.busy || state.value.pending) return
         val form = change(state.value.form)
         persist(form)
-        mutable.update { it.copy(form = form, error = null) }
+        mutable.update { it.copy(form = form, error = null, measuresError = false) }
     }
 
     fun upload(uri: Uri) {
@@ -181,6 +254,19 @@ class OrderExceptionDetailViewModel @Inject constructor(
     fun cameraFile(): File = repository.cameraFile()
     suspend fun photo(key: String): ByteArray = repository.photo(requireNotNull(scope), reportId, key)
 
+    fun validateForConfirmation(): Boolean {
+        val form = state.value.form
+        if (form.problemType.isEmpty()) {
+            mutable.update { it.copy(error = UiText.Resource(R.string.oe_select_problem)) }
+            return false
+        }
+        if (form.requiresMeasures()) {
+            mutable.update { it.copy(measuresError = true) }
+            return false
+        }
+        return true
+    }
+
     fun submit() {
         val current = state.value
         if (current.busy || current.failedUpload != null) return
@@ -189,6 +275,7 @@ class OrderExceptionDetailViewModel @Inject constructor(
             mutable.update { it.copy(error = UiText.Resource(R.string.oe_select_problem)) }
             return
         }
+        if (!current.pending && !validateForConfirmation()) return
         saved["pending"] = json.encodeToString(WarehouseExceptionForm.serializer(), form)
         mutable.update { it.copy(busy = true, pending = true, error = null) }
         viewModelScope.launch {

@@ -29,6 +29,14 @@ class OrderExceptionsTest {
     private val json = Json { ignoreUnknownKeys = true }
 
     @Test
+    fun otherRequiresNonblankMeasuresWithoutChangingOtherTypes() {
+        assertEquals(true, WarehouseExceptionForm(problemType = "other").requiresMeasures())
+        assertEquals(true, WarehouseExceptionForm(problemType = "other", measures = "  \n\t").requiresMeasures())
+        assertEquals(false, WarehouseExceptionForm(problemType = "other", measures = "更换包装").requiresMeasures())
+        listOf("operation", "courier", "process").forEach { assertEquals(false, WarehouseExceptionForm(problemType = it).requiresMeasures()) }
+    }
+
+    @Test
     fun authorizedExceptionEntrySurvivesApplicationCatalogFiltering() {
         val entry = MobileAppEntry(key = "order_exceptions", title = "异常订单", permission = "mobile-app:order-exceptions", sort = 44)
         val permissions = listOf(entry.permission)

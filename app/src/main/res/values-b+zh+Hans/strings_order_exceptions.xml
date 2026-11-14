@@ -34,7 +34,7 @@
     <string name="oe_reload">重新加载详情</string>
     <string name="oe_types_value">异常类型：%1$s</string>
     <string name="oe_ticket_value">关联工单：%1$s · %2$s</string>
-    <string name="oe_operations">订单作业人员</string>
+    <string name="oe_operations">作业人员</string>
     <string name="oe_employee_missing">工号未记录</string>
     <string name="oe_time_missing">%1$s（操作时间未记录）</string>
     <string name="oe_result">处理结果 · %1$s</string>
@@ -71,4 +71,17 @@
     <string name="oe_conflict">异常或关联工单已变化，请核对最新详情后重新提交</string>
     <string name="oe_photo_large">原图过大，请选择较小图片</string>
     <string name="oe_photo_size">图片需小于5MB</string>
+    <string name="oe_search_hint">输入订单号、运单号、SKU、工号</string>
+    <string name="oe_advanced_filters">高级筛选</string>
+    <string name="oe_sku">SKU</string>
+    <string name="oe_order_details">订单详情</string>
+    <string name="oe_rectification">整改措施</string>
+    <string name="oe_copy">复制</string>
+    <string name="oe_copied">已复制</string>
+    <string name="oe_no_operations">暂无作业记录</string>
+    <string name="oe_no_resolution">暂无整改记录</string>
+    <string name="oe_employee_value">工号：%1$s</string>
+    <string name="oe_operation_time">作业时间：%1$s</string>
+    <string name="oe_measures_required">整改措施（必填）</string>
+    <string name="oe_measures_required_error">选择其它时，请填写整改措施。</string>
 </resources>

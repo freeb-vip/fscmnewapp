@@ -71,4 +71,17 @@
     <string name="oe_conflict">This exception or its linked ticket has changed. Review the latest details before submitting again.</string>
     <string name="oe_photo_large">The original image is too large. Choose a smaller image.</string>
     <string name="oe_photo_size">Each image must be smaller than 5 MB.</string>
+    <string name="oe_search_hint">Order / tracking / SKU / employee code</string>
+    <string name="oe_advanced_filters">Advanced filters</string>
+    <string name="oe_sku">SKU</string>
+    <string name="oe_order_details">Order details</string>
+    <string name="oe_rectification">Corrective measures</string>
+    <string name="oe_copy">Copy</string>
+    <string name="oe_copied">Copied</string>
+    <string name="oe_no_operations">No operation records</string>
+    <string name="oe_no_resolution">No corrective measures recorded</string>
+    <string name="oe_employee_value">Employee code: %1$s</string>
+    <string name="oe_operation_time">Operation time: %1$s</string>
+    <string name="oe_measures_required">Corrective measures (required)</string>
+    <string name="oe_measures_required_error">Enter corrective measures when selecting Other.</string>
 </resources>

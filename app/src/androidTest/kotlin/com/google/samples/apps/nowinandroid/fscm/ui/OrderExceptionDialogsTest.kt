@@ -76,6 +76,16 @@ class OrderExceptionDialogsTest {
         }
     }
 
+    @Test
+    fun otherMeasuresEditorShowsRequiredFeedbackAndKeepsDraft() {
+        val value = mutableStateOf("")
+        compose.setContent { FscmTheme { ExceptionMeasuresEditor(value.value, { value.value = it }, {}, required = true) } }
+        compose.onNodeWithText(context.getString(R.string.oe_measures_required)).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.oe_measures_required_error)).assertIsDisplayed()
+        compose.onNode(hasSetTextAction()).performTextInput("Improved packaging")
+        compose.runOnIdle { assertEquals("Improved packaging", value.value) }
+    }
+
     @Test fun chineseConfirmationRequiresExplicitAction() = confirmation("zh-Hans")
 
     @Test fun englishConfirmationRequiresExplicitAction() = confirmation("en")

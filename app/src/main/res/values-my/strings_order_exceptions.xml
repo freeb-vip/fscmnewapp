@@ -71,4 +71,17 @@
     <string name="oe_conflict">ပြဿနာ သို့မဟုတ် အလုပ်လွှာ ပြောင်းလဲသွားပါပြီ။ နောက်ဆုံးအချက်အလက် စစ်ပြီး ပြန်တင်ပါ။</string>
     <string name="oe_photo_large">မူရင်းပုံ ကြီးလွန်းသည်။ သေးသောပုံ ရွေးပါ။</string>
     <string name="oe_photo_size">ပုံတစ်ပုံသည် 5 MB ထက်ငယ်ရမည်။</string>
+    <string name="oe_search_hint">အော်ဒါ / ပို့ဆောင်နံပါတ် / SKU / ဝန်ထမ်းကုဒ်</string>
+    <string name="oe_advanced_filters">အသေးစိတ် စစ်ထုတ်ရန်</string>
+    <string name="oe_sku">SKU</string>
+    <string name="oe_order_details">အော်ဒါအသေးစိတ်</string>
+    <string name="oe_rectification">ပြုပြင်ဆောင်ရွက်ချက်များ</string>
+    <string name="oe_copy">ကူးယူရန်</string>
+    <string name="oe_copied">ကူးယူပြီး</string>
+    <string name="oe_no_operations">လုပ်ဆောင်မှုမှတ်တမ်း မရှိပါ</string>
+    <string name="oe_no_resolution">ပြုပြင်ဆောင်ရွက်မှုမှတ်တမ်း မရှိသေးပါ</string>
+    <string name="oe_employee_value">ဝန်ထမ်းကုဒ်: %1$s</string>
+    <string name="oe_operation_time">လုပ်ဆောင်ချိန်: %1$s</string>
+    <string name="oe_measures_required">ပြုပြင်ဆောင်ရွက်ချက်များ (မဖြစ်မနေ)</string>
+    <string name="oe_measures_required_error">အခြားကို ရွေးပါက ပြုပြင်ဆောင်ရွက်ချက်များ ဖြည့်ပါ။</string>
 </resources>

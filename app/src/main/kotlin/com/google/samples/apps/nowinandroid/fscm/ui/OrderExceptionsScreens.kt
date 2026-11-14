@@ -21,10 +21,13 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,12 +36,20 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -53,16 +64,21 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -72,10 +88,17 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.google.samples.apps.nowinandroid.R
+import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandDeep
+import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandMain
+import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandSoft
+import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmInkSoft
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmPageTop
+import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmStrokeSoft
+import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmSurfaceRaised
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseExceptionFile
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseExceptionOperation
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun exceptionProblemLabel(code: String): String = stringResource(
@@ -103,51 +126,41 @@ private fun WarehouseExceptionOperation.stageName() = when (code.uppercase()) {
 fun OrderExceptionsListScreen(scopeKey: String, onOpen: (Long) -> Unit) {
     val viewModel: OrderExceptionsListViewModel = hiltViewModel(key = "exceptions-$scopeKey")
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var order by rememberSaveable(scopeKey) { mutableStateOf("") }
-    var tracking by rememberSaveable(scopeKey) { mutableStateOf("") }
-    var sku by rememberSaveable(scopeKey) { mutableStateOf("") }
-    var employee by rememberSaveable(scopeKey) { mutableStateOf("") }
-    var filtersOpen by rememberSaveable { mutableStateOf(false) }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refresh() }
+    val listState = remember(scopeKey) { LazyListState(viewModel.scrollIndex, viewModel.scrollOffset) }
+    val coroutine = rememberCoroutineScope()
+    DisposableEffect(viewModel, listState) {
+        onDispose { viewModel.saveScroll(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) }
+    }
+    key(scopeKey) { LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.resume() } }
     Column(Modifier.fillMaxSize().background(FscmPageTop)) {
         PrimaryTabRow(selectedTabIndex = if (state.resolved) 1 else 0) {
-            Tab(selected = !state.resolved, onClick = { viewModel.select(false) }, text = { Text(stringResource(R.string.oe_open_count, state.open)) })
-            Tab(selected = state.resolved, onClick = { viewModel.select(true) }, text = { Text(stringResource(R.string.oe_resolved_count, state.completed)) })
+            Tab(selected = !state.resolved, onClick = {
+                viewModel.select(false)
+                coroutine.launch { listState.scrollToItem(0) }
+            }, text = { Text(if (state.countsLoaded) stringResource(R.string.oe_open_count, state.open) else stringResource(R.string.oe_open)) })
+            Tab(selected = state.resolved, onClick = {
+                viewModel.select(true)
+                coroutine.launch { listState.scrollToItem(0) }
+            }, text = { Text(if (state.countsLoaded) stringResource(R.string.oe_resolved_count, state.completed) else stringResource(R.string.oe_resolved)) })
         }
-        TextButton(onClick = { filtersOpen = !filtersOpen }) { Text(if (filtersOpen) stringResource(R.string.oe_hide_filters) else stringResource(R.string.oe_filters)) }
-        if (filtersOpen) {
-            Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedTextField(order, { order = it }, label = { Text(stringResource(R.string.oe_order)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(tracking, { tracking = it }, label = { Text(stringResource(R.string.oe_tracking)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(sku, { sku = it }, label = { Text("SKU") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(employee, { employee = it }, label = { Text(stringResource(R.string.oe_employee)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = {
-                        viewModel.search(mapOf("order_no" to order, "tracking_no" to tracking, "sku" to sku, "employee_code" to employee))
-                        filtersOpen = false
-                    }) { Text(stringResource(R.string.oe_search)) }
-                    TextButton(onClick = {
-                        order = ""
-                        tracking = ""
-                        sku = ""
-                        employee = ""
-                        viewModel.search(emptyMap())
-                    }) { Text(stringResource(R.string.oe_clear)) }
-                }
-            }
-        }
-        PullToRefreshBox(isRefreshing = state.loading, onRefresh = { viewModel.refresh() }, modifier = Modifier.weight(1f)) {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        ExceptionSearchFields(state.draft, viewModel::editFilter, onSearch = { clear ->
+            viewModel.search(clear)
+            coroutine.launch { listState.scrollToItem(0) }
+        })
+        if (state.loading && !state.loadingMore && !state.refreshing) LinearProgressIndicator(Modifier.fillMaxWidth())
+        PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = { viewModel.refresh(userInitiated = true) }, modifier = Modifier.weight(1f)) {
+            LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 state.error?.let { message ->
                     item {
                         Text(message.resolve(), color = MaterialTheme.colorScheme.error)
-                        TextButton(onClick = { viewModel.refresh() }) { Text(stringResource(R.string.oe_retry)) }
+                        TextButton(onClick = viewModel::retry) { Text(stringResource(R.string.oe_retry)) }
                     }
                 }
                 if (!state.loading && state.error == null && state.rows.isEmpty()) item { Text(stringResource(R.string.oe_empty), Modifier.padding(16.dp)) }
                 items(state.rows, key = { it.id }) { report ->
                     ExceptionOrderListCard(report) { onOpen(report.id) }
                 }
+                if (state.loadingMore) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
                 if (state.rows.size < state.total) item { OutlinedButton(onClick = { viewModel.refresh(true) }, enabled = !state.loading, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.oe_load_more)) } }
             }
         }
@@ -198,7 +211,7 @@ fun OrderExceptionDetailScreen(id: Long, scopeKey: String) {
     var editingMeasures by rememberSaveable(id, scopeKey) { mutableStateOf(false) }
     var confirming by rememberSaveable(id, scopeKey) { mutableStateOf(false) }
     if (editingMeasures && !state.pending) {
-        ExceptionMeasuresEditor(state.form.measures, { text -> viewModel.edit { it.copy(measures = text) } }, { editingMeasures = false })
+        ExceptionMeasuresEditor(state.form.measures, { text -> viewModel.edit { it.copy(measures = text) } }, { editingMeasures = false }, required = state.form.problemType == "other")
     }
     if (confirming && !state.busy && state.detail?.status == "open") {
         ExceptionCorrectionConfirmation(onConfirm = {
@@ -220,13 +233,14 @@ fun OrderExceptionDetailScreen(id: Long, scopeKey: String) {
         }
         if (detail != null) {
             item {
-                Card(Modifier.fillMaxWidth()) {
+                ExceptionSectionCard {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(detail.order.number, style = MaterialTheme.typography.titleLarge)
+                        ExceptionSectionTitle(stringResource(R.string.oe_order_details))
+                        ExceptionCopyField(stringResource(R.string.oe_order), detail.order.number)
                         Text(if (detail.status == "resolved") stringResource(R.string.oe_resolved) else stringResource(R.string.oe_open), color = MaterialTheme.colorScheme.primary)
                         Text(stringResource(R.string.oe_warehouse_value, detail.warehouse.name.ifBlank { stringResource(R.string.oe_not_recorded) }))
-                        Text(stringResource(R.string.oe_tracking_value, detail.order.tracking.joinToString(", ").ifBlank { stringResource(R.string.oe_not_recorded) }))
-                        Text("SKU：${detail.skus.joinToString("、").ifBlank { stringResource(R.string.oe_not_recorded) }}")
+                        detail.order.tracking.ifEmpty { listOf("") }.forEach { ExceptionCopyField(stringResource(R.string.oe_tracking), it) }
+                        detail.skus.ifEmpty { listOf("") }.forEach { ExceptionCopyField(stringResource(R.string.oe_sku), it) }
                         Text(stringResource(R.string.oe_types_value, detail.types.joinToString(", ") { it.name }))
                         TicketScopeRows(detail.scopeItems)
                         if (detail.description.isNotBlank()) Text(detail.description)
@@ -237,13 +251,14 @@ fun OrderExceptionDetailScreen(id: Long, scopeKey: String) {
                     }
                 }
             }
-            item { Text(stringResource(R.string.oe_operations), style = MaterialTheme.typography.titleMedium) }
-            items(detail.operations, key = { it.id }) { operation ->
-                Text("${operation.displayName()} · ${operation.employeeCode.ifBlank { stringResource(R.string.oe_employee_missing) }}\n${operation.stageName()} · ${operation.occurredAt ?: stringResource(R.string.oe_time_missing, operation.date)}")
-            }
+            item { ExceptionSectionTitle(stringResource(R.string.oe_operations)) }
+            if (detail.operations.isEmpty()) item { Text(stringResource(R.string.oe_no_operations), color = FscmInkSoft) }
+            items(detail.operations, key = { "operation-${it.id}" }) { operation -> ExceptionOperationCard(operation) }
+            item { ExceptionSectionTitle(stringResource(R.string.oe_rectification)) }
+            if (detail.resolutions.isEmpty() && detail.handlingNote.isBlank() && (detail.status != "open" || !detail.canResolve)) item { Text(stringResource(R.string.oe_no_resolution), color = FscmInkSoft) }
             detail.resolutions.forEach { result ->
                 item(key = "resolution-${result.id}") {
-                    Card(Modifier.fillMaxWidth()) {
+                    ExceptionSectionCard {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(stringResource(R.string.oe_result, exceptionProblemLabel(result.problemType)), fontWeight = FontWeight.Bold)
                             if (result.measures.isNotBlank()) Text(stringResource(R.string.oe_measures_value, result.measures))
@@ -266,10 +281,11 @@ fun OrderExceptionDetailScreen(id: Long, scopeKey: String) {
                     }
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(stringResource(R.string.oe_measures), fontWeight = FontWeight.Bold)
-                            Card(onClick = { editingMeasures = true }, enabled = editable, modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp)) {
+                            Text(stringResource(if (state.form.problemType == "other") R.string.oe_measures_required else R.string.oe_measures), fontWeight = FontWeight.Bold)
+                            Card(onClick = { editingMeasures = true }, colors = CardDefaults.cardColors(containerColor = FscmSurfaceRaised), border = BorderStroke(1.dp, if (state.measuresError) MaterialTheme.colorScheme.error else FscmStrokeSoft), enabled = editable, modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp)) {
                                 Text(state.form.measures.ifBlank { stringResource(R.string.oe_measures_hint) }, Modifier.padding(16.dp), maxLines = 6, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                             }
+                            if (state.measuresError) Text(stringResource(R.string.oe_measures_required_error), color = MaterialTheme.colorScheme.error)
                             OutlinedButton(onClick = { editingMeasures = true }, enabled = editable, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.oe_edit_measures)) }
                         }
                     }
@@ -322,10 +338,76 @@ fun OrderExceptionDetailScreen(id: Long, scopeKey: String) {
                     }
                     item {
                         state.error?.let { Text(it.resolve(), color = MaterialTheme.colorScheme.error) }
-                        Button(onClick = { if (state.pending) viewModel.submit() else confirming = true }, enabled = !state.busy && state.failedUpload == null && (state.pending || detail.pendingCollaborators.isEmpty() || state.form.terminateCollaborations), modifier = Modifier.fillMaxWidth()) { Text(if (state.pending) stringResource(R.string.oe_check_result) else stringResource(R.string.oe_submit)) }
+                        Button(onClick = {
+                            if (state.pending) {
+                                viewModel.submit()
+                            } else if (viewModel.validateForConfirmation()) {
+                                confirming = true
+                            }
+                        }, enabled = !state.busy && state.failedUpload == null && (state.pending || detail.pendingCollaborators.isEmpty() || state.form.terminateCollaborations), modifier = Modifier.fillMaxWidth()) { Text(if (state.pending) stringResource(R.string.oe_check_result) else stringResource(R.string.oe_submit)) }
                     }
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun ExceptionSearchFields(draft: Map<String, String>, onEdit: (String, String) -> Unit, onSearch: (Boolean) -> Unit) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val search = {
+        onSearch(false)
+        keyboard?.hide()
+        expanded = false
+    }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        OutlinedTextField(
+            value = draft["keyword"].orEmpty(), onValueChange = { onEdit("keyword", it) },
+            label = { Text(stringResource(R.string.order_exceptions_title)) },
+            placeholder = { Text(stringResource(R.string.oe_search_hint)) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            singleLine = true, modifier = Modifier.fillMaxWidth(),
+            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(unfocusedBorderColor = FscmBrandMain),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { search() }),
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { search() }) { Text(stringResource(R.string.oe_search)) }
+            TextButton(onClick = {
+                onSearch(true)
+                keyboard?.hide()
+            }) { Text(stringResource(R.string.oe_clear)) }
+            TextButton(onClick = { expanded = !expanded }) { Text(stringResource(if (expanded) R.string.oe_hide_filters else R.string.oe_advanced_filters)) }
+        }
+        if (expanded) {
+            Column(Modifier.heightIn(max = 260.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("order_no" to R.string.oe_order, "tracking_no" to R.string.oe_tracking, "sku" to R.string.oe_sku, "employee_code" to R.string.oe_employee).forEach { (key, label) ->
+                    OutlinedTextField(draft[key].orEmpty(), { onEdit(key, it) }, label = { Text(stringResource(label)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { search() }))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun ExceptionSectionCard(content: @Composable () -> Unit) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = FscmSurfaceRaised), border = BorderStroke(1.dp, FscmStrokeSoft)) { content() }
+}
+
+@Composable
+internal fun ExceptionSectionTitle(title: String) {
+    Text(title, color = FscmBrandDeep, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
+}
+
+@Composable
+internal fun ExceptionOperationCard(operation: WarehouseExceptionOperation) {
+    ExceptionSectionCard {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(operation.stageName().ifBlank { stringResource(R.string.oe_not_recorded) }, color = FscmBrandDeep, fontWeight = FontWeight.Bold, modifier = Modifier.background(FscmBrandSoft, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp))
+            Text(operation.displayName(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.oe_employee_value, operation.employeeCode.ifBlank { stringResource(R.string.oe_not_recorded) }), color = FscmInkSoft, style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.oe_operation_time, operation.occurredAt?.takeIf { it.isNotBlank() } ?: stringResource(R.string.oe_time_missing, operation.date)), color = FscmInkSoft, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }

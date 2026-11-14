@@ -71,4 +71,17 @@
     <string name="oe_conflict">ข้อมูลความผิดปกติหรือใบงานเปลี่ยนไป โปรดตรวจสอบข้อมูลล่าสุดก่อนส่งใหม่</string>
     <string name="oe_photo_large">รูปต้นฉบับใหญ่เกินไป กรุณาเลือกรูปที่เล็กกว่า</string>
     <string name="oe_photo_size">แต่ละรูปต้องมีขนาดไม่เกิน 5 MB</string>
+    <string name="oe_search_hint">เลขคำสั่งซื้อ / พัสดุ / SKU / รหัสพนักงาน</string>
+    <string name="oe_advanced_filters">ตัวกรองเพิ่มเติม</string>
+    <string name="oe_sku">SKU</string>
+    <string name="oe_order_details">รายละเอียดคำสั่งซื้อ</string>
+    <string name="oe_rectification">มาตรการแก้ไข</string>
+    <string name="oe_copy">คัดลอก</string>
+    <string name="oe_copied">คัดลอกแล้ว</string>
+    <string name="oe_no_operations">ไม่มีประวัติการทำงาน</string>
+    <string name="oe_no_resolution">ยังไม่มีบันทึกการแก้ไข</string>
+    <string name="oe_employee_value">รหัสพนักงาน: %1$s</string>
+    <string name="oe_operation_time">เวลาปฏิบัติงาน: %1$s</string>
+    <string name="oe_measures_required">มาตรการแก้ไข (จำเป็น)</string>
+    <string name="oe_measures_required_error">โปรดระบุมาตรการแก้ไขเมื่อเลือกอื่น ๆ</string>
 </resources>

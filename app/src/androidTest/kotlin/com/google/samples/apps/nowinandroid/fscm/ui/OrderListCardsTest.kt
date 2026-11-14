@@ -16,6 +16,7 @@
 
 package com.google.samples.apps.nowinandroid.fscm.ui
 
+import android.content.ClipboardManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -53,6 +54,8 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** Isolated product fixtures; no real order is read or changed. */
@@ -84,6 +87,12 @@ class OrderListCardsTest {
         }
         saveScreenshot("order-list-cards")
         compose.onNodeWithText("000123456789").assertIsDisplayed().performClick()
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertFalse(exceptionOpened)
+            assertEquals("000123456789", context.getSystemService(ClipboardManager::class.java).primaryClip?.getItemAt(0)?.text.toString())
+        }
+        compose.onNodeWithText("Packing issue").performClick()
         compose.onNodeWithText("OFF-000042").performScrollTo().assertIsDisplayed().performClick()
         compose.runOnIdle {
             assertTrue(exceptionOpened)
@@ -108,6 +117,8 @@ class OrderListCardsTest {
         compose.onNodeWithText(context.getString(R.string.order_card_product_missing)).assertIsDisplayed()
         saveScreenshot("order-list-cards-large-font")
         compose.onNodeWithText(order).assertIsDisplayed().performClick()
+        compose.runOnIdle { assertFalse(opened) }
+        compose.onNodeWithText(context.getString(R.string.order_card_product_missing)).performClick()
         compose.runOnIdle { assertTrue(opened) }
     }
 
