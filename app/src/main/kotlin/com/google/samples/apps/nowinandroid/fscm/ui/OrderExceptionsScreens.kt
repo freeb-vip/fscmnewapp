@@ -85,7 +85,9 @@ import androidx.core.content.FileProvider
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import coil.compose.AsyncImage
 import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandDeep
@@ -98,6 +100,7 @@ import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmSurfaceR
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseExceptionFile
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseExceptionOperation
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -132,6 +135,15 @@ fun OrderExceptionsListScreen(scopeKey: String, onOpen: (Long) -> Unit) {
         onDispose { viewModel.saveScroll(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) }
     }
     key(scopeKey) { LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.resume() } }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(scopeKey, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                delay(15_000)
+                viewModel.refreshIfStale()
+            }
+        }
+    }
     Column(Modifier.fillMaxSize().background(FscmPageTop)) {
         PrimaryTabRow(selectedTabIndex = if (state.resolved) 1 else 0) {
             Tab(selected = !state.resolved, onClick = {
@@ -143,6 +155,7 @@ fun OrderExceptionsListScreen(scopeKey: String, onOpen: (Long) -> Unit) {
                 coroutine.launch { listState.scrollToItem(0) }
             }, text = { Text(if (state.countsLoaded) stringResource(R.string.oe_resolved_count, state.completed) else stringResource(R.string.oe_resolved)) })
         }
+        ExceptionSnapshotStatus(state.snapshotAt, state.refreshStatus)
         ExceptionSearchFields(state.draft, viewModel::editFilter, onSearch = { clear ->
             viewModel.search(clear)
             coroutine.launch { listState.scrollToItem(0) }
@@ -409,5 +422,29 @@ internal fun ExceptionOperationCard(operation: WarehouseExceptionOperation) {
             Text(stringResource(R.string.oe_employee_value, operation.employeeCode.ifBlank { stringResource(R.string.oe_not_recorded) }), color = FscmInkSoft, style = MaterialTheme.typography.bodyMedium)
             Text(stringResource(R.string.oe_operation_time, operation.occurredAt?.takeIf { it.isNotBlank() } ?: stringResource(R.string.oe_time_missing, operation.date)), color = FscmInkSoft, style = MaterialTheme.typography.bodyMedium)
         }
+    }
+}
+
+internal fun formatExceptionSnapshotTime(value: String): String = runCatching {
+    java.time.OffsetDateTime.parse(value).format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss xxx"))
+}.getOrDefault(value)
+
+@Composable
+internal fun ExceptionSnapshotStatus(snapshotAt: String?, refreshStatus: String) {
+    snapshotAt?.let { timestamp ->
+        Text(
+            stringResource(R.string.oe_snapshot_updated, formatExceptionSnapshotTime(timestamp)),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = FscmInkSoft,
+        )
+    }
+    if (refreshStatus in listOf("refreshing", "building", "stale")) {
+        Text(
+            stringResource(if (refreshStatus == "stale") R.string.oe_snapshot_stale else R.string.oe_snapshot_refreshing),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = FscmInkSoft,
+        )
     }
 }

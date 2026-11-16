@@ -121,6 +121,9 @@ data class WarehouseException(
 
 @Serializable
 data class WarehouseExceptionPage(
+    @SerialName("snapshot_version") val snapshotVersion: Long = 0,
+    @SerialName("snapshot_at") val snapshotAt: String? = null,
+    @SerialName("refresh_status") val refreshStatus: String = "",
     val items: List<WarehouseException> = emptyList(),
     val total: Long = 0,
     val open: Long = 0,

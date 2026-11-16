@@ -84,4 +84,7 @@
     <string name="oe_operation_time">လုပ်ဆောင်ချိန်: %1$s</string>
     <string name="oe_measures_required">ပြုပြင်ဆောင်ရွက်ချက်များ (မဖြစ်မနေ)</string>
     <string name="oe_measures_required_error">အခြားကို ရွေးပါက ပြုပြင်ဆောင်ရွက်ချက်များ ဖြည့်ပါ။</string>
+    <string name="oe_snapshot_updated">အပ်ဒိတ်ချိန်: %1$s</string>
+    <string name="oe_snapshot_refreshing">နောက်ကွယ်တွင် အပ်ဒိတ်လုပ်နေသည်</string>
+    <string name="oe_snapshot_stale">အပ်ဒိတ်နောက်ကျနေသည်။ နောက်ဆုံး ပြည့်စုံသောစာရင်းကို ပြနေသည်</string>
 </resources>

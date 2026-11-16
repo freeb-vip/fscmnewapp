@@ -84,4 +84,7 @@
     <string name="oe_operation_time">เวลาปฏิบัติงาน: %1$s</string>
     <string name="oe_measures_required">มาตรการแก้ไข (จำเป็น)</string>
     <string name="oe_measures_required_error">โปรดระบุมาตรการแก้ไขเมื่อเลือกอื่น ๆ</string>
+    <string name="oe_snapshot_updated">อัปเดตเมื่อ: %1$s</string>
+    <string name="oe_snapshot_refreshing">กำลังอัปเดตในเบื้องหลัง</string>
+    <string name="oe_snapshot_stale">การอัปเดตล่าช้า กำลังแสดงรายการล่าสุดที่สมบูรณ์</string>
 </resources>

@@ -64,6 +64,14 @@ class OrderExceptionOptimizationTest {
     @Test fun burmeseNarrowScreen() = layout("my")
 
     private fun layout(tag: String) {
+        compose.activity.runOnUiThread {
+            @Suppress("DEPRECATION")
+            compose.activity.window.addFlags(
+                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                    android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+            )
+        }
         val config = Configuration(context.resources.configuration).apply { setLocale(Locale.forLanguageTag(tag)) }
         val localized = context.createConfigurationContext(config)
         val draft = mutableStateOf<Map<String, String>>(emptyMap())
@@ -78,6 +86,7 @@ class OrderExceptionOptimizationTest {
                             searches++
                             if (clear) draft.value = emptyMap()
                         })
+                        ExceptionSnapshotStatus("2026-11-16T03:30:00Z", "refreshing")
                         ExceptionSectionTitle(localized.getString(R.string.oe_order_details))
                         ExceptionCopyField(localized.getString(R.string.oe_order), number)
                         ExceptionCopyField(localized.getString(R.string.oe_tracking), "000TRACK")
@@ -89,6 +98,9 @@ class OrderExceptionOptimizationTest {
                 }
             }
         }
+        compose.onNodeWithText(localized.getString(R.string.oe_snapshot_refreshing)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(localized.getString(R.string.oe_snapshot_updated, formatExceptionSnapshotTime("2026-11-16T03:30:00Z"))).performScrollTo().assertIsDisplayed()
+        compose.onNode(hasSetTextAction()).performScrollTo()
         compose.onNode(hasSetTextAction()).performTextInput("000SKU")
         compose.runOnIdle { assertEquals(0, searches) }
         compose.onNode(hasSetTextAction()).performImeAction()

@@ -56,7 +56,7 @@ class OrderExceptionsListViewModelTest {
     }
 
     @Test
-    fun retriesFailedAppendWithoutLosingRowsAndRefreshesLoadedPagesAfterTTL() = runTest {
+    fun retriesFailedAppendWithoutLosingRowsAndRefreshesFirstPageAfterTTL() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
             val source = Source()
@@ -81,13 +81,13 @@ class OrderExceptionsListViewModelTest {
             time += 60_001
             vm.resume()
             advanceUntilIdle()
-            assertEquals(listOf(1, 2), source.calls.takeLast(2).map { it.first })
-            assertEquals(2, vm.state.value.rows.size)
+            assertEquals(1, source.calls.last().first)
+            assertEquals(1, vm.state.value.rows.size)
             assertEquals(18, vm.scrollOffset)
             source.failPage = 1
             vm.refresh(userInitiated = true)
             advanceUntilIdle()
-            assertEquals(2, vm.state.value.rows.size)
+            assertEquals(1, vm.state.value.rows.size)
             assertFalse(vm.state.value.refreshing)
         } finally {
             Dispatchers.resetMain()
@@ -145,6 +145,28 @@ class OrderExceptionsListViewModelTest {
             advanceUntilIdle()
             assertEquals(0, vm.state.value.rows.size)
             assertFalse(vm.state.value.countsLoaded)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun snapshotRevisionChangeRestartsPagingAndFailurePreservesTimestamp() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val source = Source()
+            source.response = { page -> WarehouseExceptionPage(items = listOf(WarehouseException(id = page.toLong())), total = 3, open = 3, snapshotVersion = if (page == 1) 1 else 2, snapshotAt = "2026-11-16T00:00:00Z", refreshStatus = "ready") }
+            val vm = OrderExceptionsListViewModel(source) { 1L }
+            vm.resume()
+            advanceUntilIdle()
+            vm.refresh(more = true)
+            advanceUntilIdle()
+            assertEquals(listOf(1, 2, 1), source.calls.map { it.first })
+            assertEquals(listOf(1L), vm.state.value.rows.map { it.id })
+            source.failPage = 1
+            vm.refresh(userInitiated = true)
+            advanceUntilIdle()
+            assertEquals("2026-11-16T00:00:00Z", vm.state.value.snapshotAt)
         } finally {
             Dispatchers.resetMain()
         }

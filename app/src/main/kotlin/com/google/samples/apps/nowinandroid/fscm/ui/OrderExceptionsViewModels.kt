@@ -63,6 +63,9 @@ data class ExceptionsListState(
     val loadingMore: Boolean = false,
     val refreshing: Boolean = false,
     val countsLoaded: Boolean = false,
+    val snapshotAt: String? = null,
+    val refreshStatus: String = "",
+    val snapshotVersion: Long = 0,
     val retryMore: Boolean = false,
     val draft: Map<String, String> = emptyMap(),
     val error: UiText? = null,
@@ -125,6 +128,13 @@ class OrderExceptionsListViewModel internal constructor(private val repository: 
     fun resume() {
         if (!state.value.loading && (dirty || loadedAt == 0L || now() - loadedAt >= 60_000)) refresh()
     }
+    fun refreshIfStale() {
+        if (!state.value.loading && state.value.refreshStatus in listOf("refreshing", "building")) {
+            refresh()
+        } else {
+            resume()
+        }
+    }
     fun select(resolved: Boolean) {
         if (state.value.resolved == resolved) return
         mutable.update { it.copy(resolved = resolved, rows = emptyList(), page = 0, total = if (resolved) it.completed else it.open) }
@@ -146,23 +156,19 @@ class OrderExceptionsListViewModel internal constructor(private val repository: 
         val before = state.value
         val requestFilters = filters.toMap()
         val page = if (more) before.page + 1 else 1
-        val refreshThrough = if (!more && !userInitiated) before.page.coerceAtLeast(1) else page
         mutable.update { it.copy(loading = true, loadingMore = more, refreshing = userInitiated, error = null, retryMore = more) }
         job = viewModelScope.launch {
             try {
                 val actor = scope ?: repository.scope().also { scope = it }
-                var result = repository.list(actor, before.resolved, requestFilters, page)
-                val refreshedRows = result.items.toMutableList()
-                var completedPage = page
-                while (!more && completedPage < refreshThrough && refreshedRows.size < result.total) {
-                    completedPage++
-                    result = repository.list(actor, before.resolved, requestFilters, completedPage)
-                    refreshedRows.addAll(result.items)
+                val result = repository.list(actor, before.resolved, requestFilters, page)
+                if (epoch == generation && more && before.snapshotVersion > 0 && result.snapshotVersion != before.snapshotVersion) {
+                    refresh()
+                    return@launch
                 }
                 if (epoch == generation) {
                     loadedAt = now()
                     dirty = false
-                    mutable.update { it.copy(rows = if (more) (it.rows + result.items).distinctBy(WarehouseException::id) else refreshedRows.distinctBy(WarehouseException::id), total = result.total, open = result.open, completed = result.resolved, page = completedPage, loading = false, loadingMore = false, refreshing = false, countsLoaded = true) }
+                    mutable.update { it.copy(rows = if (more) (it.rows + result.items).distinctBy(WarehouseException::id) else result.items.distinctBy(WarehouseException::id), total = result.total, open = result.open, completed = result.resolved, page = page, loading = false, loadingMore = false, refreshing = false, countsLoaded = true, snapshotAt = result.snapshotAt, refreshStatus = result.refreshStatus, snapshotVersion = result.snapshotVersion) }
                 }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error

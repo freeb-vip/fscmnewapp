@@ -54,3 +54,19 @@ API在列表项增加可选`product_preview`：`title/sku/image_url/item_count`�
 主要文件：`OrderListCards.kt`实现共用卡片与两个业务卡片；`OrderExceptionsScreens.kt`和`OfflineShippingScreens.kt`接入卡片；`OrderProductPreview.kt`、异常及发货DTO适配摘要；四份`strings_order_cards.xml`提供文案；`OrderProductPreviewTest.kt`验证新旧协议及前导零，`OrderListCardsTest.kt`验证双列表点击、大字体和缺失商品，并生成仅用于验收的实机截图。
 
 Windows验证：`:app:testDemoDebugUnitTest`464项通过，`:app:spotlessKotlinCheck`、`:app:assembleDemoDebug`通过。i6310/API25执行`:app:connectedDemoDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.google.samples.apps.nowinandroid.fscm.ui.OrderListCardsTest`，2项通过；截图为隔离测试商品，不代表真实订单或产品。JBR25/JaCoCo既有告警不作为覆盖率结果。后端在WSL最新工程完成，PostgreSQL相关回归通过。已纳入本地提交（编号见 Git 历史）、未推送、未发布生产；没有修改数据库结构、权限或真实订单数据。未在生产账号上验收新接口和远程产品图加载；无设计约束偏离。
+
+
+## 异常订单搜索与详情优化正式发布（2026-11-14）
+
+按用户要求先部署最新后端，再发布正式App。后端提交14efd52261c29793cd9f6560518b1b60afe6d51e，版本1.1.50，镜像摘要sha256:f28dfed73c9943874bb3c185c0cadbd7b6bdd4d15fb3320f990843e04487de02。两次迁移任务均applied=0/latest=380_operating_analysis_quality.sql，3个后端实例就绪，容器内/readyz返回status=ok。
+
+Android以Windows正式构建assembleProdRelease生成1.3.12（42），包名com.fscm.app，源码提交b432311067aec44066edff89e62a23d2181b891f；APK内版本控制元数据已核对。签名证书SHA-256为50282b0fe48954d9990641bb3e1bee91a9fb4d59af1f04e574cc7da86c9189ba，与线上版本一致。APK SHA-256为7f8b4b846d7617dc426ed2a9a03442a0d47c975cd70cfc55ed0938bc238647b5，大小36431618字节。
+
+发布记录68，非强制更新，最低支持版本维持0。公开下载 https://fscm.freeb.vip/api/app-downloads/28d7fe0e-18b3-48d7-be7a-ed48621054b7 已实际下载校验；版本38、41检查更新返回42，42不再提示升级。生产发布证据保存在/home/hong/releases/exception-20261114，包括双迁移、镜像摘要、发布预检及public-verification.json。未在PDA实际安装或提交真实整改；设备测试由用户继续验收。未推送Git分支，无规范偏离。
+
+
+## 2026-11-16 快照状态与加载性能
+
+列表读取后端完整摘要，新增snapshot_version、snapshot_at和refresh_status。更新时间、后台更新和延迟提示提供中英泰缅四语；账号／空间／权限切换清理缓存，跨页版本改变重开第一页，失败保留已有列表和时间。可见页面每15秒检查更新状态，正常结果保持60秒TTL，隐藏时暂停。
+
+Windows全量单元、Kotlin样式、demoDebug及androidTest构建通过；i6310中英泰缅4项设备用例通过，验证320dp、1.5倍字体的时间提示、搜索及复制；已检查泰缅截图。全量原生网络首屏2秒需随后端发布后在实际生产网络复核，当前没有发布正式App或改写真实整改数据。后端快照结构、历史回填、异步履历补查及5分钟并发测试证据见FSCM后端工程docs/features/order-query-performance.md。未创建提交。
