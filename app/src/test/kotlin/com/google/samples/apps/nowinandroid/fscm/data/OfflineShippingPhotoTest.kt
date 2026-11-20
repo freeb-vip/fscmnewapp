@@ -20,6 +20,7 @@ import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.ExifInterface
+import kotlinx.coroutines.test.runTest
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -31,6 +32,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
@@ -58,6 +60,37 @@ class OfflineShippingPhotoTest {
         // already-submitted content associated with the photo idempotency ID.
         photo.writeText("changed source")
         assertContentEquals(bytes, normalizeShippingPhoto(photo).readBytes())
+    }
+
+    @Test
+    fun highDetailCameraPhotoFitsByteBudget() {
+        val photo = folder.newFile("shipping_large.jpg")
+        val bitmap = Bitmap.createBitmap(2048, 1536, Bitmap.Config.ARGB_8888)
+        val random = java.util.Random(7)
+        val pixels = IntArray(bitmap.width * bitmap.height) { random.nextInt() or -0x1000000 }
+        bitmap.setPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        photo.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 96, it) }
+        bitmap.recycle()
+        assertTrue(photo.length() > SHIPPING_PHOTO_TARGET_BYTES)
+        val result = normalizeShippingPhoto(photo)
+        assertTrue(result.length() in 1..SHIPPING_PHOTO_TARGET_BYTES.toLong())
+        assertTrue(BitmapFactory.decodeFile(result.path).width >= 512)
+    }
+
+    @Test
+    fun resumeStartsAtAcknowledgedOffsetAndCompletedResponseSkipsTransfer() = runTest {
+        val file = folder.newFile("prepared").apply { writeBytes(ByteArray(11) { it.toByte() }) }
+        val completed = ShippingPhoto("uuid", "shipping")
+        val offsets = mutableListOf<Long>()
+        val result = resumeShippingPhoto(file, 4, ShippingPhotoUpload(4)) { offset, bytes ->
+            offsets.add(offset)
+            val end = offset + bytes.size
+            assertContentEquals(file.readBytes().copyOfRange(offset.toInt(), end.toInt()), bytes)
+            ShippingPhotoUpload(end, completed.takeIf { end == file.length() })
+        }
+        assertEquals(completed, result)
+        assertEquals(listOf(4L, 8L), offsets)
+        assertEquals(completed, resumeShippingPhoto(file, 4, ShippingPhotoUpload(file.length(), completed)) { _, _ -> error("Already uploaded") })
     }
 
     @Test

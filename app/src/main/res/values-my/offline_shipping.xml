@@ -50,4 +50,5 @@
     <string name="shipping_upload_first">မတင်ရသေးသော ပုံများရှိပါသည်။ ပြန်တင်ပါ သို့မဟုတ် ဖယ်ရှားပါ။</string>
     <string name="shipping_pending_request">ရလဒ်အတည်ပြုရန် စောင့်နေသည်။ စစ်ဆေးရန် ပြန်ကြိုးစားပါ။</string>
     <string name="shipping_camera_permission">စကင်ဖတ်ရန်နှင့် ပုံရိုက်ရန် ကင်မရာခွင့်ပြုချက် လိုအပ်ပါသည်။</string>
+    <string name="shipping_payment_pending">ကျန်ငွေပေးချေမှုကို စောင့်နေသည်</string>
 </resources>

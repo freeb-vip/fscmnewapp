@@ -35,8 +35,12 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.RandomAccessFile
+import java.security.MessageDigest
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -53,6 +57,8 @@ data class ShippingTask(
     val quantity: Long = 0,
     @SerialName("created_at") val createdAt: String = "",
     @SerialName("shipped_at") val shippedAt: String? = null,
+    @SerialName("payment_pending") val paymentPending: Boolean = false,
+    @SerialName("photo_chunk_bytes") val photoChunkBytes: Int = 0,
     val recipient: ShippingRecipient = ShippingRecipient(),
     val items: List<ShippingItem> = emptyList(),
     val photos: List<ShippingPhoto> = emptyList(),
@@ -89,6 +95,9 @@ data class ShippingPhoto(
     @SerialName("created_at") val createdAt: String = "",
     val confirmed: Boolean = false,
 )
+
+@Serializable
+internal data class ShippingPhotoUpload(@SerialName("next_offset") val nextOffset: Long, val photo: ShippingPhoto? = null)
 
 @Serializable
 data class ShippingPage(val rows: List<ShippingTask> = emptyList(), val total: Long = 0)
@@ -177,9 +186,10 @@ class OfflineShippingRepository @Inject constructor(
         File(directory(scope, id), "${stage}_${UUID.randomUUID()}.jpg").apply { createNewFile() }
     }
 
-    suspend fun localPhotos(scope: ShippingScope, id: Long): List<File> = withContext(Dispatchers.IO) {
+    suspend fun localPhotos(scope: ShippingScope, id: Long, preparedOnly: Boolean = false): List<File> = withContext(Dispatchers.IO) {
         verify(scope)
-        directory(scope, id).listFiles()?.filter { it.extension == "jpg" && it.length() > 0 }?.sortedBy { it.name }.orEmpty()
+        // A restored camera can still be writing the source. Only resume prepared files automatically.
+        directory(scope, id).listFiles()?.filter { it.extension == "jpg" && it.length() > 0 && (!preparedOnly || File(it.path + ".upload").isFile) }?.sortedBy { it.name }.orEmpty()
     }
 
     suspend fun removeLocal(scope: ShippingScope, id: Long, file: File) = withContext(Dispatchers.IO) {
@@ -187,18 +197,42 @@ class OfflineShippingRepository @Inject constructor(
         check(file.parentFile?.canonicalFile == directory(scope, id).canonicalFile)
         file.delete()
         File(file.path + ".upload").delete()
+        File(file.path + ".preparing").delete()
         Unit
     }
 
-    suspend fun upload(scope: ShippingScope, id: Long, file: File): ShippingPhoto = withContext(Dispatchers.IO) {
+    suspend fun upload(scope: ShippingScope, id: Long, file: File, chunkBytes: Int): ShippingPhoto = withContext(Dispatchers.IO) {
         verify(scope)
         check(file.parentFile?.canonicalFile == directory(scope, id).canonicalFile)
         val prepared = normalizeShippingPhoto(file)
         require(prepared.length() in 1..(10L shl 20))
         val stage = file.name.substringBefore('_')
         val photoId = file.nameWithoutExtension.substringAfter('_')
-        val part = MultipartBody.Part.createFormData("file", file.name, prepared.readBytes().toRequestBody("image/jpeg".toMediaType()))
-        val result: ShippingPhoto = api.upload("${base(id)}/photos/$stage/$photoId", part, headers = scope.headers())
+        val result: ShippingPhoto = if (chunkBytes > 0 && prepared.length() > chunkBytes) {
+            val path = "${base(id)}/photo-uploads/$stage/$photoId"
+            val digest = MessageDigest.getInstance("SHA-256")
+            prepared.inputStream().use { input ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                var count = input.read(buffer)
+                while (count != -1) {
+                    digest.update(buffer, 0, count)
+                    count = input.read(buffer)
+                }
+            }
+            val headers = scope.headers() + mapOf(
+                "X-Upload-Size" to prepared.length().toString(),
+                "X-Upload-SHA256" to digest.digest().joinToString("") { "%02x".format(it) },
+            )
+            val status: ShippingPhotoUpload = api.get(path, headers = headers)
+            resumeShippingPhoto(prepared, chunkBytes, status) { offset, bytes ->
+                verify(scope)
+                val part = MultipartBody.Part.createFormData("file", file.name, bytes.toRequestBody("application/octet-stream".toMediaType()))
+                api.upload(path, part, headers = headers + ("X-Upload-Offset" to offset.toString()))
+            }
+        } else {
+            val part = MultipartBody.Part.createFormData("file", file.name, prepared.asRequestBody("image/jpeg".toMediaType()))
+            api.upload("${base(id)}/photos/$stage/$photoId", part, headers = scope.headers())
+        }
         file.delete()
         prepared.delete()
         result
@@ -215,10 +249,33 @@ class OfflineShippingRepository @Inject constructor(
     }
 }
 
+internal suspend fun resumeShippingPhoto(
+    file: File,
+    chunkBytes: Int,
+    initial: ShippingPhotoUpload,
+    send: suspend (Long, ByteArray) -> ShippingPhotoUpload,
+): ShippingPhoto {
+    require(chunkBytes in 1..(1 shl 20))
+    var status = initial
+    RandomAccessFile(file, "r").use { input ->
+        val size = input.length()
+        while (true) {
+            status.photo?.let { return it }
+            val offset = status.nextOffset
+            require(offset in 0 until size)
+            input.seek(offset)
+            val bytes = ByteArray(minOf(chunkBytes.toLong(), size - offset).toInt())
+            input.readFully(bytes)
+            status = send(offset, bytes)
+            require(status.nextOffset != offset)
+        }
+    }
+}
+
 // Persist the normalized upload once so a timeout retry has identical bytes.
+@Synchronized
 internal fun normalizeShippingPhoto(source: File): File {
     val target = File(source.path + ".upload")
-    val atomic = AtomicFile(target)
     if (target.exists()) return target
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(source.path, bounds)
@@ -245,16 +302,38 @@ internal fun normalizeShippingPhoto(source: File): File {
         }
     }
     val normalized = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-    val stream = atomic.startWrite()
+    val temporary = File(source.path + ".preparing")
     try {
-        check(normalized.compress(Bitmap.CompressFormat.JPEG, 85, stream))
-        atomic.finishWrite(stream)
-    } catch (error: Throwable) {
-        atomic.failWrite(stream)
-        throw error
+        temporary.outputStream().use { stream ->
+            stream.write(compressShippingJpeg(normalized))
+            stream.fd.sync()
+        }
+        if (!temporary.renameTo(target)) throw java.io.IOException("Could not save prepared photo")
     } finally {
+        temporary.delete()
         if (normalized !== bitmap) normalized.recycle()
         bitmap.recycle()
     }
     return target
+}
+
+internal const val SHIPPING_PHOTO_TARGET_BYTES = 256 * 1024
+
+private fun compressShippingJpeg(source: Bitmap): ByteArray {
+    var bitmap = source
+    val output = ByteArrayOutputStream()
+    try {
+        while (true) {
+            for (quality in listOf(84, 74, 64)) {
+                output.reset()
+                check(bitmap.compress(Bitmap.CompressFormat.JPEG, quality, output))
+                if (output.size() <= SHIPPING_PHOTO_TARGET_BYTES) return output.toByteArray()
+            }
+            val smaller = Bitmap.createScaledBitmap(bitmap, maxOf(1, bitmap.width * 3 / 4), maxOf(1, bitmap.height * 3 / 4), true)
+            if (bitmap !== source) bitmap.recycle()
+            bitmap = smaller
+        }
+    } finally {
+        if (bitmap !== source) bitmap.recycle()
+    }
 }

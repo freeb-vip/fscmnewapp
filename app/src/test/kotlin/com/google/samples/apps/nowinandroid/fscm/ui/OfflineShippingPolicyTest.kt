@@ -48,6 +48,8 @@ class OfflineShippingPolicyTest {
     fun errorsUseLocalResourcesInsteadOfSalesServerText() {
         val payload = Json.parseToJsonElement("""{"code":409,"data":{"reason":"already_picked"},"msg":"内部销售数据"}""")
         assertEquals(R.string.shipping_already_picked, FscmApiException("private", 409, payload, "private").shippingMessage())
+        val pending = Json.parseToJsonElement("""{"data":{"reason":"payment_pending"}}""")
+        assertEquals(R.string.shipping_payment_pending, FscmApiException("private", 409, pending).shippingMessage())
         assertEquals(R.string.shipping_request_failed, FscmApiException("price=999", 500).shippingMessage())
         assertEquals(R.string.shipping_access_error, FscmApiException("private", 403).shippingMessage())
         assertEquals(R.string.shipping_access_error, SessionExpiredException().shippingMessage())

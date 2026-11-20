@@ -326,9 +326,19 @@ fun OfflineShippingDetailScreen(orderId: Long, scopeKey: String) {
                     item {
                         Button(
                             onClick = { viewModel.complete(carrier, tracking) },
-                            enabled = !state.busy && !state.pending && task.photos.any { it.stage == task.stage } && state.localPhotos.none { it.name.startsWith(task.stage + "_") },
+                            enabled = !task.paymentPending && !state.busy && !state.pending && task.photos.any { it.stage == task.stage } && state.localPhotos.none { it.name.startsWith(task.stage + "_") },
                             modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-                        ) { Text(stringResource(if (task.stage == "packing") R.string.shipping_complete_pack else R.string.shipping_confirm_ship)) }
+                        ) {
+                            Text(
+                                stringResource(
+                                    when {
+                                        task.stage == "packing" -> R.string.shipping_complete_pack
+                                        task.paymentPending -> R.string.shipping_payment_pending
+                                        else -> R.string.shipping_confirm_ship
+                                    },
+                                ),
+                            )
+                        }
                     }
                 }
                 if (state.busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }

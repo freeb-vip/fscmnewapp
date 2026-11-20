@@ -52,6 +52,7 @@ internal fun Throwable.shippingMessage(): Int {
     return when {
         this is SessionExpiredException || api?.statusCode == 401 || api?.statusCode == 403 -> R.string.shipping_access_error
         api?.statusCode == 404 || reason == "task_unavailable" -> R.string.shipping_unavailable
+        reason == "payment_pending" -> R.string.shipping_payment_pending
         reason == "wrong_sku" -> R.string.shipping_wrong_sku
         reason == "already_picked" -> R.string.shipping_already_picked
         reason == "task_changed" || api?.statusCode == 409 -> R.string.shipping_changed
@@ -165,6 +166,7 @@ class OfflineShippingDetailViewModel @Inject constructor(
     fun refresh() = work { actor ->
         repository.retry(actor, orderId)
         reload(actor)
+        uploadLocalPhotos(actor, preparedOnly = true)
     }
 
     private suspend fun reload(actor: ShippingScope) {
@@ -210,6 +212,7 @@ class OfflineShippingDetailViewModel @Inject constructor(
     fun complete(carrier: String, trackingNo: String) {
         val task = _state.value.task ?: return
         if (_state.value.pending || task.stage !in listOf("packing", "shipping")) return
+        if (task.paymentPending && task.stage == "shipping") return
         if (_state.value.localPhotos.any { it.name.startsWith(task.stage + "_") }) {
             _state.update { it.copy(error = R.string.shipping_upload_first) }
             return
@@ -242,20 +245,23 @@ class OfflineShippingDetailViewModel @Inject constructor(
         work { actor -> onReady(repository.newPhoto(actor, orderId, task.stage)) }
     }
 
-    fun captured() = work { actor ->
-        val photos = repository.localPhotos(actor, orderId)
-        _state.update { it.copy(localPhotos = photos) }
-        for (file in photos) {
-            val uploaded = repository.upload(actor, orderId, file)
+    fun captured() = work { actor -> uploadLocalPhotos(actor) }
+
+    private suspend fun uploadLocalPhotos(actor: ShippingScope, preparedOnly: Boolean = false) {
+        val task = _state.value.task ?: return
+        val pending = repository.localPhotos(actor, orderId, preparedOnly).filter { it.name.startsWith(task.stage + "_") }
+        if (!preparedOnly) _state.update { it.copy(localPhotos = pending) }
+        for (file in pending) {
+            val uploaded = repository.upload(actor, orderId, file, task.photoChunkBytes)
             _state.update { current ->
                 current.copy(localPhotos = current.localPhotos - file, task = current.task?.copy(photos = (current.task.photos + uploaded).distinctBy(ShippingPhoto::id)))
             }
         }
-        reload(actor)
+        if (pending.isNotEmpty()) reload(actor)
     }
 
     fun retryUpload(file: File) = work { actor ->
-        repository.upload(actor, orderId, file)
+        repository.upload(actor, orderId, file, requireNotNull(_state.value.task).photoChunkBytes)
         reload(actor)
     }
     fun removeLocal(file: File) = work { actor ->

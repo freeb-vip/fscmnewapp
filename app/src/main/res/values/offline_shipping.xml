@@ -50,4 +50,5 @@
     <string name="shipping_upload_first">Some photos have not uploaded. Retry or remove them first.</string>
     <string name="shipping_pending_request">Confirmation is pending. Retry to check the result.</string>
     <string name="shipping_camera_permission">Camera permission is needed to scan and take photos.</string>
+    <string name="shipping_payment_pending">Waiting for final payment</string>
 </resources>

@@ -50,4 +50,5 @@
     <string name="shipping_upload_first">ยังมีรูปที่อัปโหลดไม่สำเร็จ กรุณาลองใหม่หรือลบก่อน</string>
     <string name="shipping_pending_request">กำลังรอยืนยันผล กรุณาลองอีกครั้งเพื่อตรวจสอบ</string>
     <string name="shipping_camera_permission">ต้องอนุญาตกล้องเพื่อสแกนและถ่ายรูป</string>
+    <string name="shipping_payment_pending">รอชำระยอดคงเหลือ</string>
 </resources>

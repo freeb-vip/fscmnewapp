@@ -50,4 +50,5 @@
     <string name="shipping_upload_first">仍有照片未上传，请先重试上传或移除。</string>
     <string name="shipping_pending_request">操作结果待确认，请重试核实。</string>
     <string name="shipping_camera_permission">扫码和拍照需要相机权限。</string>
+    <string name="shipping_payment_pending">等待尾款结清</string>
 </resources>
