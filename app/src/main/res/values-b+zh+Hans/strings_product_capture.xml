@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capture_title">产品实拍</string>
+    <string name="capture_description">扫描 SKU，拍摄产品照片和视频</string>
+    <string name="capture_available">待领取</string>
+    <string name="capture_mine">我的任务</string>
+    <string name="capture_completed">已完成</string>
+    <string name="capture_in_progress">拍摄中</string>
+    <string name="capture_retake">待重拍</string>
+    <string name="capture_review">待审核</string>
+    <string name="capture_empty">暂无任务</string>
+    <string name="capture_claim">领取任务</string>
+    <string name="capture_scan">扫描商品条码</string>
+    <string name="capture_scan_help">请用相机或 PDA 扫描 SKU %1$s 的条码。</string>
+    <string name="capture_wrong_sku">扫码结果与任务 SKU 不符，请检查后重扫。</string>
+    <string name="capture_operation_error">操作失败，请检查网络后重试。</string>
+    <string name="capture_upload_error">该文件上传失败，请重新拍摄。</string>
+    <string name="capture_camera_error">拍摄文件保存失败，请重试。</string>
+    <string name="capture_permission">请允许使用相机以扫码和拍摄。</string>
+    <string name="capture_video_ready">准备录制</string>
+    <string name="capture_video_starting">正在启动录制…</string>
+    <string name="capture_video_recording">正在录制</string>
+    <string name="capture_video_saving">正在保存视频…</string>
+    <string name="capture_video_preview">刚拍的视频</string>
+    <string name="capture_pause_video">暂停播放</string>
+    <string name="capture_use_video">使用这段视频</string>
+    <string name="capture_video_error">视频无法播放</string>
+    <string name="capture_video_time">%1$s / %2$s</string>
+    <string name="capture_photo">拍照片</string>
+    <string name="capture_record">录视频</string>
+    <string name="capture_stop">停止录制</string>
+    <string name="capture_close">关闭</string>
+    <string name="capture_prev">上一页</string>
+    <string name="capture_next">下一页</string>
+    <string name="capture_amount">%1$d 组照片 · %2$d 条视频</string>
+    <string name="capture_retake_count">重拍 %1$d 组</string>
+    <string name="capture_group">第 %1$d/%2$d 组 · 第 %3$d/%4$d 个文件</string>
+    <string name="capture_previous_file">查看上次拍摄</string>
+    <string name="capture_watch">播放视频</string>
+    <string name="capture_use_next">用这张，下一组</string>
+    <string name="capture_reshoot">重新拍摄</string>
+    <string name="capture_background">已拍完，正在后台上传。</string>
+    <string name="capture_submit">提交审核</string>
+    <string name="capture_step">%1$d–%2$d 秒 · %3$s</string>
+    <string name="capture_retry">重试</string>
+    <string name="capture_example">查看拍摄示例</string>
+</resources>

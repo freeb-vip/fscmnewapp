@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capture_title">ถ่ายสินค้าจริง</string>
+    <string name="capture_description">สแกน SKU แล้วถ่ายภาพและวิดีโอสินค้า</string>
+    <string name="capture_available">รอรับงาน</string>
+    <string name="capture_mine">งานของฉัน</string>
+    <string name="capture_completed">เสร็จแล้ว</string>
+    <string name="capture_in_progress">กำลังถ่าย</string>
+    <string name="capture_retake">รอถ่ายใหม่</string>
+    <string name="capture_review">รอตรวจ</string>
+    <string name="capture_empty">ไม่มีงานในรายการนี้</string>
+    <string name="capture_claim">รับงาน</string>
+    <string name="capture_scan">สแกนบาร์โค้ดสินค้า</string>
+    <string name="capture_scan_help">ใช้กล้องหรือ PDA สแกนบาร์โค้ด SKU %1$s</string>
+    <string name="capture_wrong_sku">บาร์โค้ดไม่ตรงกับ SKU ที่กำหนด โปรดสแกนอีกครั้ง</string>
+    <string name="capture_operation_error">ดำเนินการไม่สำเร็จ ตรวจการเชื่อมต่อแล้วลองใหม่</string>
+    <string name="capture_upload_error">อัปโหลดไฟล์นี้ไม่สำเร็จ โปรดถ่ายใหม่</string>
+    <string name="capture_camera_error">บันทึกไฟล์ไม่ได้ โปรดลองใหม่</string>
+    <string name="capture_permission">อนุญาตให้ใช้กล้องเพื่อสแกนหรือถ่าย</string>
+    <string name="capture_video_ready">พร้อมบันทึก</string>
+    <string name="capture_video_starting">กำลังเริ่มบันทึก…</string>
+    <string name="capture_video_recording">กำลังบันทึก</string>
+    <string name="capture_video_saving">กำลังบันทึกไฟล์วิดีโอ…</string>
+    <string name="capture_video_preview">วิดีโอที่เพิ่งถ่าย</string>
+    <string name="capture_pause_video">หยุดเล่นชั่วคราว</string>
+    <string name="capture_use_video">ใช้วิดีโอนี้</string>
+    <string name="capture_video_error">ไม่สามารถเล่นวิดีโอได้</string>
+    <string name="capture_video_time">%1$s / %2$s</string>
+    <string name="capture_photo">ถ่ายภาพ</string>
+    <string name="capture_record">บันทึกวิดีโอ</string>
+    <string name="capture_stop">หยุดบันทึก</string>
+    <string name="capture_close">ปิด</string>
+    <string name="capture_prev">ก่อนหน้า</string>
+    <string name="capture_next">ถัดไป</string>
+    <string name="capture_amount">ภาพ %1$d กลุ่ม · วิดีโอ %2$d คลิป</string>
+    <string name="capture_retake_count">ถ่ายใหม่ %1$d กลุ่ม</string>
+    <string name="capture_group">กลุ่ม %1$d/%2$d · ไฟล์ %3$d/%4$d</string>
+    <string name="capture_previous_file">ดูภาพครั้งก่อน</string>
+    <string name="capture_watch">เล่นวิดีโอ</string>
+    <string name="capture_use_next">ใช้ไฟล์นี้ ไปขั้นถัดไป</string>
+    <string name="capture_reshoot">ถ่ายใหม่</string>
+    <string name="capture_background">ถ่ายเสร็จ กำลังอัปโหลดไฟล์เบื้องหลัง</string>
+    <string name="capture_submit">ส่งตรวจ</string>
+    <string name="capture_step">%1$d–%2$d วินาที · %3$s</string>
+    <string name="capture_retry">ลองใหม่</string>
+    <string name="capture_example">ดูตัวอย่าง</string>
+</resources>

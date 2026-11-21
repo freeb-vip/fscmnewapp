@@ -27,6 +27,7 @@ import com.google.samples.apps.nowinandroid.fscm.data.CentralReceivingSyncSchedu
 import com.google.samples.apps.nowinandroid.fscm.data.LocalInboundSyncScheduler
 import com.google.samples.apps.nowinandroid.fscm.data.LocalReceivingSyncScheduler
 import com.google.samples.apps.nowinandroid.fscm.data.OfflineSyncScheduler
+import com.google.samples.apps.nowinandroid.fscm.data.ProductCaptureRepository
 import com.google.samples.apps.nowinandroid.fscm.ui.AppLanguage
 import com.google.samples.apps.nowinandroid.fscm.ui.setAppLanguage
 import dagger.hilt.android.HiltAndroidApp
@@ -64,6 +65,9 @@ class FscmApplication : Application(), ImageLoaderFactory, Configuration.Provide
 
     @Inject
     lateinit var centralReceivingSyncScheduler: CentralReceivingSyncScheduler
+
+    @Inject
+    lateinit var productCaptureRepository: ProductCaptureRepository
 
     @Inject
     lateinit var sessionStore: com.google.samples.apps.nowinandroid.fscm.data.SessionStore
@@ -124,6 +128,7 @@ class FscmApplication : Application(), ImageLoaderFactory, Configuration.Provide
             val namespace = session.currentNamespace?.id ?: 0L
             if (user > 0 && namespace > 0 && !session.isOffline) {
                 localInboundSyncScheduler.enqueueCacheRefresh(userId = user, namespaceId = namespace)
+                productCaptureRepository.recoverUploads()
             }
         }
     }

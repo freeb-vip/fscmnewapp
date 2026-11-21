@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.LocalShipping
 import androidx.compose.material.icons.rounded.MoveToInbox
 import androidx.compose.material.icons.rounded.NoteAlt
+import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.Print
 import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.QrCodeScanner
@@ -63,6 +64,7 @@ internal enum class AppGlyph {
     RealtimeData,
     Products,
     ProductCounting,
+    ProductCapture,
     OfflineShipping,
     BoxLabels,
     SupplierOrders,
@@ -89,6 +91,7 @@ private fun appGlyphForKey(rawKey: String): AppGlyph? = when (rawKey.normalizedI
     "purchase_insights" -> AppGlyph.RealtimeData
     "profit" -> AppGlyph.Profit
     "product_management" -> AppGlyph.Products
+    "product_capture" -> AppGlyph.ProductCapture
     "offline_shipping" -> AppGlyph.OfflineShipping
     "product_counting" -> AppGlyph.ProductCounting
     "location_stocktakes" -> AppGlyph.ProductCounting
@@ -137,6 +140,7 @@ private fun AppGlyph.imageVector(): ImageVector = when (this) {
     AppGlyph.CentralReceiving -> Icons.Rounded.Hub
     AppGlyph.RealtimeData -> Icons.Rounded.QueryStats
     AppGlyph.Profit -> Icons.Rounded.Assessment
+    AppGlyph.ProductCapture -> Icons.Rounded.PhotoCamera
     AppGlyph.Products -> Icons.Rounded.Inventory2
     AppGlyph.OfflineShipping -> Icons.Rounded.LocalShipping
     AppGlyph.ProductCounting -> Icons.AutoMirrored.Rounded.FactCheck

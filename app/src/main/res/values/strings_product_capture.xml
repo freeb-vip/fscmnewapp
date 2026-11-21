@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capture_title">Product capture</string>
+    <string name="capture_description">Scan a SKU and capture product photos and videos</string>
+    <string name="capture_available">Available</string>
+    <string name="capture_mine">My tasks</string>
+    <string name="capture_completed">Completed</string>
+    <string name="capture_in_progress">In progress</string>
+    <string name="capture_retake">Retake</string>
+    <string name="capture_review">In review</string>
+    <string name="capture_empty">No tasks here</string>
+    <string name="capture_claim">Claim task</string>
+    <string name="capture_scan">Scan product barcode</string>
+    <string name="capture_scan_help">Scan the barcode for SKU %1$s with the camera or PDA.</string>
+    <string name="capture_wrong_sku">This barcode does not match the required SKU. Scan again.</string>
+    <string name="capture_operation_error">Could not complete the action. Check the connection and retry.</string>
+    <string name="capture_upload_error">This file could not upload. Capture it again.</string>
+    <string name="capture_camera_error">Could not save the capture. Try again.</string>
+    <string name="capture_permission">Allow camera access to scan or capture.</string>
+    <string name="capture_video_ready">Ready to record</string>
+    <string name="capture_video_starting">Starting recording…</string>
+    <string name="capture_video_recording">Recording</string>
+    <string name="capture_video_saving">Saving video…</string>
+    <string name="capture_video_preview">Recorded video</string>
+    <string name="capture_pause_video">Pause</string>
+    <string name="capture_use_video">Use this video</string>
+    <string name="capture_video_error">Video could not be played</string>
+    <string name="capture_video_time">%1$s / %2$s</string>
+    <string name="capture_photo">Take photo</string>
+    <string name="capture_record">Record video</string>
+    <string name="capture_stop">Stop recording</string>
+    <string name="capture_close">Close</string>
+    <string name="capture_prev">Previous</string>
+    <string name="capture_next">Next</string>
+    <string name="capture_amount">%1$d photo groups · %2$d videos</string>
+    <string name="capture_retake_count">Retake %1$d groups</string>
+    <string name="capture_group">Group %1$d/%2$d · File %3$d/%4$d</string>
+    <string name="capture_previous_file">View previous capture</string>
+    <string name="capture_watch">Play video</string>
+    <string name="capture_use_next">Use this, next</string>
+    <string name="capture_reshoot">Retake</string>
+    <string name="capture_background">Capture complete. Files are uploading in the background.</string>
+    <string name="capture_submit">Submit for review</string>
+    <string name="capture_step">%1$d–%2$d s · %3$s</string>
+    <string name="capture_retry">Retry</string>
+    <string name="capture_example">View example</string>
+</resources>

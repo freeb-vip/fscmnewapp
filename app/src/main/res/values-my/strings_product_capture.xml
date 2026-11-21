@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capture_title">ကုန်ပစ္စည်း ဓာတ်ပုံရိုက်ရန်</string>
+    <string name="capture_description">SKU ကို စကင်ဖတ်ပြီး ဓာတ်ပုံနှင့် ဗီဒီယိုရိုက်ပါ</string>
+    <string name="capture_available">ရယူရန်</string>
+    <string name="capture_mine">ကျွန်ုပ်၏ အလုပ်များ</string>
+    <string name="capture_completed">ပြီးစီးပြီ</string>
+    <string name="capture_in_progress">ရိုက်ကူးနေသည်</string>
+    <string name="capture_retake">ပြန်ရိုက်ရန်</string>
+    <string name="capture_review">စစ်ဆေးရန်</string>
+    <string name="capture_empty">လုပ်စရာ မရှိပါ</string>
+    <string name="capture_claim">အလုပ်ရယူရန်</string>
+    <string name="capture_scan">ကုန်ပစ္စည်း ဘားကုဒ်ဖတ်ရန်</string>
+    <string name="capture_scan_help">SKU %1$s ၏ ဘားကုဒ်ကို ကင်မရာ သို့မဟုတ် PDA ဖြင့် ဖတ်ပါ။</string>
+    <string name="capture_wrong_sku">ဘားကုဒ်နှင့် SKU မကိုက်ညီပါ။ ထပ်ဖတ်ပါ။</string>
+    <string name="capture_operation_error">လုပ်ဆောင်၍မရပါ။ ကွန်ရက်စစ်ပြီး ထပ်ကြိုးစားပါ။</string>
+    <string name="capture_upload_error">ဖိုင်တင်၍မရပါ။ ပြန်ရိုက်ပါ။</string>
+    <string name="capture_camera_error">ရိုက်ထားသည့်ဖိုင် သိမ်း၍မရပါ။ ထပ်ကြိုးစားပါ။</string>
+    <string name="capture_permission">စကင်ဖတ်ရန်နှင့် ရိုက်ရန် ကင်မရာ အသုံးပြုခွင့် ပေးပါ။</string>
+    <string name="capture_video_ready">ရိုက်ကူးရန် အသင့်</string>
+    <string name="capture_video_starting">စတင် ရိုက်ကူးနေသည်…</string>
+    <string name="capture_video_recording">ဗီဒီယို ရိုက်ကူးနေသည်</string>
+    <string name="capture_video_saving">ဗီဒီယို သိမ်းနေသည်…</string>
+    <string name="capture_video_preview">ယခု ရိုက်ထားသည့် ဗီဒီယို</string>
+    <string name="capture_pause_video">ခဏရပ်ရန်</string>
+    <string name="capture_use_video">ဤဗီဒီယိုကို သုံးရန်</string>
+    <string name="capture_video_error">ဗီဒီယို ဖွင့်၍ မရပါ</string>
+    <string name="capture_video_time">%1$s / %2$s</string>
+    <string name="capture_photo">ဓာတ်ပုံရိုက်ရန်</string>
+    <string name="capture_record">ဗီဒီယိုရိုက်ရန်</string>
+    <string name="capture_stop">ရိုက်ကူးမှု ရပ်ရန်</string>
+    <string name="capture_close">ပိတ်ရန်</string>
+    <string name="capture_prev">ယခင်</string>
+    <string name="capture_next">နောက်</string>
+    <string name="capture_amount">ဓာတ်ပုံ %1$d စု · ဗီဒီယို %2$d ခု</string>
+    <string name="capture_retake_count">%1$d စု ပြန်ရိုက်ရန်</string>
+    <string name="capture_group">အစု %1$d/%2$d · ဖိုင် %3$d/%4$d</string>
+    <string name="capture_previous_file">ယခင်ရိုက်ထားသည့်ဖိုင် ကြည့်ရန်</string>
+    <string name="capture_watch">ဗီဒီယို ဖွင့်ရန်</string>
+    <string name="capture_use_next">ဤဖိုင်သုံးပြီး ဆက်ရန်</string>
+    <string name="capture_reshoot">ပြန်ရိုက်ရန်</string>
+    <string name="capture_background">ရိုက်ပြီးပါပြီ။ ဖိုင်များ နောက်ကွယ်တွင် တင်နေသည်။</string>
+    <string name="capture_submit">စစ်ဆေးရန် ပေးပို့ပါ</string>
+    <string name="capture_step">%1$d–%2$d စက္ကန့် · %3$s</string>
+    <string name="capture_retry">ထပ်ကြိုးစားရန်</string>
+    <string name="capture_example">နမူနာ ကြည့်ရန်</string>
+</resources>
