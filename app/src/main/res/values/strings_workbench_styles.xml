@@ -37,4 +37,5 @@
     <string name="style_personal_detail">Personal work detail</string>
     <string name="style_select_account">Select account</string>
     <string name="style_delayed">Latest update is delayed</string>
+    <string name="warehouse_mark_read">Mark as read</string>
 </resources>

@@ -18,13 +18,16 @@ package com.google.samples.apps.nowinandroid.fscm.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -36,8 +39,11 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Assignment
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -45,6 +51,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,6 +72,7 @@ import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandDeep
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandMain
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandSoft
+import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmDanger
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmInkSoft
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmInkStrong
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmPageTop
@@ -70,12 +82,17 @@ import com.google.samples.apps.nowinandroid.fscm.data.MobileTodo
 import com.google.samples.apps.nowinandroid.fscm.data.MobileWorkbenchOverview
 import com.google.samples.apps.nowinandroid.fscm.data.OperationsWorkbench
 import com.google.samples.apps.nowinandroid.fscm.data.SessionState
+import com.google.samples.apps.nowinandroid.fscm.data.WarehouseBadgeEvent
+import com.google.samples.apps.nowinandroid.fscm.data.WarehouseBadges
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseWorkbench
 import com.google.samples.apps.nowinandroid.fscm.data.WorkbenchModule
 import com.google.samples.apps.nowinandroid.fscm.data.WorkbenchPresentation
 import com.google.samples.apps.nowinandroid.fscm.data.isTodoCompleted
 import com.google.samples.apps.nowinandroid.fscm.data.orderedWarehouseHomeApps
 import com.google.samples.apps.nowinandroid.fscm.data.visibleMobileApps
+import com.google.samples.apps.nowinandroid.fscm.ui.components.FscmBadge
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import java.math.BigDecimal
 import java.text.NumberFormat
 
@@ -90,12 +107,18 @@ internal fun WarehouseStyleScreen(
     onProfile: () -> Unit,
     onRefresh: () -> Unit,
     onOpenApp: (MobileAppEntry) -> Unit,
+    personalPins: List<String> = emptyList(),
+    badges: WarehouseBadges = WarehouseBadges(),
+    onReadEvent: suspend (Long) -> Unit = {},
+    onTogglePin: (String) -> Unit = {},
 ) {
     val catalog = visibleMobileApps(MobileWorkbenchOverview(apps = presentation.apps), session.permissions, session.sessionMode)
         .filterNot { it.key in setOf("todos", "notes") }
-    val pinned = orderedWarehouseHomeApps(catalog, presentation.homeAppKeys)
-    val other = catalog.filterNot { app -> pinned.any { it.key == app.key } }
-    val apps = (pinned + other).distinctBy { it.key }
+    var event by remember(session.user?.id, session.currentNamespace?.id) { mutableStateOf<WarehouseBadgeEvent?>(null) }
+    event?.let { notice ->
+        WarehouseEventDialog(notice, onReadEvent, onClose = { event = null })
+    }
+    val apps = orderedWarehouseHomeApps(catalog, presentation.homeAppKeys, personalPins)
     PullToRefreshBox(isRefreshing = state.loading, onRefresh = onRefresh) {
         LazyColumn(
             modifier = Modifier.fillMaxSize().background(workbenchBackground),
@@ -114,11 +137,21 @@ internal fun WarehouseStyleScreen(
                 }
             }
             item {
-                WarehouseSummaryCard(state, session.isOffline, onRefresh)
+                WarehouseSummaryCard(state)
             }
             items(apps.chunked(2), key = { pair -> pair.joinToString("|") { it.key } }) { pair ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    pair.forEach { app -> WarehouseAppTile(app, Modifier.weight(1f), onOpenApp, large = true) }
+                    pair.forEach { app ->
+                        WarehouseAppTile(
+                            app,
+                            Modifier.weight(1f),
+                            badges.counts[app.key] ?: 0,
+                            app.key in personalPins,
+                            onTogglePin,
+                            onOpenApp,
+                            onEvent = badges.events[app.key]?.let { notice -> { event = notice } },
+                        )
+                    }
                     if (pair.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
@@ -127,10 +160,12 @@ internal fun WarehouseStyleScreen(
 }
 
 @Composable
-private fun WarehouseAppTile(app: MobileAppEntry, modifier: Modifier, onOpen: (MobileAppEntry) -> Unit, large: Boolean = false) {
+private fun WarehouseAppTile(app: MobileAppEntry, modifier: Modifier, count: Int, pinned: Boolean, onTogglePin: (String) -> Unit, onOpen: (MobileAppEntry) -> Unit, onEvent: (() -> Unit)?) {
+    var menu by remember(app.key) { mutableStateOf(false) }
+    val pinLabel = stringResource(if (pinned) R.string.unpin_app else R.string.pin_app)
     Card(
-        onClick = { onOpen(app) },
-        modifier = modifier.heightIn(min = if (large) 120.dp else 108.dp),
+        modifier = modifier.heightIn(min = 120.dp).clip(RoundedCornerShape(16.dp))
+            .combinedClickable(onClick = { onOpen(app) }, onLongClickLabel = pinLabel, onLongClick = { menu = true }),
         colors = CardDefaults.cardColors(containerColor = FscmBrandSoft, contentColor = FscmBrandDeep),
         shape = RoundedCornerShape(16.dp),
     ) {
@@ -139,17 +174,65 @@ private fun WarehouseAppTile(app: MobileAppEntry, modifier: Modifier, onOpen: (M
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            FscmAppIcon(app, size = if (large) 56 else 48)
+            Box {
+                FscmAppIcon(app, size = 56)
+                if (count > 0) {
+                    Box(Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-4).dp).then(if (onEvent != null) Modifier.clickable(onClickLabel = stringResource(R.string.messages), onClick = onEvent) else Modifier)) {
+                        FscmBadge(if (count > 99) "99+" else count.toString(), FscmDanger)
+                    }
+                }
+                DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text(pinLabel) }, onClick = {
+                        menu = false
+                        onTogglePin(app.key)
+                    })
+                }
+            }
             Text(
                 localizedAppTitle(app),
-                maxLines = if (large) Int.MAX_VALUE else 2,
+                maxLines = Int.MAX_VALUE,
                 overflow = TextOverflow.Ellipsis,
-                fontSize = if (large) 20.sp else MaterialTheme.typography.bodyLarge.fontSize,
+                fontSize = 20.sp,
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
             )
         }
     }
+}
+
+@Composable
+private fun WarehouseEventDialog(event: WarehouseBadgeEvent, onRead: suspend (Long) -> Unit, onClose: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var busy by remember(event.id) { mutableStateOf(false) }
+    var failed by remember(event.id) { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text(event.title) },
+        text = {
+            Column {
+                Text(event.content)
+                if (failed) Text(stringResource(R.string.oe_request_error), color = FscmDanger)
+            }
+        },
+        dismissButton = { TextButton(onClick = onClose) { Text(stringResource(R.string.common_close)) } },
+        confirmButton = {
+            TextButton(enabled = !busy, onClick = {
+                busy = true
+                scope.launch {
+                    try {
+                        onRead(event.id)
+                        onClose()
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Exception) {
+                        failed = true
+                    } finally {
+                        busy = false
+                    }
+                }
+            }) { Text(stringResource(R.string.warehouse_mark_read)) }
+        },
+    )
 }
 
 @Composable

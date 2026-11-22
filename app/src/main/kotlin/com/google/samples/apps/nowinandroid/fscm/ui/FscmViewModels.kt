@@ -66,6 +66,7 @@ import com.google.samples.apps.nowinandroid.fscm.data.ReceivingSession
 import com.google.samples.apps.nowinandroid.fscm.data.SearchDestination
 import com.google.samples.apps.nowinandroid.fscm.data.SessionState
 import com.google.samples.apps.nowinandroid.fscm.data.Sku
+import com.google.samples.apps.nowinandroid.fscm.data.WarehouseBadges
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseWorkbench
 import com.google.samples.apps.nowinandroid.fscm.data.WorkbenchPresentation
 import com.google.samples.apps.nowinandroid.fscm.data.WorkbenchStyleRepository
@@ -450,6 +451,8 @@ class WorkbenchViewModel @Inject constructor(
     val presentationReady = _presentationReady.asStateFlow()
     private val _warehouse = MutableStateFlow(LoadState<WarehouseWorkbench>())
     val warehouse = _warehouse.asStateFlow()
+    private val _badges = MutableStateFlow(WarehouseBadges())
+    val badges = _badges.asStateFlow()
     private val _operations = MutableStateFlow(LoadState<OperationsWorkbench>())
     val operations = _operations.asStateFlow()
     private var styleSessionKey: String? = null
@@ -465,6 +468,7 @@ class WorkbenchViewModel @Inject constructor(
             _presentationReady.value = false
             _presentation.value = WorkbenchPresentation()
             _warehouse.value = LoadState()
+            _badges.value = WarehouseBadges()
             _operations.value = LoadState()
         }
         styleLoadJob = viewModelScope.launch {
@@ -473,7 +477,19 @@ class WorkbenchViewModel @Inject constructor(
             _presentation.value = presentation
             _presentationReady.value = true
             when (presentation.style) {
-                "warehouse" -> loadWarehouse(key, session)
+                "warehouse" -> {
+                    launch {
+                        val counts = try {
+                            styleRepository.badges(session)
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (_: Exception) {
+                            WarehouseBadges()
+                        }
+                        if (styleSessionKey == key) _badges.value = counts
+                    }
+                    loadWarehouse(key, session)
+                }
                 "operations" -> if (!session.isOffline) loadOperations(key)
             }
         }
@@ -589,6 +605,15 @@ class WorkbenchViewModel @Inject constructor(
 
     fun recordMobileAppUsage(session: SessionState, appKey: String) {
         viewModelScope.launch { mobileAppUsageStore.recordUsage(session, appKey) }
+    }
+
+    suspend fun readBadgeEvent(session: SessionState, id: Long) {
+        styleRepository.readBadgeEvent(session, id)
+        if (styleSessionKey == "${session.user?.id}:${session.currentNamespace?.id}:${session.sessionMode}") loadStyle(session, force = true)
+    }
+
+    fun toggleWarehousePin(session: SessionState, key: String) {
+        viewModelScope.launch { mobileAppUsageStore.toggleWarehousePin(session, key) }
     }
 
     fun togglePinnedMobileApp(session: SessionState, appKey: String) {

@@ -40,6 +40,8 @@ import com.google.samples.apps.nowinandroid.fscm.data.RealtimeWorkComparison
 import com.google.samples.apps.nowinandroid.fscm.data.RealtimeWorkDay
 import com.google.samples.apps.nowinandroid.fscm.data.SessionState
 import com.google.samples.apps.nowinandroid.fscm.data.UserProfile
+import com.google.samples.apps.nowinandroid.fscm.data.WarehouseBadgeEvent
+import com.google.samples.apps.nowinandroid.fscm.data.WarehouseBadges
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseMetric
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseWorkbench
 import com.google.samples.apps.nowinandroid.fscm.data.WorkbenchPresentation
@@ -61,6 +63,7 @@ import kotlin.test.assertTrue
 class WarehouseHomeScreenTest {
     @get:Rule val compose = createComposeRule()
     private var opened = ""
+    private var readEvent = 0L
     private val summary = WarehouseWorkbench(
         scope = "workspace",
         date = "2026-10-09",
@@ -84,9 +87,11 @@ class WarehouseHomeScreenTest {
         compose.onNodeWithText("今日全仓作业").assertIsDisplayed()
         compose.onNodeWithText("1,200").assertIsDisplayed()
         compose.onNodeWithText("80.00").assertIsDisplayed()
-        compose.onNodeWithText("昨日同时段 500").assertIsDisplayed()
-        compose.onNodeWithText("↑ 20.0%").assertIsDisplayed()
-        compose.onNodeWithText("↓ 20.0%").assertIsDisplayed()
+        compose.onNodeWithText("昨日同时段 500").assertDoesNotExist()
+        compose.onNodeWithText("↑ 20.0%").assertDoesNotExist()
+        compose.onNodeWithText("↓ 20.0%").assertDoesNotExist()
+        compose.onNodeWithText("23").assertIsDisplayed()
+        compose.onNodeWithText("99+").assertIsDisplayed()
         assertTwoColumns()
         compose.onNodeWithText("开始作业").assertDoesNotExist()
         compose.onNodeWithText("其他应用").assertDoesNotExist()
@@ -104,13 +109,23 @@ class WarehouseHomeScreenTest {
     }
 
     @Test
-    fun refreshFailurePreservesTodayAndYesterday() {
+    fun refreshFailurePreservesTodayWithoutSyncDetails() {
         render(state = LoadState(data = summary.copy(cached = true), error = UiText.Dynamic("network error")))
         compose.onNodeWithText("1,200").assertIsDisplayed()
         compose.onNodeWithText("80.00").assertIsDisplayed()
-        compose.onNodeWithText("昨日同时段 500").assertIsDisplayed()
-        compose.onNodeWithText("重试").assertIsDisplayed()
+        compose.onNodeWithText("昨日同时段 500").assertDoesNotExist()
+        compose.onNodeWithText("重试").assertDoesNotExist()
         capture("home-cached")
+    }
+
+    @Test
+    fun unreadBadgeOpensTheEventAndReadingLeavesTheTaskAlone() {
+        render()
+        compose.onNodeWithText("99+").performClick()
+        compose.onNodeWithText("货物已到仓").assertIsDisplayed()
+        compose.onNodeWithText("标为已读").performClick()
+        compose.runOnIdle { assertEquals(17L, readEvent) }
+        compose.onNodeWithText("23").assertIsDisplayed()
     }
 
     private fun assertTwoColumns() {
@@ -147,6 +162,8 @@ class WarehouseHomeScreenTest {
                                 MobileAppEntry(key = "product_counting", title = "产品盘点"),
                             ),
                         ),
+                        badges = WarehouseBadges(counts = mapOf("inbound_management" to 23, "receiving" to 100), events = mapOf("receiving" to WarehouseBadgeEvent(17L, "货物已到仓", "测试通知"))),
+                        onReadEvent = { readEvent = it },
                         state = state,
                         onProfile = {},
                         onRefresh = {},

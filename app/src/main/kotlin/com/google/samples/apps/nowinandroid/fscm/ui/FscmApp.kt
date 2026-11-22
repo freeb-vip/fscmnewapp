@@ -982,6 +982,10 @@ private fun MainShell(
                         session = session,
                         presentation = presentation,
                         state = warehouseState,
+                        personalPins = workbenchViewModel.mobileAppUsage.collectAsStateWithLifecycle().value.warehousePins,
+                        badges = workbenchViewModel.badges.collectAsStateWithLifecycle().value,
+                        onReadEvent = { workbenchViewModel.readBadgeEvent(session, it) },
+                        onTogglePin = { workbenchViewModel.toggleWarehousePin(session, it) },
                         onProfile = { selectedTab = MainTab.Profile },
                         onRefresh = { workbenchViewModel.loadStyle(session, force = true) },
                         onOpenApp = { app ->

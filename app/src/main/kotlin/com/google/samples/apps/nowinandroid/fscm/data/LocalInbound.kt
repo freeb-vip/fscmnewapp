@@ -235,6 +235,15 @@ interface LocalInboundDao {
     @Query("SELECT * FROM local_inbound_sessions WHERE userId = :userId AND namespaceId = :namespaceId ORDER BY updatedAt DESC")
     suspend fun sessions(userId: Long, namespaceId: Long): List<LocalInboundSessionEntity>
 
+    @Query(
+        """SELECT sessionId FROM local_inbound_sessions
+           WHERE userId=:userId AND namespaceId=:namespaceId
+             AND (status IN ('conflict_pending','failed') OR (:offline AND status='active'))
+           UNION SELECT sessionId FROM local_inbound_items
+           WHERE userId=:userId AND namespaceId=:namespaceId AND status IN ('draft','conflict_pending','rejected')""",
+    )
+    suspend fun actionableSessionIds(userId: Long, namespaceId: Long, offline: Boolean): List<Long>
+
     @Query("SELECT * FROM local_inbound_sessions WHERE userId = :userId AND namespaceId = :namespaceId AND sessionId = :sessionId LIMIT 1")
     suspend fun session(userId: Long, namespaceId: Long, sessionId: Long): LocalInboundSessionEntity?
 

@@ -34,22 +34,22 @@ class WorkbenchStyleTest {
     fun configuredAppsKeepRoleOrderAndIgnoreUnavailableApps() {
         val catalog = listOf("receiving", "box_labels", "product_counting").map { MobileAppEntry(key = it) }
         val ordered = orderedWarehouseHomeApps(catalog, listOf("product_counting", "unknown", "receiving"))
-        assertEquals(listOf("product_counting", "receiving"), ordered.map { it.key })
+        assertEquals(listOf("product_counting", "receiving", "box_labels"), ordered.map { it.key })
     }
 
     @Test
-    fun emptyConfigurationUsesFirstFourAvailableApps() {
+    fun emptyConfigurationPreservesCatalogOrder() {
         val catalog = (1..6).map { MobileAppEntry(key = "app_$it") }
-        assertEquals(catalog.take(4), orderedWarehouseHomeApps(catalog, emptyList()))
+        assertEquals(catalog, orderedWarehouseHomeApps(catalog, emptyList()))
     }
 
     @Test
-    fun emptyConfigurationPrefersWarehouseJobs() {
+    fun personalPinsPrecedeRoleDefaultsAndAreDeduplicated() {
         val catalog = listOf("todos", "product_counting", "central_receiving", "receiving", "inbound_management")
             .map { MobileAppEntry(key = it) }
         assertEquals(
-            listOf("receiving", "inbound_management", "central_receiving", "product_counting"),
-            orderedWarehouseHomeApps(catalog, emptyList()).map { it.key },
+            listOf("receiving", "inbound_management", "todos", "product_counting", "central_receiving"),
+            orderedWarehouseHomeApps(catalog, listOf("inbound_management", "receiving"), listOf("revoked", "receiving")).map { it.key },
         )
     }
 }

@@ -40,6 +40,7 @@ data class MobileAppUsage(
     val counts: Map<String, Int> = emptyMap(),
     val pinnedKeys: Set<String> = emptySet(),
     val pinnedOrder: List<String> = emptyList(),
+    val warehousePins: List<String> = emptyList(),
     val defaultsInitialized: Boolean = false,
     val hiddenKeys: Set<String> = emptySet(),
 ) {
@@ -80,6 +81,13 @@ class MobileAppUsageStore @Inject constructor(
             usage.copy(
                 counts = usage.counts + (normalizedKey to (usage.usageFor(normalizedKey) + 1)),
             )
+        }
+    }
+
+    suspend fun toggleWarehousePin(session: SessionState, key: String) {
+        update(session) { usage ->
+            val pins = usage.warehousePins
+            usage.copy(warehousePins = if (key in pins) pins - key else listOf(key) + pins)
         }
     }
 

@@ -37,4 +37,5 @@
     <string name="style_personal_detail">รายละเอียดงานของฉัน</string>
     <string name="style_select_account">เลือกบัญชี</string>
     <string name="style_delayed">ข้อมูลล่าสุดอัปเดตล่าช้า</string>
+    <string name="warehouse_mark_read">ทำเครื่องหมายว่าอ่านแล้ว</string>
 </resources>

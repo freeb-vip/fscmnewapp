@@ -37,4 +37,5 @@
     <string name="style_personal_detail">ကိုယ်ပိုင်အလုပ် အသေးစိတ်</string>
     <string name="style_select_account">အကောင့်ရွေးရန်</string>
     <string name="style_delayed">နောက်ဆုံးဒေတာ အပ်ဒိတ်နောက်ကျနေသည်</string>
+    <string name="warehouse_mark_read">ဖတ်ပြီးကြောင်း မှတ်သားပါ</string>
 </resources>

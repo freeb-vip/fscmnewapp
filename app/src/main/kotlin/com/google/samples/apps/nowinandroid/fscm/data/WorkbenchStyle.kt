@@ -118,13 +118,14 @@ data class WarehouseOperationMetric(
     val available: Boolean = false,
 )
 
-private val defaultWarehouseHomeKeys = listOf("receiving", "inbound_management", "central_receiving", "product_counting")
-
-internal fun orderedWarehouseHomeApps(catalog: List<MobileAppEntry>, keys: List<String>): List<MobileAppEntry> =
-    keys.mapNotNull { key -> catalog.firstOrNull { it.key == key } }.ifEmpty {
-        defaultWarehouseHomeKeys.mapNotNull { key -> catalog.firstOrNull { it.key == key } }.take(4)
-            .ifEmpty { catalog.take(4) }
-    }
+internal fun orderedWarehouseHomeApps(
+    catalog: List<MobileAppEntry>,
+    roleKeys: List<String>,
+    personalKeys: List<String> = emptyList(),
+): List<MobileAppEntry> {
+    val visible = catalog.associateBy { it.key }
+    return (personalKeys + roleKeys + catalog.map { it.key }).distinct().mapNotNull(visible::get)
+}
 
 @Serializable
 data class WorkbenchModule<T>(
@@ -216,11 +217,22 @@ data class SalesAccount(
 @Serializable
 internal data class SalesSourceSelection(val id: String, val timezone: String = "Asia/Shanghai")
 
+@Serializable
+data class WarehouseBadgeEvent(val id: Long, val title: String = "", val content: String = "")
+
+@Serializable
+data class WarehouseBadges(
+    val counts: Map<String, Int> = emptyMap(),
+    val events: Map<String, WarehouseBadgeEvent> = emptyMap(),
+    @SerialName("inbound_ids") val inboundIds: List<Long> = emptyList(),
+)
+
 @Singleton
 class WorkbenchStyleRepository @Inject constructor(
     private val api: FscmApiClient,
     private val sessionStore: SessionStore,
     private val offlineCacheDao: OfflineCacheDao,
+    private val inboundDao: LocalInboundDao,
     @param:FscmJson private val json: Json,
 ) {
     suspend fun presentation(session: SessionState): WorkbenchPresentation {
@@ -251,6 +263,36 @@ class WorkbenchStyleRepository @Inject constructor(
         } catch (_: Exception) {
             cached ?: WorkbenchPresentation()
         }
+    }
+
+    suspend fun badges(session: SessionState): WarehouseBadges {
+        val user = session.user?.id ?: return WarehouseBadges()
+        val namespace = session.currentNamespace?.id ?: return WarehouseBadges()
+        val remote = if (session.isOffline) {
+            WarehouseBadges()
+        } else {
+            api.get<WarehouseBadges>(
+                "mobile/app/workbench/badges",
+                headers = mapOf("X-FSCM-Expected-User-ID" to user.toString(), "X-FSCM-Expected-Namespace-ID" to namespace.toString()),
+            )
+        }
+        if (!session.isOffline && "inbound_management" !in remote.counts) return remote
+        val local = try {
+            inboundDao.actionableSessionIds(user, namespace, session.isOffline)
+        } catch (_: android.database.SQLException) {
+            return remote.copy(counts = remote.counts - "inbound_management")
+        }
+        return remote.copy(counts = remote.counts + ("inbound_management" to (remote.inboundIds + local).distinct().size))
+    }
+
+    suspend fun readBadgeEvent(session: SessionState, id: Long) {
+        api.put<kotlinx.serialization.json.JsonObject>(
+            "mobile/app/messages/$id/read",
+            headers = mapOf(
+                "X-FSCM-Expected-User-ID" to requireNotNull(session.user).id.toString(),
+                "X-FSCM-Expected-Namespace-ID" to requireNotNull(session.currentNamespace).id.toString(),
+            ),
+        )
     }
 
     suspend fun cachedWarehouse(session: SessionState): WarehouseWorkbench? {
