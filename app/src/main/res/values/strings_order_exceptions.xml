@@ -87,4 +87,9 @@
     <string name="oe_snapshot_updated">Updated: %1$s</string>
     <string name="oe_snapshot_refreshing">Updating in the background</string>
     <string name="oe_snapshot_stale">Update delayed; showing the last complete list</string>
+    <string name="oe_all_dates">All dates</string>
+    <string name="oe_yesterday">Yesterday</string>
+    <string name="oe_last_three">Last 3 days</string>
+    <string name="oe_all_types">All types</string>
+    <string name="oe_order_amount">Order amount · %1$s</string>
 </resources>

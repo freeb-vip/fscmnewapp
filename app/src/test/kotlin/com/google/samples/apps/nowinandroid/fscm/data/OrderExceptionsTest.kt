@@ -16,6 +16,7 @@
 
 package com.google.samples.apps.nowinandroid.fscm.data
 
+import com.google.samples.apps.nowinandroid.fscm.ui.exceptionRegistrationTime
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -27,6 +28,14 @@ import kotlin.test.assertNotEquals
 
 class OrderExceptionsTest {
     private val json = Json { ignoreUnknownKeys = true }
+
+    @Test
+    fun registrationUsesTheWarehouseDayAcrossMidnight() {
+        val utc = "2026-11-19T17:05:00Z"
+        assertEquals("2026-11-20 00:05:00 +07:00", exceptionRegistrationTime(utc, "Asia/Bangkok"))
+        assertEquals("2026-11-20 00:05:00 +07:00", exceptionRegistrationTime("2026-11-20T01:05:00+08:00", "Asia/Bangkok"))
+        assertEquals(utc, exceptionRegistrationTime(utc, ""))
+    }
 
     @Test
     fun otherRequiresNonblankMeasuresWithoutChangingOtherTypes() {

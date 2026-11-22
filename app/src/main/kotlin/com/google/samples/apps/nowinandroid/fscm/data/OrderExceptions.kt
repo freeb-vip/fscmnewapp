@@ -47,12 +47,14 @@ data class WarehouseExceptionFile(
 )
 
 @Serializable
-data class WarehouseExceptionType(val name: String = "")
+data class WarehouseExceptionType(val name: String = "", @SerialName("type_id") val id: Long = 0)
 
 @Serializable
 data class WarehouseExceptionOrder(
     @SerialName("platform_order_id") val number: String = "",
     @SerialName("tracking_nos") val tracking: List<String> = emptyList(),
+    @SerialName("order_amount") val amount: String? = null,
+    val currency: String = "",
 )
 
 @Serializable
@@ -121,6 +123,8 @@ data class WarehouseException(
 
 @Serializable
 data class WarehouseExceptionPage(
+    val timezone: String = "",
+    @SerialName("filter_types") val filterTypes: List<WarehouseExceptionType> = emptyList(),
     @SerialName("snapshot_version") val snapshotVersion: Long = 0,
     @SerialName("snapshot_at") val snapshotAt: String? = null,
     @SerialName("refresh_status") val refreshStatus: String = "",

@@ -87,4 +87,9 @@
     <string name="oe_snapshot_updated">အပ်ဒိတ်ချိန်: %1$s</string>
     <string name="oe_snapshot_refreshing">နောက်ကွယ်တွင် အပ်ဒိတ်လုပ်နေသည်</string>
     <string name="oe_snapshot_stale">အပ်ဒိတ်နောက်ကျနေသည်။ နောက်ဆုံး ပြည့်စုံသောစာရင်းကို ပြနေသည်</string>
+    <string name="oe_all_dates">ရက်စွဲအားလုံး</string>
+    <string name="oe_yesterday">မနေ့က</string>
+    <string name="oe_last_three">နောက်ဆုံး ၃ ရက်</string>
+    <string name="oe_all_types">အမျိုးအစားအားလုံး</string>
+    <string name="oe_order_amount">မှာယူမှုတန်ဖိုး %1$s</string>
 </resources>

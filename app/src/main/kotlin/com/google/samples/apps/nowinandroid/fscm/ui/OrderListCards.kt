@@ -57,6 +57,7 @@ import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandDeep
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandMain
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmBrandSoft
+import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmDanger
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmInkSoft
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmInkStrong
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmStrokeSoft
@@ -65,13 +66,31 @@ import com.google.samples.apps.nowinandroid.core.designsystem.theme.FscmSurfaceR
 import com.google.samples.apps.nowinandroid.fscm.data.OrderProductPreview
 import com.google.samples.apps.nowinandroid.fscm.data.ShippingTask
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseException
+import com.google.samples.apps.nowinandroid.fscm.data.WarehouseExceptionOrder
+import java.text.NumberFormat
+import java.time.DateTimeException
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+private val registrationTimeFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss xxx")
+
+internal fun exceptionRegistrationTime(value: String, timezone: String): String {
+    if (timezone.isBlank()) return value
+    return try {
+        OffsetDateTime.parse(value).atZoneSameInstant(ZoneId.of(timezone)).format(registrationTimeFormat)
+    } catch (_: DateTimeException) {
+        value
+    }
+}
 
 @Composable
-internal fun ExceptionOrderListCard(report: WarehouseException, onOpen: () -> Unit) {
+internal fun ExceptionOrderListCard(report: WarehouseException, timezone: String = "", onOpen: () -> Unit) {
     val copy = rememberExceptionCopy()
     val completed = report.status == "resolved"
     OrderListCard(
         number = report.order.number,
+        order = report.order,
         onCopyNumber = { copy(report.order.number) },
         status = stringResource(if (completed) R.string.oe_resolved else R.string.oe_open),
         completed = completed,
@@ -81,7 +100,7 @@ internal fun ExceptionOrderListCard(report: WarehouseException, onOpen: () -> Un
         if (report.types.isNotEmpty()) Text(report.types.joinToString(" · ") { it.name }, color = FscmBrandDeep, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
         OrderCardMetadata(stringResource(R.string.order_card_warehouse, report.warehouse.name.ifBlank { stringResource(R.string.oe_not_recorded) }))
         OrderCardMetadata(stringResource(R.string.oe_tracking_value, report.order.tracking.joinToString(", ").ifBlank { stringResource(R.string.oe_not_recorded) }))
-        if (report.createdAt.isNotBlank()) OrderCardMetadata(stringResource(R.string.order_card_registered, report.createdAt))
+        if (report.createdAt.isNotBlank()) OrderCardMetadata(stringResource(R.string.order_card_registered, exceptionRegistrationTime(report.createdAt, timezone)))
     }
 }
 
@@ -101,7 +120,7 @@ internal fun ShippingOrderListCard(task: ShippingTask, onOpen: () -> Unit) {
 }
 
 @Composable
-private fun OrderListCard(number: String, status: String, completed: Boolean, product: OrderProductPreview?, onOpen: () -> Unit, onCopyNumber: (() -> Unit)? = null, footer: @Composable ColumnScope.() -> Unit) {
+private fun OrderListCard(number: String, status: String, completed: Boolean, product: OrderProductPreview?, onOpen: () -> Unit, onCopyNumber: (() -> Unit)? = null, order: WarehouseExceptionOrder? = null, footer: @Composable ColumnScope.() -> Unit) {
     val title = product?.title?.takeIf(String::isNotBlank) ?: product?.sku?.takeIf(String::isNotBlank) ?: stringResource(R.string.order_card_product_missing)
     val statusColor = if (completed) FscmSuccess else FscmBrandDeep
     Card(
@@ -116,6 +135,7 @@ private fun OrderListCard(number: String, status: String, completed: Boolean, pr
                 Text(number, Modifier.weight(1f).then(if (onCopyNumber != null && number.isNotBlank()) Modifier.heightIn(min = 48.dp).clickable(onClickLabel = stringResource(R.string.oe_copy), onClick = onCopyNumber) else Modifier), color = FscmBrandMain, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(status, Modifier.widthIn(max = 132.dp).clip(RoundedCornerShape(8.dp)).background(statusColor.copy(alpha = 0.08f)).padding(horizontal = 10.dp, vertical = 6.dp), color = statusColor, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
             }
+            if (order != null) ExceptionOrderAmount(order)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
                 OrderProductImage(product?.imageUrl.orEmpty(), title)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -128,6 +148,18 @@ private fun OrderListCard(number: String, status: String, completed: Boolean, pr
             Column(verticalArrangement = Arrangement.spacedBy(5.dp), content = footer)
         }
     }
+}
+
+@Composable
+internal fun ExceptionOrderAmount(order: WarehouseExceptionOrder) {
+    val amount = order.amount?.toBigDecimalOrNull()?.let {
+        val number = NumberFormat.getNumberInstance().apply {
+            minimumFractionDigits = 2
+            maximumFractionDigits = 2
+        }.format(it)
+        listOf(order.currency, number).filter(String::isNotBlank).joinToString(" ")
+    } ?: "—"
+    Text(stringResource(R.string.oe_order_amount, amount), color = FscmDanger, fontWeight = FontWeight.Bold)
 }
 
 @Composable

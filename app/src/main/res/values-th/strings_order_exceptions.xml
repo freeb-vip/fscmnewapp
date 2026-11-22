@@ -87,4 +87,9 @@
     <string name="oe_snapshot_updated">อัปเดตเมื่อ: %1$s</string>
     <string name="oe_snapshot_refreshing">กำลังอัปเดตในเบื้องหลัง</string>
     <string name="oe_snapshot_stale">การอัปเดตล่าช้า กำลังแสดงรายการล่าสุดที่สมบูรณ์</string>
+    <string name="oe_all_dates">ทุกวันที่</string>
+    <string name="oe_yesterday">เมื่อวาน</string>
+    <string name="oe_last_three">3 วันล่าสุด</string>
+    <string name="oe_all_types">ทุกประเภท</string>
+    <string name="oe_order_amount">ยอดคำสั่งซื้อ %1$s</string>
 </resources>

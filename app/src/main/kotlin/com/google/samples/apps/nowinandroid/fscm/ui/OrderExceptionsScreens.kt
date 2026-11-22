@@ -25,6 +25,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -51,7 +52,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -156,6 +160,11 @@ fun OrderExceptionsListScreen(scopeKey: String, onOpen: (Long) -> Unit) {
             }, text = { Text(if (state.countsLoaded) stringResource(R.string.oe_resolved_count, state.completed) else stringResource(R.string.oe_resolved)) })
         }
         ExceptionSnapshotStatus(state.snapshotAt, state.refreshStatus)
+        ExceptionQuickFilters(state) { key, value ->
+            viewModel.editFilter(key, value)
+            viewModel.search()
+            coroutine.launch { listState.scrollToItem(0) }
+        }
         ExceptionSearchFields(state.draft, viewModel::editFilter, onSearch = { clear ->
             viewModel.search(clear)
             coroutine.launch { listState.scrollToItem(0) }
@@ -171,7 +180,7 @@ fun OrderExceptionsListScreen(scopeKey: String, onOpen: (Long) -> Unit) {
                 }
                 if (!state.loading && state.error == null && state.rows.isEmpty()) item { Text(stringResource(R.string.oe_empty), Modifier.padding(16.dp)) }
                 items(state.rows, key = { it.id }) { report ->
-                    ExceptionOrderListCard(report) { onOpen(report.id) }
+                    ExceptionOrderListCard(report, state.timezone) { onOpen(report.id) }
                 }
                 if (state.loadingMore) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
                 if (state.rows.size < state.total) item { OutlinedButton(onClick = { viewModel.refresh(true) }, enabled = !state.loading, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.oe_load_more)) } }
@@ -250,6 +259,7 @@ fun OrderExceptionDetailScreen(id: Long, scopeKey: String) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         ExceptionSectionTitle(stringResource(R.string.oe_order_details))
                         ExceptionCopyField(stringResource(R.string.oe_order), detail.order.number)
+                        ExceptionOrderAmount(detail.order)
                         Text(if (detail.status == "resolved") stringResource(R.string.oe_resolved) else stringResource(R.string.oe_open), color = MaterialTheme.colorScheme.primary)
                         Text(stringResource(R.string.oe_warehouse_value, detail.warehouse.name.ifBlank { stringResource(R.string.oe_not_recorded) }))
                         detail.order.tracking.ifEmpty { listOf("") }.forEach { ExceptionCopyField(stringResource(R.string.oe_tracking), it) }
@@ -366,6 +376,36 @@ fun OrderExceptionDetailScreen(id: Long, scopeKey: String) {
 }
 
 @OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ExceptionQuickFilters(state: ExceptionsListState, onSelect: (String, String) -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf("" to R.string.oe_all_dates, "yesterday" to R.string.oe_yesterday, "last_3_days" to R.string.oe_last_three).forEach { (key, label) ->
+            FilterChip(
+                selected = state.draft["date_range"].orEmpty() == key,
+                onClick = { onSelect("date_range", key) },
+                label = { Text(stringResource(label)) },
+            )
+        }
+        Box {
+            val selected = state.filterTypes.find { it.id.toString() == state.draft["type_id"] }
+            FilterChip(selected = selected != null, onClick = { menu = true }, label = { Text(selected?.name ?: stringResource(R.string.oe_all_types)) })
+            DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(text = { Text(stringResource(R.string.oe_all_types)) }, onClick = {
+                    menu = false
+                    onSelect("type_id", "")
+                })
+                state.filterTypes.forEach { type ->
+                    DropdownMenuItem(text = { Text(type.name) }, onClick = {
+                        menu = false
+                        onSelect("type_id", type.id.toString())
+                    })
+                }
+            }
+        }
+    }
+}
+
 @Composable
 internal fun ExceptionSearchFields(draft: Map<String, String>, onEdit: (String, String) -> Unit, onSearch: (Boolean) -> Unit) {
     var expanded by rememberSaveable { mutableStateOf(false) }

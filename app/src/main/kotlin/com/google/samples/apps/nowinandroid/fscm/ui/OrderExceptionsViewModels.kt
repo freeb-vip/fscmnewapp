@@ -28,6 +28,7 @@ import com.google.samples.apps.nowinandroid.fscm.data.FscmApiException
 import com.google.samples.apps.nowinandroid.fscm.data.OrderExceptionsRepository
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseException
 import com.google.samples.apps.nowinandroid.fscm.data.WarehouseExceptionForm
+import com.google.samples.apps.nowinandroid.fscm.data.WarehouseExceptionType
 import com.google.samples.apps.nowinandroid.fscm.data.requiresMeasures
 import com.google.samples.apps.nowinandroid.fscm.data.restoreWarehouseExceptionForm
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -53,6 +54,8 @@ private fun Throwable.exceptionMessage(): UiText = UiText.Resource(
 )
 
 data class ExceptionsListState(
+    val timezone: String = "",
+    val filterTypes: List<WarehouseExceptionType> = emptyList(),
     val rows: List<WarehouseException> = emptyList(),
     val resolved: Boolean = false,
     val total: Long = 0,
@@ -168,7 +171,7 @@ class OrderExceptionsListViewModel internal constructor(private val repository: 
                 if (epoch == generation) {
                     loadedAt = now()
                     dirty = false
-                    mutable.update { it.copy(rows = if (more) (it.rows + result.items).distinctBy(WarehouseException::id) else result.items.distinctBy(WarehouseException::id), total = result.total, open = result.open, completed = result.resolved, page = page, loading = false, loadingMore = false, refreshing = false, countsLoaded = true, snapshotAt = result.snapshotAt, refreshStatus = result.refreshStatus, snapshotVersion = result.snapshotVersion) }
+                    mutable.update { it.copy(timezone = result.timezone, filterTypes = if (more) it.filterTypes else result.filterTypes, rows = if (more) (it.rows + result.items).distinctBy(WarehouseException::id) else result.items.distinctBy(WarehouseException::id), total = result.total, open = result.open, completed = result.resolved, page = page, loading = false, loadingMore = false, refreshing = false, countsLoaded = true, snapshotAt = result.snapshotAt, refreshStatus = result.refreshStatus, snapshotVersion = result.snapshotVersion) }
                 }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
