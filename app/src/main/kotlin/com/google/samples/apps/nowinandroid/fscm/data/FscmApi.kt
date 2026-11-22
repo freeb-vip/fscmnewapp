@@ -419,9 +419,11 @@ object FscmNetworkModule {
 
     @dagger.Provides
     @Singleton
-    fun okHttpClient(authInterceptor: FscmAuthInterceptor): OkHttpClient =
+    fun okHttpClient(authInterceptor: FscmAuthInterceptor, routes: CenterRouting): OkHttpClient =
         OkHttpClient.Builder()
+            .eventListener(routes.cancellation)
             .addInterceptor(authInterceptor)
+            .addInterceptor(routes)
             .addInterceptor(
                 HttpLoggingInterceptor().apply {
                     level = if (BuildConfig.DEBUG) {

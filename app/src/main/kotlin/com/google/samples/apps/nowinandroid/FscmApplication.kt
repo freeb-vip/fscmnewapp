@@ -49,6 +49,9 @@ class FscmApplication : Application(), ImageLoaderFactory, Configuration.Provide
     lateinit var imageLoader: dagger.Lazy<ImageLoader>
 
     @Inject
+    lateinit var centerRouting: com.google.samples.apps.nowinandroid.fscm.data.CenterRouting
+
+    @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
     @Inject
@@ -79,6 +82,7 @@ class FscmApplication : Application(), ImageLoaderFactory, Configuration.Provide
 
     override fun onCreate() {
         super.onCreate()
+        centerRouting.start()
         localReceivingSyncScheduler.schedulePeriodic()
         localInboundSyncScheduler.schedulePeriodic()
         offlineSyncScheduler.schedulePeriodic()
@@ -122,6 +126,7 @@ class FscmApplication : Application(), ImageLoaderFactory, Configuration.Provide
     }
 
     private fun refreshReferences() {
+        centerRouting.refreshSoon()
         applicationScope.launch {
             val session = sessionStore.current()
             val user = session.user?.id ?: 0L
