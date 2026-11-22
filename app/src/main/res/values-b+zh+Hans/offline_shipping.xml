@@ -51,4 +51,8 @@
     <string name="shipping_pending_request">操作结果待确认，请重试核实。</string>
     <string name="shipping_camera_permission">扫码和拍照需要相机权限。</string>
     <string name="shipping_payment_pending">等待尾款结清</string>
+    <string name="shipping_pack_example">打包拍摄示例</string>
+    <string name="shipping_pack_guide">把本单全部包裹摆开，从斜上方拍一张全景。每件包裹都要完整入镜，能数清总件数，看清封口。</string>
+    <string name="shipping_dispatch_example">发货单拍摄示例</string>
+    <string name="shipping_dispatch_guide">将本单发货单铺平，从正上方拍摄。四角都要入镜，避开反光，放大后应能读清单号和发货件数。</string>
 </resources>

@@ -51,4 +51,8 @@
     <string name="shipping_pending_request">Confirmation is pending. Retry to check the result.</string>
     <string name="shipping_camera_permission">Camera permission is needed to scan and take photos.</string>
     <string name="shipping_payment_pending">Waiting for final payment</string>
+    <string name="shipping_pack_example">Packing photo example</string>
+    <string name="shipping_pack_guide">Arrange every parcel for this order in one view. Shoot from slightly above so each parcel is fully visible, the total can be counted and the seals can be checked.</string>
+    <string name="shipping_dispatch_example">Delivery note photo example</string>
+    <string name="shipping_dispatch_guide">Lay the delivery note flat and photograph it from directly above. Include all four corners and avoid glare. Zoom in to check that the note number and quantity are legible.</string>
 </resources>

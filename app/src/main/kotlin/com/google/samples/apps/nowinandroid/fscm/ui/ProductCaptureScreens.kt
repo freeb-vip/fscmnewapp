@@ -487,7 +487,7 @@ private fun CaptureReference(
 }
 
 @Composable
-private fun CapturePreview(url: String, video: Boolean, dismiss: () -> Unit) {
+internal fun CapturePreview(url: String, video: Boolean, dismiss: () -> Unit) {
     Dialog(onDismissRequest = dismiss) {
         Surface(shape = MaterialTheme.shapes.large) {
             Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {

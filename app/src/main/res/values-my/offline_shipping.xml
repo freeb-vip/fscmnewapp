@@ -51,4 +51,8 @@
     <string name="shipping_pending_request">ရလဒ်အတည်ပြုရန် စောင့်နေသည်။ စစ်ဆေးရန် ပြန်ကြိုးစားပါ။</string>
     <string name="shipping_camera_permission">စကင်ဖတ်ရန်နှင့် ပုံရိုက်ရန် ကင်မရာခွင့်ပြုချက် လိုအပ်ပါသည်။</string>
     <string name="shipping_payment_pending">ကျန်ငွေပေးချေမှုကို စောင့်နေသည်</string>
+    <string name="shipping_pack_example">ထုပ်ပိုးပုံ နမူနာ</string>
+    <string name="shipping_pack_guide">ဤအော်ဒါမှ အထုပ်အားလုံးကို ခွဲစီပြီး အပေါ်စောင်းစောင်းမှ တစ်ပုံတည်း ရိုက်ပါ။ အထုပ်တိုင်း တစ်ခုလုံးပါဝင်ပြီး စုစုပေါင်းအရေအတွက်ကို ရေတွက်နိုင်ကာ ပိတ်ထားသည့်နေရာများကို မြင်ရပါမည်။</string>
+    <string name="shipping_dispatch_example">ပစ္စည်းပို့လွှာ ဓာတ်ပုံနမူနာ</string>
+    <string name="shipping_dispatch_guide">ဤအော်ဒါ၏ ပို့လွှာကို ပြန့်ပြူးစွာ ခင်းပြီး အပေါ်တည့်တည့်မှ ရိုက်ပါ။ ထောင့်လေးထောင့်လုံး ပါစေပြီး အလင်းပြန်ခြင်းကို ရှောင်ပါ။ ပုံချဲ့ကြည့်သည့်အခါ ပို့လွှာအမှတ်နှင့် ပို့သည့်အရေအတွက်ကို ဖတ်နိုင်ရပါမည်။</string>
 </resources>

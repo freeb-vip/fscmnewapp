@@ -51,4 +51,8 @@
     <string name="shipping_pending_request">กำลังรอยืนยันผล กรุณาลองอีกครั้งเพื่อตรวจสอบ</string>
     <string name="shipping_camera_permission">ต้องอนุญาตกล้องเพื่อสแกนและถ่ายรูป</string>
     <string name="shipping_payment_pending">รอชำระยอดคงเหลือ</string>
+    <string name="shipping_pack_example">ตัวอย่างภาพถ่ายตอนแพ็ก</string>
+    <string name="shipping_pack_guide">วางพัสดุทั้งหมดของคำสั่งซื้อนี้ให้ห่างกันเล็กน้อย ถ่ายภาพรวมจากมุมเฉียงด้านบน ให้เห็นพัสดุแต่ละชิ้นเต็มใบ นับจำนวนได้ และเห็นรอยปิดผนึกชัดเจน</string>
+    <string name="shipping_dispatch_example">ตัวอย่างภาพถ่ายใบส่งของ</string>
+    <string name="shipping_dispatch_guide">วางใบส่งของให้ราบแล้วถ่ายจากด้านบนตรง ๆ ให้เห็นครบทั้งสี่มุมและหลีกเลี่ยงแสงสะท้อน ซูมตรวจว่าอ่านเลขที่ใบส่งของและจำนวนที่จัดส่งได้ชัดเจน</string>
 </resources>

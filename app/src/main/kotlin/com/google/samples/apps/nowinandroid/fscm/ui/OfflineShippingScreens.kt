@@ -21,6 +21,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -380,10 +382,29 @@ private fun ShippingPhotos(task: ShippingTask, stage: String, state: ShippingDet
             }
         }
         if (active) {
+            ShippingPhotoGuide(stage)
             Text(stringResource(R.string.shipping_photo_hint), style = MaterialTheme.typography.bodySmall)
             OutlinedButton(onClick = onCamera, enabled = !state.busy && !state.pending && photos.size + local.size < 5, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(stringResource(R.string.shipping_take_photo)) }
         }
     }
+}
+
+@Composable
+private fun ShippingPhotoGuide(stage: String) {
+    val packing = stage == "packing"
+    val filename = if (packing) "packing.jpg" else "dispatch.jpg"
+    val example = "file:///android_asset/offline-shipping/$filename"
+    val title = stringResource(if (packing) R.string.shipping_pack_example else R.string.shipping_dispatch_example)
+    var showingExample by rememberSaveable(stage) { mutableStateOf(false) }
+    Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+    AsyncImage(
+        model = example,
+        contentDescription = title,
+        modifier = Modifier.fillMaxWidth().height(152.dp)
+            .clickable(onClickLabel = stringResource(R.string.capture_example)) { showingExample = true },
+    )
+    Text(stringResource(if (packing) R.string.shipping_pack_guide else R.string.shipping_dispatch_guide), style = MaterialTheme.typography.bodyMedium)
+    if (showingExample) CapturePreview(example, video = false) { showingExample = false }
 }
 
 private fun shortShippingTime(value: String): String = runCatching {
