@@ -26,4 +26,16 @@
     <string name="manufacturer_bill_rejected">ဘေလ်ကို ပယ်ချပြီးပါပြီ</string>
     <string name="manufacturer_bill_approved">ဘေလ်ကို အတည်ပြုပြီး ငွေပေးချေမှု မှတ်တမ်းတင်ပြီးပါပြီ</string>
     <string name="manufacturer_bill_payment_recorded">ငွေပေးချေမှု မှတ်တမ်းတင်ပြီးပါပြီ</string>
+    <string name="manufacturer_bill_payment_details">ငွေပေးချေမှု အသေးစိတ်</string>
+    <string name="manufacturer_bill_pay_approve">ပေးချေပြီး အတည်ပြုမည်</string>
+    <string name="manufacturer_bill_continue_payment">ဆက်လက်ပေးချေမည်</string>
+    <string name="manufacturer_bill_remove_attachment">ဖိုင်ဖယ်ရှားမည်</string>
+    <string name="manufacturer_bill_view_qr">ငွေလက်ခံရန် QR ကုဒ် ကြည့်မည်</string>
+    <string name="manufacturer_bill_qr_save">စက်ထဲတွင် သိမ်းမည်</string>
+    <string name="manufacturer_bill_qr_saving">သိမ်းဆည်းနေသည်…</string>
+    <string name="manufacturer_bill_qr_saved_gallery">QR ကုဒ်ကို Pictures/FSCM တွင် သိမ်းဆည်းပြီးပါပြီ</string>
+    <string name="manufacturer_bill_qr_saved">QR ကုဒ်ကို သိမ်းဆည်းပြီးပါပြီ</string>
+    <string name="manufacturer_bill_qr_save_failed">QR ကုဒ်ကို သိမ်းဆည်း၍ မရပါ။ ပြန်ကြိုးစားပါ။</string>
+    <string name="manufacturer_bill_qr_load_failed">ငွေလက်ခံရန် QR ကုဒ်ကို ဖွင့်၍ မရပါ။</string>
+    <string name="manufacturer_bill_discard_files">ရွေးထားသောဖိုင်များကို ဖယ်ရှားပြီး ငွေပေးချေမှုဖောင်မှ ထွက်မလား။</string>
 </resources>

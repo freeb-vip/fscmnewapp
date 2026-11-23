@@ -16,12 +16,54 @@
 
 package com.google.samples.apps.nowinandroid.fscm.data
 
+import com.sun.net.httpserver.HttpServer
 import kotlinx.serialization.json.Json
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.junit.Test
+import java.io.ByteArrayOutputStream
+import java.net.InetSocketAddress
+import java.net.SocketTimeoutException
+import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class ManufacturerPaymentBillsTest {
+    @Test
+    fun slowAttachmentResponseCanFinishWhileOtherPostsKeepTheirTimeout() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { exchange ->
+            exchange.use {
+                it.requestBody.readBytes()
+                Thread.sleep(400)
+                it.sendResponseHeaders(204, -1)
+            }
+        }
+        server.start()
+        try {
+            val client = OkHttpClient.Builder().readTimeout(100, TimeUnit.MILLISECONDS)
+                .addInterceptor(PaymentAttachmentTimeouts).build()
+            fun post(path: String): Int {
+                val request = Request.Builder().url("http://127.0.0.1:${server.address.port}/api/$path")
+                    .post("voucher".toRequestBody()).build()
+                return client.newCall(request).execute().use { it.code }
+            }
+            assertEquals(204, post("upload/payment-attachment"))
+            assertFailsWith<SocketTimeoutException> { post("payment-bills/1/review") }
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun providerWithUnknownSizeCannotExceedAttachmentLimit() {
+        val input = ByteArray(10 * 1024 * 1024 + 1)
+        val target = ByteArrayOutputStream()
+        assertFailsWith<IllegalArgumentException> { copyPaymentAttachment(input.inputStream(), target) }
+        assertEquals(input.size - 1, target.size())
+    }
+
     @Test
     fun paidBillPreservesActualPaymentAndSignedAttachments() {
         val json = Json { ignoreUnknownKeys = true }

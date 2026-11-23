@@ -424,6 +424,7 @@ object FscmNetworkModule {
             .eventListener(routes.cancellation)
             .addInterceptor(authInterceptor)
             .addInterceptor(routes)
+            .addInterceptor(PaymentAttachmentTimeouts)
             .addInterceptor(
                 HttpLoggingInterceptor().apply {
                     level = if (BuildConfig.DEBUG) {

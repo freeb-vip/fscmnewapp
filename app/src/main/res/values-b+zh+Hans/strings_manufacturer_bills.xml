@@ -26,4 +26,16 @@
     <string name="manufacturer_bill_rejected">厂家账单已驳回</string>
     <string name="manufacturer_bill_approved">账单已通过并登记付款</string>
     <string name="manufacturer_bill_payment_recorded">付款已登记</string>
+    <string name="manufacturer_bill_payment_details">付款详情</string>
+    <string name="manufacturer_bill_pay_approve">付款并审核</string>
+    <string name="manufacturer_bill_continue_payment">继续付款</string>
+    <string name="manufacturer_bill_remove_attachment">移除文件</string>
+    <string name="manufacturer_bill_view_qr">查看收款码</string>
+    <string name="manufacturer_bill_qr_save">保存到本机</string>
+    <string name="manufacturer_bill_qr_saving">正在保存…</string>
+    <string name="manufacturer_bill_qr_saved_gallery">收款码已保存到相册 Pictures/FSCM</string>
+    <string name="manufacturer_bill_qr_saved">收款码已保存</string>
+    <string name="manufacturer_bill_qr_save_failed">收款码保存失败，请重试</string>
+    <string name="manufacturer_bill_qr_load_failed">收款码加载失败</string>
+    <string name="manufacturer_bill_discard_files">放弃本次选择的凭据并退出付款表单？</string>
 </resources>

@@ -130,6 +130,7 @@ class CenterRouting @Inject constructor(
     }
     private val direct = OkHttpClient.Builder()
         .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false)
+        .addInterceptor(PaymentAttachmentTimeouts)
         .addNetworkInterceptor { chain ->
             val request = chain.request()
             if (request.method !in setOf("GET", "HEAD") && request.tag(Attempt::class.java)?.sent == true) {

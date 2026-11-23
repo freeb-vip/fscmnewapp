@@ -32,6 +32,8 @@ import com.google.samples.apps.nowinandroid.fscm.data.PaymentAttachment
 import com.google.samples.apps.nowinandroid.fscm.data.PaymentConfigOption
 import com.google.samples.apps.nowinandroid.fscm.data.ReviewManufacturerBillRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -141,6 +143,7 @@ data class ManufacturerPaymentBillDetailUiState(
     val loading: Boolean = false,
     val submitting: Boolean = false,
     val uploading: Boolean = false,
+    val failedAttachment: Uri? = null,
     val detail: ManufacturerBillDetail? = null,
     val payments: List<com.google.samples.apps.nowinandroid.fscm.data.ManufacturerBillPayment> = emptyList(),
     val action: ManufacturerBillAction? = null,
@@ -162,7 +165,7 @@ data class ManufacturerPaymentBillDetailUiState(
     val error: UiText? = null,
     val message: UiText? = null,
 ) {
-    val hasUnsubmittedAttachments: Boolean get() = pendingAttachments.isNotEmpty()
+    val hasUnsubmittedAttachments: Boolean get() = uploading || failedAttachment != null || pendingAttachments.isNotEmpty()
 }
 
 @HiltViewModel
@@ -170,6 +173,7 @@ class ManufacturerPaymentBillDetailViewModel @Inject constructor(
     private val repository: ManufacturerPaymentBillRepository,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ManufacturerPaymentBillDetailUiState())
+    private var uploadJob: Job? = null
     val state = _state.asStateFlow()
 
     fun load(id: Long) = viewModelScope.launch {
@@ -261,6 +265,7 @@ class ManufacturerPaymentBillDetailViewModel @Inject constructor(
     }
 
     fun closeAction() {
+        if (_state.value.submitting) return
         if (_state.value.hasUnsubmittedAttachments) {
             _state.update { it.copy(confirmDiscard = true, discardNavigation = false) }
         } else {
@@ -305,9 +310,14 @@ class ManufacturerPaymentBillDetailViewModel @Inject constructor(
     fun setRemark(value: String) = _state.update { it.copy(remark = value) }
 
     fun upload(uri: Uri) {
-        if (_state.value.pendingAttachments.size >= 5 || _state.value.uploading) return
-        _state.update { it.copy(uploading = true, error = null) }
-        viewModelScope.launch {
+        val state = _state.value
+        if (state.action !in setOf(ManufacturerBillAction.Approve, ManufacturerBillAction.Pay) ||
+            state.pendingAttachments.size >= 5 || state.uploading || state.submitting
+        ) {
+            return
+        }
+        _state.update { it.copy(uploading = true, failedAttachment = null, error = null) }
+        uploadJob = viewModelScope.launch {
             runCatching { repository.uploadAttachment(uri) }
                 .onSuccess { attachment ->
                     _state.update {
@@ -317,12 +327,15 @@ class ManufacturerPaymentBillDetailViewModel @Inject constructor(
                         )
                     }
                 }.onFailure { error ->
+                    if (error is CancellationException) throw error
                     _state.update {
-                        it.copy(uploading = false, error = error.paymentBillMessage(R.string.manufacturer_bill_attachment_failed))
+                        it.copy(uploading = false, failedAttachment = uri, error = error.paymentBillMessage(R.string.manufacturer_bill_attachment_failed))
                     }
                 }
         }
     }
+
+    fun clearFailedAttachment() = _state.update { it.copy(failedAttachment = null, error = null) }
 
     fun removeAttachment(attachment: PaymentAttachment) = _state.update {
         it.copy(pendingAttachments = it.pendingAttachments.filterNot { item -> item.objectKey == attachment.objectKey })
@@ -330,6 +343,7 @@ class ManufacturerPaymentBillDetailViewModel @Inject constructor(
 
     fun requestSubmit() {
         val state = _state.value
+        if (state.uploading || state.failedAttachment != null || state.submitting) return
         val detail = state.detail ?: return
         val error = validateManufacturerBillAction(state, detail)
         if (error != null) {
@@ -345,7 +359,7 @@ class ManufacturerPaymentBillDetailViewModel @Inject constructor(
         val state = _state.value
         val action = state.action ?: return
         val detail = state.detail ?: return
-        if (validateManufacturerBillAction(state, detail) != null || state.submitting) return
+        if (state.uploading || state.failedAttachment != null || state.submitting || validateManufacturerBillAction(state, detail) != null) return
         _state.update { it.copy(submitting = true, confirmSubmit = false, error = null) }
         viewModelScope.launch {
             val amount = state.amount.toDoubleOrNull()
@@ -415,15 +429,20 @@ class ManufacturerPaymentBillDetailViewModel @Inject constructor(
 
     fun consumeNotice() = _state.update { it.copy(error = null, message = null) }
 
-    private fun clearAction() = _state.update {
-        it.copy(
-            action = null,
-            pendingAttachments = emptyList(),
-            confirmDiscard = false,
-            discardNavigation = false,
-            confirmSubmit = false,
-            remark = "",
-        )
+    private fun clearAction() {
+        uploadJob?.cancel()
+        _state.update {
+            it.copy(
+                uploading = false,
+                failedAttachment = null,
+                action = null,
+                pendingAttachments = emptyList(),
+                confirmDiscard = false,
+                discardNavigation = false,
+                confirmSubmit = false,
+                remark = "",
+            )
+        }
     }
 }
 

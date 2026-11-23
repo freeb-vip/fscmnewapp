@@ -26,4 +26,16 @@
     <string name="manufacturer_bill_rejected">ปฏิเสธใบเรียกเก็บเงินแล้ว</string>
     <string name="manufacturer_bill_approved">อนุมัติใบเรียกเก็บเงินและบันทึกการชำระเงินแล้ว</string>
     <string name="manufacturer_bill_payment_recorded">บันทึกการชำระเงินแล้ว</string>
+    <string name="manufacturer_bill_payment_details">รายละเอียดการชำระเงิน</string>
+    <string name="manufacturer_bill_pay_approve">ชำระเงินและอนุมัติ</string>
+    <string name="manufacturer_bill_continue_payment">ชำระเงินต่อ</string>
+    <string name="manufacturer_bill_remove_attachment">นำไฟล์ออก</string>
+    <string name="manufacturer_bill_view_qr">ดูคิวอาร์โค้ดรับเงิน</string>
+    <string name="manufacturer_bill_qr_save">บันทึกลงเครื่อง</string>
+    <string name="manufacturer_bill_qr_saving">กำลังบันทึก…</string>
+    <string name="manufacturer_bill_qr_saved_gallery">บันทึกคิวอาร์โค้ดใน Pictures/FSCM แล้ว</string>
+    <string name="manufacturer_bill_qr_saved">บันทึกคิวอาร์โค้ดแล้ว</string>
+    <string name="manufacturer_bill_qr_save_failed">บันทึกคิวอาร์โค้ดไม่สำเร็จ โปรดลองอีกครั้ง</string>
+    <string name="manufacturer_bill_qr_load_failed">โหลดคิวอาร์โค้ดรับเงินไม่สำเร็จ</string>
+    <string name="manufacturer_bill_discard_files">ทิ้งไฟล์ที่เลือกและออกจากแบบฟอร์มชำระเงินหรือไม่</string>
 </resources>

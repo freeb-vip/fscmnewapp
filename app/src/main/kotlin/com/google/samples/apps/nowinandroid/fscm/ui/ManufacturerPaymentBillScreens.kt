@@ -27,7 +27,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -36,6 +35,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -52,6 +52,7 @@ import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.FilterList
+import androidx.compose.material.icons.rounded.Payment
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Button
@@ -81,12 +82,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -97,6 +100,7 @@ import androidx.core.content.FileProvider
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.fscm.data.ManufacturerBillBucket
 import com.google.samples.apps.nowinandroid.fscm.data.ManufacturerBillGroup
 import com.google.samples.apps.nowinandroid.fscm.data.ManufacturerPaymentBill
@@ -324,7 +328,11 @@ private fun ManufacturerBillRow(bill: ManufacturerPaymentBill, onOpenBill: (Long
             )
             Text("剩余 ${money(bill.currency, bill.remainingAmount)}", color = BillDeepBlue, fontWeight = FontWeight.Bold)
         }
-        Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = "查看详情", tint = BillBlue)
+        if (bill.approvalProvider == "local" && (bill.status == "submitted" || (bill.status == "partial_paid" && bill.paymentStrategy == "deposit_payment"))) {
+            OutlinedButton(onClick = { onOpenBill(bill.id) }) { Text(stringResource(R.string.manufacturer_bill_payment_details)) }
+        } else {
+            Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = "查看详情", tint = BillBlue)
+        }
     }
 }
 
@@ -394,7 +402,7 @@ fun ManufacturerPaymentBillDetailScreen(
         AlertDialog(
             onDismissRequest = viewModel::cancelDiscard,
             title = { Text("附件尚未提交") },
-            text = { Text("已上传附件还没有关联到付款记录，确定放弃吗？") },
+            text = { Text(stringResource(R.string.manufacturer_bill_discard_files)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -408,10 +416,10 @@ fun ManufacturerPaymentBillDetailScreen(
         )
     }
 
-    Box(Modifier.fillMaxSize().background(BillBackground)) {
+    Column(Modifier.fillMaxSize().background(BillBackground)) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 112.dp),
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             state.error?.let { error -> item { BillNotice(error.resolve(), BillDanger) { TextButton(onClick = { viewModel.load(id) }) { Text("重试") } } } }
@@ -465,22 +473,50 @@ fun ManufacturerPaymentBillDetailScreen(
         }
 
         bill?.let { current ->
-            val isLocal = current.approvalProvider == "local"
-            val canExecutePayment = detail.paymentExecution?.canExecute != false
-            when {
-                isLocal && current.status == "submitted" -> {
-                    Surface(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(), color = Color.White, shadowElevation = 10.dp) {
-                        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            OutlinedButton(onClick = viewModel::openReject, enabled = !state.submitting, modifier = Modifier.weight(1f)) { Text("驳回", color = BillDanger) }
-                            Button(onClick = viewModel::openApprove, enabled = !state.submitting && canExecutePayment, modifier = Modifier.weight(1f)) { Text("付款并审核") }
-                        }
-                    }
-                }
-                isLocal && canExecutePayment && current.status == "partial_paid" && current.paymentStrategy == "deposit_payment" -> {
-                    Surface(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(), color = Color.White, shadowElevation = 10.dp) {
-                        Button(onClick = viewModel::openPayment, enabled = !state.submitting, modifier = Modifier.fillMaxWidth().padding(12.dp)) { Text("继续付款") }
-                    }
-                }
+            ManufacturerBillPaymentActions(
+                bill = current,
+                canExecute = detail.paymentExecution?.canExecute != false,
+                submitting = state.submitting,
+                onApprove = viewModel::openApprove,
+                onPay = viewModel::openPayment,
+                onReject = viewModel::openReject,
+            )
+        }
+    }
+}
+
+@Composable
+internal fun ManufacturerBillPaymentActions(
+    bill: ManufacturerPaymentBill,
+    canExecute: Boolean,
+    submitting: Boolean,
+    onApprove: () -> Unit,
+    onPay: () -> Unit,
+    onReject: () -> Unit,
+) {
+    if (bill.approvalProvider != "local") return
+    val approve = bill.status == "submitted"
+    if (!approve && !(canExecute && bill.status == "partial_paid" && bill.paymentStrategy == "deposit_payment")) return
+    Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 4.dp) {
+        Row(
+            Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (approve) {
+                TextButton(onClick = onReject, enabled = !submitting) { Text(stringResource(R.string.business_reject)) }
+            }
+            Button(
+                onClick = if (approve) onApprove else onPay,
+                enabled = !submitting && canExecute,
+                modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+            ) {
+                Icon(Icons.Rounded.Payment, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    stringResource(if (approve) R.string.manufacturer_bill_pay_approve else R.string.manufacturer_bill_continue_payment),
+                    fontWeight = FontWeight.Bold,
+                )
             }
         }
     }
@@ -548,7 +584,7 @@ private fun BillPaymentInformationCard(bill: ManufacturerPaymentBill, infos: Lis
             Text(selectedInfo.displayLabel(), color = BillMuted)
             if (selectedInfo.accountNo.isNotBlank()) Text("账号：${selectedInfo.accountNo}", color = BillInk)
             if (selectedInfo.bankBranch.isNotBlank()) Text("开户支行：${selectedInfo.bankBranch}", color = BillMuted)
-            if (selectedInfo.qrImageUrl.isNotBlank()) AttachmentLink(PaymentAttachment(url = selectedInfo.qrImageUrl, name = "查看收款二维码"))
+            if (selectedInfo.qrImageUrl.isNotBlank()) ManufacturerPaymentQrLink(selectedInfo.qrImageUrl)
             if (selectedInfo.remark.isNotBlank()) Text(selectedInfo.remark, color = BillMuted)
         }
     }
@@ -623,6 +659,7 @@ private fun ManufacturerBillActionSheet(
                         label = { Text(info.displayLabel()) },
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    if (state.paymentInfoId == info.id && info.qrImageUrl.isNotBlank()) ManufacturerPaymentQrLink(info.qrImageUrl)
                 }
                 if (action == ManufacturerBillAction.Approve && state.paymentMethod != "诚意赊") {
                     item {
@@ -681,7 +718,7 @@ private fun ManufacturerBillActionSheet(
             item {
                 Button(
                     onClick = viewModel::requestSubmit,
-                    enabled = !state.submitting && !state.uploading && (action == ManufacturerBillAction.Reject || infos.isNotEmpty()),
+                    enabled = !state.submitting && !state.uploading && state.failedAttachment == null && (action == ManufacturerBillAction.Reject || infos.isNotEmpty()),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     if (state.submitting) {
@@ -739,7 +776,7 @@ private fun PendingAttachmentPicker(
     viewModel: ManufacturerPaymentBillDetailViewModel,
 ) {
     val context = LocalContext.current
-    var cameraUri by remember { mutableStateOf<Uri?>(null) }
+    var cameraUri by rememberSaveable { mutableStateOf<Uri?>(null) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(viewModel::upload) }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         if (success) cameraUri?.let(viewModel::upload)
@@ -764,7 +801,7 @@ private fun PendingAttachmentPicker(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
                 onClick = { filePicker.launch(arrayOf("image/*", "application/pdf")) },
-                enabled = !state.uploading && state.pendingAttachments.size < 5,
+                enabled = !state.uploading && !state.submitting && state.pendingAttachments.size < 5,
                 modifier = Modifier.weight(1f),
             ) {
                 Icon(Icons.Rounded.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -779,7 +816,7 @@ private fun PendingAttachmentPicker(
                         permission.launch(Manifest.permission.CAMERA)
                     }
                 },
-                enabled = !state.uploading && state.pendingAttachments.size < 5,
+                enabled = !state.uploading && !state.submitting && state.pendingAttachments.size < 5,
                 modifier = Modifier.weight(1f),
             ) {
                 Icon(Icons.Rounded.AddAPhoto, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -792,6 +829,13 @@ private fun PendingAttachmentPicker(
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.width(8.dp))
                 Text("正在上传凭据", color = BillMuted)
+            }
+        }
+        state.failedAttachment?.let { uri ->
+            Text(stringResource(R.string.manufacturer_bill_attachment_failed), color = MaterialTheme.colorScheme.error)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { viewModel.upload(uri) }) { Text(stringResource(R.string.common_retry)) }
+                TextButton(onClick = viewModel::clearFailedAttachment) { Text(stringResource(R.string.manufacturer_bill_remove_attachment)) }
             }
         }
         Text("支持 JPG、PNG、GIF、WEBP、PDF，单个不超过 10MB", color = BillMuted, style = MaterialTheme.typography.bodySmall)

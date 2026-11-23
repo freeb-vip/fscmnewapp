@@ -21,6 +21,8 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -31,10 +33,15 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.put
+import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
-import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.ByteArrayOutputStream
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.Response
+import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -448,17 +455,21 @@ class ManufacturerPaymentBillRepository @Inject constructor(
         return rows.map { it.toModel(json) }
     }
 
-    suspend fun uploadAttachment(uri: Uri): PaymentAttachment {
+    suspend fun uploadAttachment(uri: Uri): PaymentAttachment = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver
         val name = resolver.displayName(uri)
         val declaredSize = resolver.declaredSize(uri)
         validatePaymentAttachment(name, declaredSize)
-        val bytes = resolver.openInputStream(uri)?.use(::readPaymentAttachmentBytes)
-            ?: error("无法读取附件")
-        validatePaymentAttachment(name, bytes.size.toLong())
-        val mediaType = paymentAttachmentMediaType(name).toMediaType()
-        val part = MultipartBody.Part.createFormData("file", name, bytes.toRequestBody(mediaType))
-        return api.upload("upload/payment-attachment", part)
+        val file = File.createTempFile("payment-upload-", ".tmp", context.cacheDir)
+        try {
+            val input = resolver.openInputStream(uri) ?: error("无法读取附件")
+            input.use { source -> file.outputStream().use { target -> copyPaymentAttachment(source, target) } }
+            validatePaymentAttachment(name, file.length())
+            val body = file.asRequestBody(paymentAttachmentMediaType(name).toMediaType())
+            api.upload<PaymentAttachment>(PAYMENT_ATTACHMENT_PATH, MultipartBody.Part.createFormData("file", name, body))
+        } finally {
+            file.delete()
+        }
     }
 }
 
@@ -567,8 +578,7 @@ private fun ContentResolver.declaredSize(uri: Uri): Long =
         if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else -1L
     } ?: -1L
 
-private fun readPaymentAttachmentBytes(input: java.io.InputStream): ByteArray {
-    val output = ByteArrayOutputStream()
+internal fun copyPaymentAttachment(input: InputStream, output: OutputStream) {
     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
     var total = 0L
     while (true) {
@@ -578,7 +588,20 @@ private fun readPaymentAttachmentBytes(input: java.io.InputStream): ByteArray {
         require(total <= MAX_PAYMENT_ATTACHMENT_BYTES) { "附件大小不能超过 10MB" }
         output.write(buffer, 0, read)
     }
-    return output.toByteArray()
+}
+
+private const val PAYMENT_ATTACHMENT_PATH = "upload/payment-attachment"
+
+internal object PaymentAttachmentTimeouts : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        val transfer = if (request.method == "POST" && request.url.encodedPath.endsWith("/" + PAYMENT_ATTACHMENT_PATH)) {
+            chain.withWriteTimeout(2, TimeUnit.MINUTES).withReadTimeout(2, TimeUnit.MINUTES)
+        } else {
+            chain
+        }
+        return transfer.proceed(request)
+    }
 }
 
 private val PAYMENT_ATTACHMENT_EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "webp", "pdf")
