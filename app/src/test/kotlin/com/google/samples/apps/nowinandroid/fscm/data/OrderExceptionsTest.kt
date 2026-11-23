@@ -17,17 +17,40 @@
 package com.google.samples.apps.nowinandroid.fscm.data
 
 import com.google.samples.apps.nowinandroid.fscm.ui.exceptionRegistrationTime
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 
 class OrderExceptionsTest {
     private val json = Json { ignoreUnknownKeys = true }
+
+    @Test
+    fun pendingSubmissionChecksReceiptBeforeReplayingFrozenForm() = runTest {
+        val form = WarehouseExceptionForm(version = 3, problemType = "process", attachmentKeys = listOf("photo"))
+        val receipt = WarehouseExceptionResolution(id = 1, problemType = "process", requestId = form.requestId)
+        val open = WarehouseException(id = 1, version = 3, resolutions = listOf(receipt.copy(requestId = "earlier")))
+        val committed = open.copy(version = 4, status = "resolved", resolutions = listOf(receipt))
+        val result = confirmWarehouseException(form, { open }) { retry ->
+            assertEquals(form, retry)
+            committed
+        }
+        assertEquals(committed, result)
+        for (latest in listOf(committed, committed.copy(version = 5, status = "open"))) {
+            assertEquals(latest, confirmWarehouseException(form, { latest }) { error("Unexpected POST") })
+        }
+        val denied = FscmApiException("Forbidden", 403)
+        val lookup = assertFailsWith<ExceptionReceiptLookupFailed> {
+            confirmWarehouseException(form, { throw denied }) { error("Unexpected POST") }
+        }
+        assertEquals(denied, lookup.failure)
+    }
 
     @Test
     fun registrationUsesTheWarehouseDayAcrossMidnight() {

@@ -64,7 +64,7 @@
     <string name="oe_confirm_submit">အတည်ပြုပြီး တင်သွင်းရန်</string>
     <string name="oe_cancel">ပြန်လည်ပြင်ဆင်ရန်</string>
     <string name="oe_select_problem">ပြဿနာအမျိုးအစား ရွေးပါ</string>
-    <string name="oe_pending_result">တင်သွင်းမှုရလဒ် မသေချာပါ။ မူလတောင်းဆိုမှုကို ပြန်စစ်ရန် “တင်သွင်းမှု ရလဒ်စစ်ရန်” နှိပ်ပါ။</string>
+    <string name="oe_pending_result">မှတ်တမ်းတင်ပြီးခြင်း ရှိမရှိ စစ်ဆေးရန် “တင်သွင်းမှု ရလဒ်စစ်ရန်” ကို နှိပ်ပါ။ မှတ်တမ်း မတွေ့ပါက မူလတောင်းဆိုမှုကို ပြန်ပို့ပါမည်။</string>
     <string name="oe_request_error">တောင်းဆိုမှု မအောင်မြင်ပါ။ ကွန်ရက်စစ်ပြီး ပြန်ကြိုးစားပါ။</string>
     <string name="oe_permission_error">ဝင်ရောက်မှု သက်တမ်းကုန် သို့မဟုတ် ခွင့်ပြုချက်မရှိပါ။ ပြန်ဝင်ပါ သို့မဟုတ် စီမံသူကို ဆက်သွယ်ပါ။</string>
     <string name="oe_invalid_input">ဖောင်နှင့် တင်ထားသောပုံများ စစ်ပြီး ပြန်ကြိုးစားပါ။</string>

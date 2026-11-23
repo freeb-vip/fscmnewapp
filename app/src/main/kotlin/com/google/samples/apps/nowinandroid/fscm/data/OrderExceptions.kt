@@ -156,6 +156,23 @@ internal fun restoreWarehouseExceptionForm(report: WarehouseException, draft: Wa
 internal fun encodeWarehouseExceptionForm(json: Json, form: WarehouseExceptionForm) =
     Json(json) { encodeDefaults = true }.encodeToJsonElement(WarehouseExceptionForm.serializer(), form)
 
+// A failed receipt lookup leaves the original submission unresolved, even if the GET returned 4xx.
+internal class ExceptionReceiptLookupFailed(val failure: FscmApiException) : Exception(failure)
+
+internal suspend fun confirmWarehouseException(
+    form: WarehouseExceptionForm,
+    loadDetail: suspend () -> WarehouseException,
+    retry: suspend (WarehouseExceptionForm) -> WarehouseException,
+): WarehouseException {
+    val latest = try {
+        loadDetail()
+    } catch (error: FscmApiException) {
+        throw ExceptionReceiptLookupFailed(error)
+    }
+    if (latest.resolutions.any { it.requestId == form.requestId }) return latest
+    return retry(form)
+}
+
 data class ExceptionChange(val scope: ExceptionScope, val detail: WarehouseException)
 
 internal fun WarehouseExceptionForm.requiresMeasures() = problemType == "other" && measures.isBlank()
@@ -212,9 +229,12 @@ class OrderExceptionsRepository @Inject constructor(
         return result
     }
 
-    suspend fun resolve(scope: ExceptionScope, id: Long, form: WarehouseExceptionForm): WarehouseException {
-        verify(scope)
-        val result: WarehouseException = api.post("mobile/order-exceptions/$id/resolve", headers = scope.headers(), body = encodeWarehouseExceptionForm(json, form))
+    suspend fun resolve(scope: ExceptionScope, id: Long, form: WarehouseExceptionForm, confirmPending: Boolean = false): WarehouseException {
+        suspend fun post(request: WarehouseExceptionForm): WarehouseException {
+            verify(scope)
+            return api.post("mobile/order-exceptions/$id/resolve", headers = scope.headers(), body = encodeWarehouseExceptionForm(json, request))
+        }
+        val result = if (confirmPending) confirmWarehouseException(form, { detail(scope, id) }, ::post) else post(form)
         verify(scope)
         mutableChanges.value = ExceptionChange(scope, result)
         return result

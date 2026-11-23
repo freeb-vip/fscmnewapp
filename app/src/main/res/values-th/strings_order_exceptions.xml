@@ -64,7 +64,7 @@
     <string name="oe_confirm_submit">ยืนยันและส่ง</string>
     <string name="oe_cancel">กลับไปแก้ไข</string>
     <string name="oe_select_problem">กรุณาเลือกประเภทปัญหา</string>
-    <string name="oe_pending_result">ยังไม่ทราบผลการส่ง แตะ “ตรวจสอบผลการส่ง” เพื่อลองคำขอเดิมอีกครั้งอย่างปลอดภัย</string>
+    <string name="oe_pending_result">แตะ “ตรวจสอบผลการส่ง” เพื่อตรวจว่าบันทึกผลแล้วหรือยัง หากไม่พบรายการ แอปจะส่งคำขอเดิมอีกครั้ง</string>
     <string name="oe_request_error">คำขอล้มเหลว โปรดตรวจสอบการเชื่อมต่อและลองใหม่</string>
     <string name="oe_permission_error">เซสชันหมดอายุหรือไม่มีสิทธิ์ กรุณาเข้าสู่ระบบใหม่หรือติดต่อผู้ดูแล</string>
     <string name="oe_invalid_input">ตรวจสอบแบบฟอร์มและรูปที่อัปโหลดแล้วลองใหม่</string>

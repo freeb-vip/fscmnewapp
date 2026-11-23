@@ -23,6 +23,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.fscm.data.ExceptionListSource
+import com.google.samples.apps.nowinandroid.fscm.data.ExceptionReceiptLookupFailed
 import com.google.samples.apps.nowinandroid.fscm.data.ExceptionScope
 import com.google.samples.apps.nowinandroid.fscm.data.FscmApiException
 import com.google.samples.apps.nowinandroid.fscm.data.OrderExceptionsRepository
@@ -289,7 +290,7 @@ class OrderExceptionDetailViewModel @Inject constructor(
         mutable.update { it.copy(busy = true, pending = true, error = null) }
         viewModelScope.launch {
             try {
-                val detail = repository.resolve(requireNotNull(scope), reportId, form)
+                val detail = repository.resolve(requireNotNull(scope), reportId, form, confirmPending = current.pending)
                 saved.remove<String>("pending")
                 saved.remove<String>("form")
                 mutable.value = ExceptionDetailState(detail = detail, form = WarehouseExceptionForm(version = detail.version, collaborationVersion = detail.collaborationVersion))
@@ -299,7 +300,12 @@ class OrderExceptionDetailViewModel @Inject constructor(
                 val responseStatus = (error as? FscmApiException)?.statusCode
                 val definite = responseStatus != null && responseStatus in 400..499
                 if (definite) saved.remove<String>("pending")
-                mutable.update { it.copy(busy = false, pending = !definite, error = if (definite) error.exceptionMessage() else UiText.Resource(R.string.oe_pending_result)) }
+                val message = when {
+                    definite -> error.exceptionMessage()
+                    error is ExceptionReceiptLookupFailed -> error.failure.exceptionMessage()
+                    else -> UiText.Resource(R.string.oe_pending_result)
+                }
+                mutable.update { it.copy(busy = false, pending = !definite, error = message) }
                 if ((error as? FscmApiException)?.statusCode == 409) {
                     try {
                         val latest = repository.detail(requireNotNull(scope), reportId)

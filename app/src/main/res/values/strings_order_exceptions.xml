@@ -64,7 +64,7 @@
     <string name="oe_confirm_submit">Confirm and submit</string>
     <string name="oe_cancel">Continue editing</string>
     <string name="oe_select_problem">Select a problem type</string>
-    <string name="oe_pending_result">Submission result is unknown. Tap “Confirm submission result” to safely retry the same request.</string>
+    <string name="oe_pending_result">Tap “Confirm submission result” to check whether your submission was saved. If no record is found, the app will retry the same request.</string>
     <string name="oe_request_error">Request failed. Check your connection and try again.</string>
     <string name="oe_permission_error">Your session expired or access was denied. Sign in again or contact an administrator.</string>
     <string name="oe_invalid_input">Check the form and uploaded photos, then try again.</string>
