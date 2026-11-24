@@ -117,6 +117,35 @@ class CenterRouting @Inject constructor(
     @param:ApplicationContext private val context: Context,
     @param:FscmJson private val json: Json,
 ) : Interceptor {
+    private val recentUses = mutableMapOf<Triple<Long, String, String>, CenterRouteUse>()
+
+    @Synchronized
+    internal fun recentRoutes(namespace: Long): List<CenterRouteUse> {
+        val cutoff = System.currentTimeMillis() - 900_000L
+        recentUses.values.removeAll { it.usedAtMs < cutoff }
+        return recentUses.filterKeys { it.first == namespace }.values.sortedByDescending { it.usedAtMs }.take(65)
+    }
+
+    @PublishedApi
+    internal fun confirmBusinessResponse(response: Response) {
+        recordUse(response.request, response, response.request.tag(CenterSnapshot::class.java)?.version ?: 0)
+    }
+
+    @Synchronized
+    private fun recordUse(request: Request, response: Response, version: Long) {
+        val ns = request.header("X-Namespace-ID")?.toLongOrNull() ?: return
+        val path = request.url.encodedPath
+        if (!response.isSuccessful || !path.startsWith(base.encodedPath) ||
+            path.endsWith("/mobile/center-probe") || path.endsWith("/mobile/center-routes") ||
+            path.contains("/edge/terminals/") || path.endsWith("/edge/nodes")
+        ) return
+        val line = response.request.tag(CenterLine::class.java)
+        if (line == null && response.request.url.host != base.host) return
+        val host = line?.host ?: request.url.host
+        val ip = line?.ip.orEmpty()
+        recentUses[Triple(ns, host, ip)] = CenterRouteUse(host, ip, version, System.currentTimeMillis())
+    }
+
     private val base = BuildConfig.BACKEND_URL.toHttpUrl()
     private val key = stringPreferencesKey(base.toString())
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
@@ -248,7 +277,12 @@ class CenterRouting @Inject constructor(
         val s = snapshot
         val response = if (net == null || s == null || s.routes.isEmpty()) chain.proceed(req) else route(req, s, net, chain.call())
         if (response.isSuccessful && SystemClock.elapsedRealtime() >= due) refreshSoon()
-        return response
+        if (req.tag(retrofit2.Invocation::class.java) == null) {
+            recordUse(req, response, s?.version ?: 0)
+            return response
+        }
+        val observedRequest = response.request.newBuilder().tag(CenterSnapshot::class.java, s).build()
+        return response.newBuilder().request(observedRequest).build()
     }
 
     private fun client(line: CenterLine, net: Network): LineClient = synchronized(this) {
@@ -326,7 +360,7 @@ class CenterRouting @Inject constructor(
                             }
                         }
                     }
-                    val routed = req.newBuilder().url(target).tag(Attempt::class.java, attempt).build()
+                    val routed = req.newBuilder().url(target).tag(CenterLine::class.java, line).tag(Attempt::class.java, attempt).build()
                     val res = exchange(state.client, routed, outer, if (outer == null) 4_000 else 0)
                     if (res.code !in setOf(502, 503, 504)) {
                         state.retryAfter = 0

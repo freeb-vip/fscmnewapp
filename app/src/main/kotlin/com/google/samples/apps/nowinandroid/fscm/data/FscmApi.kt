@@ -124,6 +124,7 @@ internal enum class SessionRefreshResult {
 
 @Singleton
 class FscmApiClient @Inject constructor(
+    @PublishedApi internal val centerRouting: CenterRouting,
     @PublishedApi internal val api: FscmRetrofitApi,
     @PublishedApi internal val sessionStore: SessionStore,
     @param:FscmJson
@@ -197,7 +198,9 @@ class FscmApiClient @Inject constructor(
             response.errorBody()?.close()
             throw FscmApiException("Download failed", response.code())
         }
-        return response.body()?.use { it.bytes() } ?: throw java.io.IOException("Empty download")
+        val bytes = response.body()?.use { it.bytes() } ?: throw java.io.IOException("Empty download")
+        centerRouting.confirmBusinessResponse(response.raw())
+        return bytes
     }
 
     suspend inline fun <reified T> send(
@@ -219,7 +222,7 @@ class FscmApiClient @Inject constructor(
             sessionStore.clear()
             throw error
         }
-        return decode(response)
+        return decode<T>(response).also { centerRouting.confirmBusinessResponse(response.raw()) }
     }
 
     @PublishedApi

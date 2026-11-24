@@ -493,6 +493,14 @@ data class EdgePrintNodeStatus(
 }
 
 @Serializable
+data class CenterRouteUse(
+    val host: String,
+    val ip: String,
+    val version: Long,
+    @SerialName("used_at_ms") val usedAtMs: Long,
+)
+
+@Serializable
 data class EdgeTerminalRegistrationRequest(
     @SerialName("terminal_id") val terminalId: String,
     @SerialName("edge_node_id") val edgeNodeId: String? = null,
@@ -501,6 +509,7 @@ data class EdgeTerminalRegistrationRequest(
     val platform: String,
     @SerialName("lan_ip") val lanIp: String,
     val capabilities: List<String>,
+    @SerialName("center_routes") val centerRoutes: List<CenterRouteUse> = emptyList(),
 )
 
 @Serializable

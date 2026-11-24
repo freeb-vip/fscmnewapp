@@ -1057,6 +1057,7 @@ class EdgePrintRepository @Inject constructor(
 
 @Singleton
 class EdgeTerminalRepository @Inject constructor(
+    private val centerRouting: CenterRouting,
     private val api: FscmApiClient,
     private val edgePrintRepository: EdgePrintRepository,
     private val edgeTicketProvider: EdgeTicketProvider,
@@ -1079,34 +1080,28 @@ class EdgeTerminalRepository @Inject constructor(
 
         val lanIp = currentLocalIPv4Addresses().firstOrNull().orEmpty()
         return registrationMutex.withLock {
-            val nodes = edgePrintRepository.registeredCenterNodes()
-            val edgeNodeId = (
-                nodes.firstOrNull { it.nodeId.isNotBlank() && it.status == "online" }
-                    ?: nodes.firstOrNull { it.nodeId.isNotBlank() }
-                )
-                ?.nodeId
-                ?.takeIf(String::isNotBlank)
-                ?: return@withLock false
             val now = System.currentTimeMillis()
             val registrationKey = listOf(
                 session.currentNamespace.id,
                 terminalId(),
                 lanIp.ifBlank { "unknown" },
-                edgeNodeId,
             ).joinToString(":")
-            val request = registration(edgeNodeId, lanIp)
+            val request = registration("", lanIp).copy(
+                centerRoutes = centerRouting.recentRoutes(session.currentNamespace.id),
+            )
             val needsRegistration = registrationKey != lastRegistrationKey ||
                 now - lastRegistrationAtMillis >= REGISTRATION_INTERVAL_MS
             val path = if (needsRegistration) "edge/terminals/register" else "edge/terminals/heartbeat"
             api.post<Unit>(
                 path = path,
+                headers = mapOf("X-FSCM-Expected-Namespace-ID" to session.currentNamespace.id.toString()),
                 body = json.encodeToJsonElement(request),
             )
             if (needsRegistration) {
                 lastRegistrationKey = registrationKey
                 lastRegistrationAtMillis = now
             }
-            Log.i(LOG_TAG, "Central terminal presence updated: path=$path edgeNodeId=$edgeNodeId")
+            Log.i(LOG_TAG, "Central terminal presence updated: path=$path")
             true
         }
     }
