@@ -81,8 +81,15 @@ interface BoxLabelMappingDao {
     )
     suspend fun find(userId: Long, namespaceId: Long, code: String, rawCode: String): LocalBoxLabelMappingEntity?
 
-    @Query("SELECT * FROM local_box_label_mappings WHERE userId = :userId AND namespaceId = :namespaceId AND (supplierLabelCode = :code COLLATE NOCASE OR supplierBoxNo = :code COLLATE NOCASE OR supplierBoxUid = :code COLLATE NOCASE OR jifengBoxNo = :code COLLATE NOCASE OR jifengQrCodeText = :rawCode) LIMIT 2")
-    suspend fun captureMatches(userId: Long, namespaceId: Long, code: String, rawCode: String): List<LocalBoxLabelMappingEntity>
+    @Query("SELECT * FROM local_box_label_mappings WHERE userId = :userId AND namespaceId = :namespaceId AND (supplierLabelCode COLLATE NOCASE IN (:codes) OR supplierBoxNo COLLATE NOCASE IN (:codes) OR supplierBoxUid COLLATE NOCASE IN (:codes) OR jifengBoxNo COLLATE NOCASE IN (:codes) OR jifengQrCodeText = :rawCode) GROUP BY supplierOrderBoxPlanId LIMIT 2")
+    suspend fun captureMatches(userId: Long, namespaceId: Long, codes: List<String>, rawCode: String): List<LocalBoxLabelMappingEntity>
+
+    suspend fun captureMapping(userId: Long, namespaceId: Long, codes: List<String>, rawCode: String): LocalBoxLabelMappingEntity? {
+        val raw = rawCode.trimScannerCharactersForLookup()
+        val matches = captureMatches(userId, namespaceId, codes, raw)
+        if (matches.size > 1) throw InboundClientException(InboundClientError.BoxOwnershipConflict)
+        return matches.singleOrNull()
+    }
 
     @Query("SELECT * FROM local_box_label_mappings WHERE userId = :userId AND namespaceId = :namespaceId AND (supplierLabelCode COLLATE NOCASE IN (:codes) OR supplierBoxNo COLLATE NOCASE IN (:codes) OR supplierBoxUid COLLATE NOCASE IN (:codes) OR jifengBoxNo COLLATE NOCASE IN (:codes) OR jifengQrCodeText IN (:rawCodes)) ORDER BY mappingId DESC")
     suspend fun findMany(userId: Long, namespaceId: Long, codes: List<String>, rawCodes: List<String>): List<LocalBoxLabelMappingEntity>
@@ -223,15 +230,6 @@ class BoxLabelMappingRepository @Inject constructor(
         } while (page.hasMore)
         check(items.distinctBy { it.id }.size == items.size) { "箱码快照包含重复记录" }
         return items
-    }
-
-    suspend fun resolveForCapture(rawCode: String): BoxLabelQrPayload? {
-        val actor = scope()
-        val raw = rawCode.trimScannerCharactersForLookup()
-        val matches = dao.captureMatches(actor.userId, actor.namespaceId, raw.uppercase(Locale.ROOT), raw)
-        if (matches.size > 1) throw InboundClientException(InboundClientError.BoxOfflineNotFound)
-        return runCatching { parseBoxLabelQr(rawCode) }.getOrNull()
-            ?: matches.singleOrNull()?.toResolvedPayload(raw)
     }
 
     suspend fun resolve(rawCode: String): BoxLabelQrPayload? {

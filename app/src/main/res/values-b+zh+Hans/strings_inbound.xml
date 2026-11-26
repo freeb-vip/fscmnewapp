@@ -19,7 +19,7 @@
     <string name="inbound_batch_not_found">当前库位批次不存在</string>
     <string name="inbound_empty_batch">请至少扫描一个箱唛后再完成当前库位</string>
     <string name="inbound_invalid_box_label">箱唛格式无效</string>
-    <string name="inbound_box_not_in_session">该箱唛不属于当前收货单，请核对箱唛并切换到对应收货单。</string>
+    <string name="inbound_box_not_in_session">本单最新箱明细中没有该箱，请核对单据和箱唛。</string>
     <string name="inbound_box_not_eligible">暂时无法确认不可入库的具体原因；可能已有扫描记录、存在收货异常或数据未更新，请联网更新并检查收货及入库记录。</string>
     <string name="inbound_box_already_assigned">该箱唛已入库，不能重复入库；请核对库位，如需调整请联系管理员。</string>
     <string name="inbound_box_already_scanned">该箱唛已在其他库位批次扫描，请先查看并处理原批次。</string>
@@ -146,7 +146,12 @@
     <string name="inbound_box_location_value">库位：%1$s</string>
     <string name="inbound_box_unassigned">未分配库位 · 待入库</string>
     <string name="inbound_box_virtual_pending">虚拟入库 · 待分配真实库位</string>
-    <string name="inbound_box_offline_not_found">本地未找到该箱唛的唯一归属，请同步后重扫</string>
+    <string name="inbound_box_offline_not_found">本机入库单 %1$s 缺少该箱，请联网更新本单箱明细</string>
+    <string name="inbound_box_ownership_conflict">该箱唛匹配到冲突的箱计划或单据，请核对归属</string>
+    <string name="inbound_details_updated">本单箱明细已更新</string>
+    <string name="inbound_details_update_failed">本单箱明细更新失败：%1$s</string>
+    <string name="inbound_references_updated">基础资料已更新</string>
+    <string name="inbound_references_update_failed">基础资料更新失败</string>
     <string name="inbound_box_scanned_current">该箱唛已在当前库位批次扫描，请勿重复扫描；可在当前箱唛列表查看。</string>
     <string name="inbound_box_duplicate_record">该箱唛已有扫描记录，请检查收货记录和入库记录，确认是否已处理。</string>
     <string name="inbound_box_manual_received">该箱唛已手动收货，无法重复扫描入库；请核对收货记录，如需入库请联系管理员。 %1$s</string>

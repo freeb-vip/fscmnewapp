@@ -328,6 +328,7 @@ interface LocalReceivingDao {
 @Database(
     entities = [
         CrossOrderScanEntity::class,
+        CrossOrderCatalogBox::class,
         AutoReceiptIntentEntity::class,
         AutoReceiptScanSnapshot::class,
         AutoReceiptSubmissionEntity::class,
@@ -357,11 +358,12 @@ interface LocalReceivingDao {
         LocalSkuCodeAlias::class,
         ReferenceCacheMeta::class,
     ],
-    version = 22,
+    version = 23,
     exportSchema = false,
 )
 abstract class FscmDatabase : RoomDatabase() {
     abstract fun autoReceiptDao(): AutoReceiptDao
+    abstract fun crossOrderCatalogDao(): CrossOrderCatalogDao
     abstract fun crossOrderScanDao(): CrossOrderScanDao
     abstract fun offlineCacheDao(): OfflineCacheDao
     abstract fun receivingDao(): ReceivingDao
@@ -423,6 +425,7 @@ object FscmDatabaseModule {
                     MIGRATION_19_20,
                     MIGRATION_20_21,
                     MIGRATION_21_22,
+                    MIGRATION_22_23,
                 )
                 .build()
         } finally {
@@ -690,6 +693,31 @@ object FscmDatabaseModule {
             db.execSQL("UPDATE `product_count_entries` SET `skuItemsJson` = COALESCE((SELECT json_group_array(json_object('sku_code', value, 'quantity', NULL, 'quantity_source', 'unknown')) FROM json_each(`skuCodesJson`)), '[]')")
             db.execSQL("UPDATE `product_count_entries` SET `sequenceNo` = rowid WHERE `sequenceNo` = 0")
             db.execSQL("DELETE FROM `pending_sync_operations` WHERE `module` = 'product_counting'")
+        }
+    }
+
+    internal val MIGRATION_22_23 = object : Migration(22, 23) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.addColumnIfNotExists("local_inbound_snapshots", "quantity", "INTEGER NOT NULL DEFAULT 0")
+            db.execSQL(
+                """CREATE TABLE IF NOT EXISTS cross_order_catalog_boxes (
+                    userId INTEGER NOT NULL, namespaceId INTEGER NOT NULL, warehouseId INTEGER NOT NULL,
+                    boxPlanId INTEGER NOT NULL, labelCode TEXT NOT NULL, boxUid TEXT NOT NULL, boxNo TEXT NOT NULL,
+                    payload TEXT NOT NULL, PRIMARY KEY(userId, namespaceId, warehouseId, boxPlanId))""",
+            )
+            for (field in listOf("labelCode", "boxUid", "boxNo")) {
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_cross_order_catalog_boxes_userId_namespaceId_warehouseId_$field ON cross_order_catalog_boxes(userId,namespaceId,warehouseId,$field)")
+            }
+            // Expand legacy JSON inside SQLite so a warehouse never passes through Android's CursorWindow.
+            db.execSQL(
+                """INSERT INTO cross_order_catalog_boxes
+                    SELECT c.userId, c.namespaceId, CAST(substr(c.cacheKey, 16) AS INTEGER),
+                           json_extract(b.value, '$.box_plan_id'), upper(json_extract(b.value, '$.label_code')),
+                           upper(json_extract(b.value, '$.box_uid')), upper(json_extract(b.value, '$.box_no')), b.value
+                    FROM offline_cache c, json_each(c.payload, '$.items') b
+                    WHERE c.cacheKey LIKE 'cross-order-wh:%'""",
+            )
+            db.execSQL("UPDATE offline_cache SET payload='{}' WHERE cacheKey LIKE 'cross-order-wh:%'")
         }
     }
 

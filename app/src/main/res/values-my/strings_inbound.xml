@@ -19,7 +19,7 @@
     <string name="inbound_batch_not_found">လက်ရှိနေရာအစုကို မတွေ့ပါ</string>
     <string name="inbound_empty_batch">မပြီးဆုံးမီ သေတ္တာအနည်းဆုံးတစ်ခု စကင်ဖတ်ပါ</string>
     <string name="inbound_invalid_box_label">သေတ္တာတံဆိပ်ပုံစံ မမှန်ပါ</string>
-    <string name="inbound_box_not_in_session">ဤသေတ္တာသည် လက်ရှိကုန်လက်ခံစာရင်းတွင် မပါဝင်ပါ။ တံဆိပ်ကိုစစ်ပြီး သက်ဆိုင်ရာစာရင်းကို ရွေးပါ။</string>
+    <string name="inbound_box_not_in_session">အပ်ဒိတ်လုပ်ထားသော စာရင်းတွင် ဤပုံးမရှိပါ။ စာရင်းနှင့် ပုံးကုဒ်ကို စစ်ဆေးပါ။</string>
     <string name="inbound_box_not_eligible">အကြောင်းရင်းအတိအကျ မသိရသေးပါ။ စကင်မှတ်တမ်းရှိခြင်း၊ ကုန်လက်ခံမှုအမှား သို့မဟုတ် ဒေတာဟောင်းနေခြင်း ဖြစ်နိုင်ပါသည်။ အွန်လိုင်းချိတ်၍ ဒေတာနှင့် ကုန်လက်ခံ/ကုန်သွင်းမှတ်တမ်းများကို စစ်ပါ။</string>
     <string name="inbound_box_already_assigned">ဤသေတ္တာကို ကုန်သွင်းပြီးဖြစ်၍ ထပ်မံကုန်သွင်း၍ မရပါ။ နေရာကိုစစ်ပြီး ပြောင်းလဲရန် စီမံခန့်ခွဲသူကို ဆက်သွယ်ပါ။</string>
     <string name="inbound_box_already_scanned">ဤသေတ္တာကို အခြားနေရာအသုတ်တွင် စကင်ဖတ်ပြီးဖြစ်ပါသည်။ မူလအသုတ်ကို အရင်စစ်ဆေး၍ ဆောင်ရွက်ပါ။</string>
@@ -146,7 +146,12 @@
     <string name="inbound_box_location_value">နေရာ: %1$s</string>
     <string name="inbound_box_unassigned">နေရာမသတ်မှတ်ရသေး · သိုလှောင်ရန် စောင့်ဆိုင်းနေသည်</string>
     <string name="inbound_box_virtual_pending">ယာယီသိုလှောင်မှု · အမှန်တကယ်နေရာ သတ်မှတ်ရန် လိုအပ်သည်</string>
-    <string name="inbound_box_offline_not_found">အော့ဖ်လိုင်းဒေတာတွင် ဤသေတ္တာကို မတွေ့ပါ။ အခြားကုန်လက်ခံစာရင်းနှင့် သက်ဆိုင်ခြင်း သို့မဟုတ် ဒေတာဟောင်းနေခြင်း ဖြစ်နိုင်ပါသည်။ စာရင်းကိုစစ်ပြီး အွန်လိုင်းချိတ်၍ ဒေတာအသစ်ရယူကာ ပြန်ကြိုးစားပါ။</string>
+    <string name="inbound_box_offline_not_found">ဤစက်ရှိ အဝင်စာရင်း %1$s တွင် ဤပုံးမရှိပါ။ အင်တာနက်ချိတ်ပြီး စာရင်းကို အပ်ဒိတ်လုပ်ပါ။</string>
+    <string name="inbound_box_ownership_conflict">ပုံးကုဒ်၏ ပိုင်ဆိုင်မှု အချက်အလက် ကွဲလွဲနေသည်။ ပြန်စစ်ပါ။</string>
+    <string name="inbound_details_updated">ဤစာရင်း၏ ပုံးအချက်အလက်ကို အပ်ဒိတ်လုပ်ပြီးပါပြီ</string>
+    <string name="inbound_details_update_failed">ပုံးအချက်အလက် အပ်ဒိတ်မအောင်မြင်ပါ: %1$s</string>
+    <string name="inbound_references_updated">အခြေခံအချက်အလက်ကို အပ်ဒိတ်လုပ်ပြီးပါပြီ</string>
+    <string name="inbound_references_update_failed">အခြေခံအချက်အလက် အပ်ဒိတ်မအောင်မြင်ပါ</string>
     <string name="inbound_box_scanned_current">ဤသေတ္တာကို လက်ရှိနေရာအသုတ်တွင် စကင်ဖတ်ပြီးဖြစ်ပါသည်။ ထပ်မံမဖတ်ပါနှင့်။ လက်ရှိသေတ္တာစာရင်းတွင် စစ်ဆေးပါ။</string>
     <string name="inbound_box_duplicate_record">ဤသေတ္တာတွင် စကင်မှတ်တမ်းရှိပြီးဖြစ်ပါသည်။ ဆောင်ရွက်ပြီးမပြီးကို ကုန်လက်ခံနှင့် ကုန်သွင်းမှတ်တမ်းများတွင် စစ်ဆေးပါ။</string>
     <string name="inbound_box_manual_received">ဤသေတ္တာကို ကိုယ်တိုင်ကုန်လက်ခံပြီးဖြစ်၍ ထပ်မံစကင်ဖတ်ကုန်သွင်း၍ မရပါ။ မှတ်တမ်းကိုစစ်ပြီး လိုအပ်ပါက စီမံခန့်ခွဲသူကို ဆက်သွယ်ပါ။ %1$s</string>

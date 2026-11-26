@@ -101,7 +101,7 @@ constructor(
                 .setInputData(workDataOf(CACHE_SESSION_ID_KEY to (preferredSessionId ?: 0L), "force" to force, "user" to userId, "namespace" to namespaceId))
                 .build()
         WorkManager.getInstance(context).enqueueUniqueWork(
-            "$CACHE_WORK_NAME-$userId-$namespaceId-${if (force) "force" else "normal"}",
+            "$CACHE_WORK_NAME-$userId-$namespaceId-${preferredSessionId ?: 0}-${if (force) "force" else "normal"}",
             ExistingWorkPolicy.KEEP,
             request,
         )
