@@ -19,7 +19,11 @@
     <string name="inbound_batch_not_found">The current location batch no longer exists</string>
     <string name="inbound_empty_batch">Scan at least one carton before finishing this location</string>
     <string name="inbound_invalid_box_label">The carton label format is invalid</string>
-    <string name="inbound_box_not_in_session">Carton missing from the updated order details. Check the order and carton code.</string>
+    <string name="inbound_review_title">Old carton label needs verification</string>
+    <string name="inbound_review_explanation">Order %1$s recognizes old label “%2$s”. Submit the original scan to record it for custody and assignment review in the web warehouse receiving scan log. If already verified, the center will process inbound at %3$s immediately.</string>
+    <string name="inbound_review_submit">Submit original scan</string>
+    <string name="inbound_old_box_needs_verification">Order %1$s recognizes old label “%2$s”. Verify its physical carton before retrying.</string>
+    <string name="inbound_box_not_in_session">Order %1$s has no carton matching “%2$s”. Scan the carton QR or enter its short code.</string>
     <string name="inbound_box_not_eligible">The exact reason is unavailable. There may be an existing scan, a receiving exception, or outdated data. Connect to refresh and check receiving and inbound records.</string>
     <string name="inbound_box_already_assigned">This carton is already inbounded and cannot be inbounded again. Check its location; contact an administrator for changes.</string>
     <string name="inbound_box_already_scanned">This carton was scanned in another location batch. Review and handle the original batch first.</string>
@@ -146,7 +150,7 @@
     <string name="inbound_box_location_value">Location: %1$s</string>
     <string name="inbound_box_unassigned">Unassigned · Awaiting storage</string>
     <string name="inbound_box_virtual_pending">Virtual storage · Physical location required</string>
-    <string name="inbound_box_offline_not_found">Carton missing from order %1$s on this device. Connect and update the order details.</string>
+    <string name="inbound_box_offline_not_found">Order %1$s on this device has no carton matching “%2$s”. Connect and update the order details.</string>
     <string name="inbound_box_ownership_conflict">Conflicting carton assignments. Check the carton label and its order.</string>
     <string name="inbound_details_updated">Order carton details updated</string>
     <string name="inbound_details_update_failed">Order carton details update failed: %1$s</string>

@@ -19,7 +19,11 @@
     <string name="inbound_batch_not_found">လက်ရှိနေရာအစုကို မတွေ့ပါ</string>
     <string name="inbound_empty_batch">မပြီးဆုံးမီ သေတ္တာအနည်းဆုံးတစ်ခု စကင်ဖတ်ပါ</string>
     <string name="inbound_invalid_box_label">သေတ္တာတံဆိပ်ပုံစံ မမှန်ပါ</string>
-    <string name="inbound_box_not_in_session">အပ်ဒိတ်လုပ်ထားသော စာရင်းတွင် ဤပုံးမရှိပါ။ စာရင်းနှင့် ပုံးကုဒ်ကို စစ်ဆေးပါ။</string>
+    <string name="inbound_review_title">တံဆိပ်ဟောင်းကို အတည်ပြုရန် လိုသည်</string>
+    <string name="inbound_review_explanation">အဝင်စာရင်း %1$s တွင် တံဆိပ်ဟောင်း “%2$s” ကို တွေ့ရှိသည်။ ဝဘ်ရှိ ဂိုဒေါင်လက်ခံမှု စကင်မှတ်တမ်းတွင် ပုံးကို စစ်ဆေးသတ်မှတ်နိုင်ရန် မူရင်းစကင်ကို ပေးပို့ပါ။ အတည်ပြုပြီးပါက စနစ်က %3$s တွင် ချက်ချင်း အဝင်ဆောင်ရွက်မည်။</string>
+    <string name="inbound_review_submit">မူရင်းစကင်ကို ပေးပို့ပါ</string>
+    <string name="inbound_old_box_needs_verification">အဝင်စာရင်း %1$s တွင် တံဆိပ်ဟောင်း “%2$s” ကို တွေ့ရှိသည်။ ပုံးကို အတည်ပြုပြီးမှ ပြန်လည်စမ်းပါ။</string>
+    <string name="inbound_box_not_in_session">အဝင်စာရင်း %1$s တွင် “%2$s” နှင့် ကိုက်ညီသောပုံး မရှိပါ။ ပုံး QR ကို စကင်ဖတ်ပါ သို့မဟုတ် ပုံးကုဒ်ကို ထည့်ပါ။</string>
     <string name="inbound_box_not_eligible">အကြောင်းရင်းအတိအကျ မသိရသေးပါ။ စကင်မှတ်တမ်းရှိခြင်း၊ ကုန်လက်ခံမှုအမှား သို့မဟုတ် ဒေတာဟောင်းနေခြင်း ဖြစ်နိုင်ပါသည်။ အွန်လိုင်းချိတ်၍ ဒေတာနှင့် ကုန်လက်ခံ/ကုန်သွင်းမှတ်တမ်းများကို စစ်ပါ။</string>
     <string name="inbound_box_already_assigned">ဤသေတ္တာကို ကုန်သွင်းပြီးဖြစ်၍ ထပ်မံကုန်သွင်း၍ မရပါ။ နေရာကိုစစ်ပြီး ပြောင်းလဲရန် စီမံခန့်ခွဲသူကို ဆက်သွယ်ပါ။</string>
     <string name="inbound_box_already_scanned">ဤသေတ္တာကို အခြားနေရာအသုတ်တွင် စကင်ဖတ်ပြီးဖြစ်ပါသည်။ မူလအသုတ်ကို အရင်စစ်ဆေး၍ ဆောင်ရွက်ပါ။</string>
@@ -146,7 +150,7 @@
     <string name="inbound_box_location_value">နေရာ: %1$s</string>
     <string name="inbound_box_unassigned">နေရာမသတ်မှတ်ရသေး · သိုလှောင်ရန် စောင့်ဆိုင်းနေသည်</string>
     <string name="inbound_box_virtual_pending">ယာယီသိုလှောင်မှု · အမှန်တကယ်နေရာ သတ်မှတ်ရန် လိုအပ်သည်</string>
-    <string name="inbound_box_offline_not_found">ဤစက်ရှိ အဝင်စာရင်း %1$s တွင် ဤပုံးမရှိပါ။ အင်တာနက်ချိတ်ပြီး စာရင်းကို အပ်ဒိတ်လုပ်ပါ။</string>
+    <string name="inbound_box_offline_not_found">ဤစက်ရှိ အဝင်စာရင်း %1$s တွင် “%2$s” မရှိပါ။ အင်တာနက်ချိတ်ပြီး စာရင်းကို အပ်ဒိတ်လုပ်ပါ။</string>
     <string name="inbound_box_ownership_conflict">ပုံးကုဒ်၏ ပိုင်ဆိုင်မှု အချက်အလက် ကွဲလွဲနေသည်။ ပြန်စစ်ပါ။</string>
     <string name="inbound_details_updated">ဤစာရင်း၏ ပုံးအချက်အလက်ကို အပ်ဒိတ်လုပ်ပြီးပါပြီ</string>
     <string name="inbound_details_update_failed">ပုံးအချက်အလက် အပ်ဒိတ်မအောင်မြင်ပါ: %1$s</string>

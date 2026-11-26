@@ -984,10 +984,10 @@ internal fun inboundSnapshotFromPreview(
 internal suspend fun resolveInboundCartonWithRefresh(
     offline: Boolean,
     refresh: suspend () -> Unit,
-    resolve: suspend () -> LocalInboundSnapshotEntity,
+    resolve: suspend (afterRefresh: Boolean) -> LocalInboundSnapshotEntity,
 ): LocalInboundSnapshotEntity {
     try {
-        return resolve()
+        return resolve(false)
     } catch (error: InboundClientException) {
         if (offline || error.reason != InboundClientError.BoxOfflineNotFound) throw error
         try {
@@ -999,9 +999,11 @@ internal suspend fun resolveInboundCartonWithRefresh(
         }
     }
     try {
-        return resolve()
+        return resolve(true)
     } catch (error: InboundClientException) {
-        if (error.reason == InboundClientError.BoxOfflineNotFound) throw InboundClientException(InboundClientError.BoxNotInSession)
+        if (error.reason == InboundClientError.BoxOfflineNotFound) {
+            throw InboundClientException(InboundClientError.BoxNotInSession, error.detail, error.scannedCode)
+        }
         throw error
     }
 }
@@ -1084,6 +1086,7 @@ internal fun mergeInboundSessionIds(
 class InboundClientException(
     val reason: InboundClientError,
     val detail: String = "",
+    val scannedCode: String = "",
 ) : IllegalStateException()
 
 enum class InboundClientError {
@@ -1103,6 +1106,7 @@ enum class InboundClientError {
     InvalidBoxLabel,
     MappingCacheMiss,
     BoxNotInSession,
+    PhysicalIdentityUnverified,
     BoxNotEligible,
     BoxOfflineNotFound,
     BoxOwnershipConflict,
@@ -1403,9 +1407,9 @@ constructor(
         val resolvedSnapshot = resolveInboundCartonWithRefresh(
             offline = currentSession.isOffline,
             refresh = { refreshBoxDetails(batch.sessionId, batch.userId to batch.namespaceId) },
-        ) {
+        ) { afterRefresh ->
             check(matchesScope(batch.userId, batch.namespaceId)) { "工作空间已切换，请重新扫描" }
-            checkNotNull(crossOrderRepository.intercept(batch.sessionId, rawCode, "inbound", batch))
+            checkNotNull(crossOrderRepository.intercept(batch.sessionId, rawCode, "inbound", batch, previewMissing = afterRefresh))
         }
         check(matchesScope(batch.userId, batch.namespaceId)) { "工作空间已切换，请重新扫描" }
         return dao.recordDraftBox(batch, resolvedSnapshot, rawCode, confirmedRebind)
@@ -2442,7 +2446,9 @@ internal fun inboundBatchScanRequest(batchId: String, items: List<LocalInboundIt
                             put("scanned_at", java.time.Instant.ofEpochMilli(item.scannedAt).toString())
                             put("box_plan_id", item.boxPlanId)
                             put("raw_code", item.rawCode)
-                            put("box_no", item.labelCode)
+                            // Sending the replacement label as a second physical identifier makes the
+                            // center journal see two different cartons when a verified old label is used.
+                            if (item.rawCode.isBlank() || item.rawCode == item.labelCode) put("box_no", item.labelCode)
                         },
                     )
                 }
