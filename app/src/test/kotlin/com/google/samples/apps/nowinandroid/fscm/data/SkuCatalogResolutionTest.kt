@@ -258,7 +258,7 @@ class SkuCatalogResolutionTest {
             removeSkuFoldedCode(old.openHelper.writableDatabase)
             old.openHelper.writableDatabase.version = 20
             old.close()
-            val migrated = Room.databaseBuilder(context, FscmDatabase::class.java, name).allowMainThreadQueries().addMigrations(FscmDatabaseModule.MIGRATION_20_21, FscmDatabaseModule.MIGRATION_21_22).build()
+            val migrated = Room.databaseBuilder(context, FscmDatabase::class.java, name).allowMainThreadQueries().addMigrations(FscmDatabaseModule.MIGRATION_20_21, FscmDatabaseModule.MIGRATION_21_22, FscmDatabaseModule.MIGRATION_22_23).build()
             try {
                 val dao = migrated.localSkuCatalogDao()
                 assertTrue(dao.find(1, 2, listOf(brown.code)).isEmpty())

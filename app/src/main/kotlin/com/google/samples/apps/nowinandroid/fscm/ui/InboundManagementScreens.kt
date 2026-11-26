@@ -1485,6 +1485,21 @@ private fun InboundSyncStatus(state: InboundSessionUiState, onUpdateReferences: 
     Column(Modifier.fillMaxWidth()) {
         val locations = state.references.locations
         val skus = state.references.skus
+        val report = state.references
+        if (report.detailsUpdated != null && report.detailSessionId == state.workspace?.summary?.sessionId) {
+            Text(
+                if (report.detailsUpdated) {
+                    stringResource(R.string.inbound_details_updated)
+                } else {
+                    stringResource(R.string.inbound_details_update_failed, report.detailError)
+                },
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Text(
+                stringResource(if (report.errors.isEmpty()) R.string.inbound_references_updated else R.string.inbound_references_update_failed),
+                style = MaterialTheme.typography.titleSmall,
+            )
+        }
         Text(
             stringResource(
                 R.string.inbound_location_cache_status,

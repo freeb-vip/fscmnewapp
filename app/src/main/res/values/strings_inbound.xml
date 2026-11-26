@@ -19,7 +19,7 @@
     <string name="inbound_batch_not_found">The current location batch no longer exists</string>
     <string name="inbound_empty_batch">Scan at least one carton before finishing this location</string>
     <string name="inbound_invalid_box_label">The carton label format is invalid</string>
-    <string name="inbound_box_not_in_session">This carton is not on the current receipt. Check the label and select the matching receipt.</string>
+    <string name="inbound_box_not_in_session">Carton missing from the updated order details. Check the order and carton code.</string>
     <string name="inbound_box_not_eligible">The exact reason is unavailable. There may be an existing scan, a receiving exception, or outdated data. Connect to refresh and check receiving and inbound records.</string>
     <string name="inbound_box_already_assigned">This carton is already inbounded and cannot be inbounded again. Check its location; contact an administrator for changes.</string>
     <string name="inbound_box_already_scanned">This carton was scanned in another location batch. Review and handle the original batch first.</string>
@@ -146,7 +146,12 @@
     <string name="inbound_box_location_value">Location: %1$s</string>
     <string name="inbound_box_unassigned">Unassigned · Awaiting storage</string>
     <string name="inbound_box_virtual_pending">Virtual storage · Physical location required</string>
-    <string name="inbound_box_offline_not_found">No unique local carton assignment was found. Sync and scan again.</string>
+    <string name="inbound_box_offline_not_found">Carton missing from order %1$s on this device. Connect and update the order details.</string>
+    <string name="inbound_box_ownership_conflict">Conflicting carton assignments. Check the carton label and its order.</string>
+    <string name="inbound_details_updated">Order carton details updated</string>
+    <string name="inbound_details_update_failed">Order carton details update failed: %1$s</string>
+    <string name="inbound_references_updated">Reference data updated</string>
+    <string name="inbound_references_update_failed">Reference data update failed</string>
     <string name="inbound_box_scanned_current">This carton was already scanned in the current location batch. Do not scan it again; check the current carton list.</string>
     <string name="inbound_box_duplicate_record">This carton has an existing scan record. Check receiving and inbound records to confirm whether it has been processed.</string>
     <string name="inbound_box_manual_received">This carton was manually received and cannot be scanned for inbound again. Check receiving records; contact an administrator if inbound is needed. %1$s</string>

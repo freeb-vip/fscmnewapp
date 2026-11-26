@@ -24,6 +24,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -38,6 +39,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
+import java.util.Locale
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -133,6 +135,47 @@ internal fun offlineCrossOrderConfirmation(catalog: JsonObject, box: JsonObject,
     )
 }
 
+private suspend fun FscmDatabase.catalogMatches(header: JsonObject?, user: Long, namespace: Long, codes: List<String>): List<JsonObject> {
+    if (header == null) return emptyList()
+    val keys = codes.filter(String::isNotBlank).map { it.uppercase(Locale.ROOT) }.distinct()
+    return crossOrderCatalogDao().matches(user, namespace, header.crossID("warehouse_id"), keys)
+        .map { Json.parseToJsonElement(it.payload).jsonObject }
+}
+
+internal suspend fun FscmDatabase.resolveInboundCarton(
+    batch: LocalInboundBatchEntity,
+    raw: String,
+    onCrossOrder: suspend (JsonObject) -> Unit,
+): LocalInboundSnapshotEntity? = withTransaction {
+    val user = batch.userId
+    val namespace = batch.namespaceId
+    val sourceId = batch.sessionId
+    val code = raw.trimScannerSuffix()
+    val parsed = runCatching { parseBoxLabelQr(code) }.getOrNull()
+    val inbound = localInboundDao()
+    val codes = listOfNotNull(code, parsed?.labelCode).distinct()
+    val direct = inbound.scanCandidates(user, namespace, sourceId, codes)
+    val mapping = boxLabelMappingDao().captureMapping(user, namespace, codes, code)
+    val mapped = mapping?.toResolvedPayload(code)?.labelCode
+    val keys = if (mapped != null && mapped !in codes) codes + mapped else codes
+    val local = if (keys == codes) direct else inbound.scanCandidates(user, namespace, sourceId, keys)
+    val catalog = offlineCacheDao().find(user, namespace, "cross-order:$sourceId")
+        ?.let { Json.parseToJsonElement(it.payload).jsonObject }
+    val matches = catalogMatches(catalog, user, namespace, keys)
+    val snapshot = local.singleOrNull()
+    val plans = local.map { it.boxPlanId } + matches.map { it.crossID("box_plan_id") } + listOfNotNull(mapping?.supplierOrderBoxPlanId)
+    if (plans.distinct().size > 1) throw InboundClientException(InboundClientError.BoxOwnershipConflict)
+    val box = matches.singleOrNull()
+    if (box == null || catalog == null || box.crossID("target_order_id") == catalog.crossID("source_order_id")) {
+        val targetSession = box?.crossID("target_session_id") ?: 0L
+        if (targetSession > 0 && targetSession != sourceId) throw InboundClientException(InboundClientError.BoxOwnershipConflict)
+        return@withTransaction snapshot ?: throw InboundClientException(InboundClientError.BoxOfflineNotFound, sourceId.toString())
+    }
+    if (snapshot != null) throw InboundClientException(InboundClientError.BoxOwnershipConflict)
+    onCrossOrder(offlineCrossOrderConfirmation(catalog, box, "inbound", batch.warehouseLocationId, batch.locationCode))
+    null
+}
+
 // Cross-order attempts retain their source batch for operation history, while all
 // remote facts and progress belong to effectiveSessionId. They never become A's boxes.
 @Singleton
@@ -142,7 +185,6 @@ class CrossOrderReceivingRepository @Inject constructor(
     private val sessionStore: SessionStore,
     private val scheduler: LocalInboundSyncScheduler,
     private val deviceIdentityManager: DeviceIdentityManager,
-    private val boxLabelMappingRepository: BoxLabelMappingRepository,
 ) {
     private val mutex = Mutex()
     private val prepareMutex = Mutex()
@@ -173,33 +215,53 @@ class CrossOrderReceivingRepository @Inject constructor(
         if (!force && existing != null && now - existing.updatedAt < 300_000) return
         var catalog: JsonObject = api.get("receiving-sessions/$sourceId/cross-order-catalog", mapOf("after_id" to "0"), headers = inboundScopeHeaders(user, namespace))
         val header = JsonObject(catalog.filterKeys { it != "items" })
-        val warehouseKey = "cross-order-wh:${catalog.crossID("warehouse_id")}"
+        val warehouse = header.crossID("warehouse_id")
+        check(warehouse > 0 && header.crossID("source_session_id") == sourceId)
+        val warehouseKey = "cross-order-wh:$warehouse"
         val shared = cache.find(user, namespace, warehouseKey)
-        if (force || shared == null || now - shared.updatedAt >= 300_000) {
-            val boxes = catalog["items"]?.jsonArray.orEmpty().toMutableList()
-            var after = catalog.crossID("next_after_id")
-            while (after > 0) {
-                val previousAfter = after
-                catalog = api.get("receiving-sessions/$sourceId/cross-order-catalog", mapOf("after_id" to after.toString()), headers = inboundScopeHeaders(user, namespace))
-                boxes.addAll(catalog["items"]?.jsonArray.orEmpty())
-                after = catalog.crossID("next_after_id")
-                check(after == 0L || after > previousAfter) { "跨单目录分页异常" }
+        val rows = mutableListOf<CrossOrderCatalogBox>()
+        val replace = force || shared == null || now - shared.updatedAt >= 300_000
+        if (replace) {
+            var cursor = 0L
+            while (true) {
+                check(catalog.crossID("warehouse_id") == warehouse && catalog.crossID("source_session_id") == sourceId)
+                val page = catalog.getValue("items").jsonArray.map { it.jsonObject.toCatalogBox(user, namespace, warehouse) }
+                var lastId = cursor
+                for (box in page) {
+                    check(box.boxPlanId > lastId) { "跨单目录箱计划重复或乱序" }
+                    lastId = box.boxPlanId
+                }
+                rows += page
+                val next = catalog.crossID("next_after_id")
+                if (next == 0L) break
+                check(next == lastId && next > cursor) { "跨单目录分页异常" }
+                cursor = next
+                checkScope(user, namespace)
+                catalog = api.get("receiving-sessions/$sourceId/cross-order-catalog", mapOf("after_id" to cursor.toString()), headers = inboundScopeHeaders(user, namespace))
             }
-            checkScope(user, namespace)
-            val payload = buildJsonObject { put("items", kotlinx.serialization.json.JsonArray(boxes)) }
-            cache.upsert(OfflineCacheEntity(userId = user, namespaceId = namespace, cacheKey = warehouseKey, payload = payload.toString(), updatedAt = now))
         }
-        checkScope(user, namespace)
-        cache.upsert(OfflineCacheEntity(userId = user, namespaceId = namespace, cacheKey = "cross-order:$sourceId", payload = header.toString(), updatedAt = now))
+        database.withTransaction {
+            checkScope(user, namespace)
+            if (replace) {
+                database.crossOrderCatalogDao().clear(user, namespace, warehouse)
+                database.crossOrderCatalogDao().insert(rows)
+                cache.upsert(OfflineCacheEntity(userId = user, namespaceId = namespace, cacheKey = warehouseKey, payload = "{}", updatedAt = now))
+            }
+            cache.upsert(OfflineCacheEntity(userId = user, namespaceId = namespace, cacheKey = "cross-order:$sourceId", payload = header.toString(), updatedAt = now))
+        }
     }
 
     // A normal same-order preview falls through to the established pipeline.
     // Every unresolved/cross-order attempt is durable before it leaves this method.
-    suspend fun intercept(sourceId: Long, raw: String, operation: String, batchId: String = "", locationId: Long = 0, locationCode: String = ""): Unit = mutex.withLock {
+    suspend fun intercept(sourceId: Long, raw: String, operation: String, batch: LocalInboundBatchEntity? = null): LocalInboundSnapshotEntity? = mutex.withLock {
         val session = sessionStore.current()
         session.requireOfflineOperationPermission("receiving")
         val user = session.user?.id ?: 0
         val namespace = session.currentNamespace?.id ?: 0
+        if (batch != null) check(batch.userId == user && batch.namespaceId == namespace && batch.sessionId == sourceId)
+        val batchId = batch?.id.orEmpty()
+        val locationId = batch?.warehouseLocationId ?: 0L
+        val locationCode = batch?.locationCode.orEmpty()
         val outstanding = dao.outstanding(user, namespace, sourceId, raw, operation)
         if (outstanding != null) throw CrossOrderScanPending(outstanding)
         val event = UUID.randomUUID().toString()
@@ -219,30 +281,13 @@ class CrossOrderReceivingRepository @Inject constructor(
         }
         var task = CrossOrderScanEntity(event, user, namespace, sourceId, batchId, operation, raw, request.toString())
         if (operation == "inbound") {
-            val parsed = boxLabelMappingRepository.resolveForCapture(raw)
-            val codes = listOfNotNull(parsed?.labelCode, raw.trim())
-            val cache = database.offlineCacheDao()
-            val catalog = cache.find(user, namespace, "cross-order:$sourceId")
-                ?.let { Json.parseToJsonElement(it.payload).jsonObject }
-            val shared = catalog?.let { cache.find(user, namespace, "cross-order-wh:${it.crossID("warehouse_id")}") }
-            val matches = shared?.let { Json.parseToJsonElement(it.payload).jsonObject["items"]?.jsonArray }
-                .orEmpty().map { it.jsonObject }.filter { box ->
-                    listOf("label_code", "box_uid", "box_no").any { field -> codes.any { box.crossText(field).equals(it, true) } }
-                }
-            if (matches.size > 1) throw InboundClientException(InboundClientError.BoxOfflineNotFound)
-            if (catalog != null && matches.size == 1) {
-                val box = matches.single()
+            val localSnapshot = database.resolveInboundCarton(requireNotNull(batch), raw) { confirmation ->
                 checkScope(user, namespace)
-                if (box.crossID("target_order_id") == catalog.crossID("source_order_id")) return@withLock
-                val confirmation = offlineCrossOrderConfirmation(catalog, box, operation, locationId, locationCode)
-                task = task.copy(confirmationPayload = confirmation.toString(), state = "awaiting_confirmation", message = "本地识别为 ${box.crossText("target_order_code")}，确认后待同步")
+                task = task.copy(confirmationPayload = confirmation.toString(), state = "awaiting_confirmation", message = "本地识别为 ${confirmation.crossText("target_order_code")}，确认后待同步")
                 dao.save(task)
-                throw CrossOrderScanPending(task)
             }
-            val localMatches = database.localInboundDao().scanCandidates(user, namespace, sourceId, codes)
-            checkScope(user, namespace)
-            if (localMatches.size == 1) return@withLock
-            throw InboundClientException(InboundClientError.BoxOfflineNotFound)
+            if (localSnapshot == null) throw CrossOrderScanPending(task)
+            return@withLock localSnapshot
         }
 
         dao.save(task)
@@ -250,7 +295,7 @@ class CrossOrderReceivingRepository @Inject constructor(
             try {
                 api.post<JsonObject>("receiving-sessions/$sourceId/scan-preview", JsonObject(request + ("operation" to JsonPrimitive(operation))))
                 dao.delete(task.id, user, namespace)
-                return
+                return@withLock null
             } catch (error: FscmApiException) {
                 val confirmation = error.crossConfirmation()
                 if (confirmation != null) {
@@ -267,16 +312,12 @@ class CrossOrderReceivingRepository @Inject constructor(
             val cached = database.offlineCacheDao().find(user, namespace, "cross-order:$sourceId")
             val catalog = cached?.let { Json.parseToJsonElement(it.payload).jsonObject }
             val code = runCatching { parseBoxLabelQr(raw).labelCode }.getOrDefault(raw).trim()
-            val shared = catalog?.let { database.offlineCacheDao().find(user, namespace, "cross-order-wh:${it.crossID("warehouse_id")}") }
-            val items = shared?.let { Json.parseToJsonElement(it.payload).jsonObject["items"]?.jsonArray }
-            val matches = items.orEmpty().map { it.jsonObject }.filter { box ->
-                listOf("label_code", "box_uid", "box_no").any { box.crossText(it).equals(code, true) }
-            }
+            val matches = database.catalogMatches(catalog, user, namespace, listOf(code))
             if (catalog != null && matches.size == 1) {
                 val box = matches.single()
                 if (box.crossID("target_order_id") == catalog.crossID("source_order_id")) {
                     dao.delete(task.id, user, namespace)
-                    return
+                    return@withLock null
                 }
                 val confirmation = offlineCrossOrderConfirmation(catalog, box, operation, locationId, locationCode)
                 task = task.copy(confirmationPayload = confirmation.toString(), state = "awaiting_confirmation", message = "离线识别为 ${box.crossText("target_order_code")}，确认后待同步")

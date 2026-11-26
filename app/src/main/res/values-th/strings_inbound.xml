@@ -19,7 +19,7 @@
     <string name="inbound_batch_not_found">ไม่พบชุดตำแหน่งปัจจุบัน</string>
     <string name="inbound_empty_batch">สแกนอย่างน้อยหนึ่งกล่องก่อนเสร็จสิ้น</string>
     <string name="inbound_invalid_box_label">รูปแบบฉลากกล่องไม่ถูกต้อง</string>
-    <string name="inbound_box_not_in_session">กล่องนี้ไม่อยู่ในใบรับสินค้าปัจจุบัน โปรดตรวจสอบฉลากและเลือกใบรับสินค้าที่ตรงกัน</string>
+    <string name="inbound_box_not_in_session">ไม่พบกล่องในรายละเอียดใบรับเข้าที่อัปเดตแล้ว โปรดตรวจสอบใบรับเข้าและรหัสกล่อง</string>
     <string name="inbound_box_not_eligible">ยังระบุสาเหตุที่แน่ชัดไม่ได้ อาจมีประวัติสแกน ข้อผิดพลาดในการรับสินค้า หรือข้อมูลเก่า โปรดเชื่อมต่อเพื่ออัปเดตและตรวจสอบประวัติรับสินค้าและเข้าคลัง</string>
     <string name="inbound_box_already_assigned">กล่องนี้เข้าคลังแล้ว ไม่สามารถเข้าคลังซ้ำได้ โปรดตรวจสอบตำแหน่งและติดต่อผู้ดูแลหากต้องการเปลี่ยนแปลง</string>
     <string name="inbound_box_already_scanned">กล่องนี้ถูกสแกนในชุดตำแหน่งอื่นแล้ว โปรดตรวจสอบและจัดการชุดเดิมก่อน</string>
@@ -146,7 +146,12 @@
     <string name="inbound_box_location_value">ตำแหน่ง: %1$s</string>
     <string name="inbound_box_unassigned">ยังไม่กำหนดตำแหน่ง · รอจัดเก็บ</string>
     <string name="inbound_box_virtual_pending">จัดเก็บเสมือน · รอกำหนดตำแหน่งจริง</string>
-    <string name="inbound_box_offline_not_found">ไม่พบกล่องนี้ในข้อมูลออฟไลน์ อาจอยู่ในใบรับสินค้าอื่นหรือข้อมูลยังไม่อัปเดต โปรดตรวจสอบใบรับสินค้า เชื่อมต่อและอัปเดตก่อนลองใหม่</string>
+    <string name="inbound_box_offline_not_found">ไม่พบกล่องในใบรับเข้า %1$s บนอุปกรณ์นี้ โปรดเชื่อมต่อและอัปเดตรายละเอียดใบรับเข้า</string>
+    <string name="inbound_box_ownership_conflict">ข้อมูลกล่องตรงกับหลายแผนหรือหลายใบรับเข้า โปรดตรวจสอบ</string>
+    <string name="inbound_details_updated">อัปเดตรายละเอียดกล่องในใบรับเข้าแล้ว</string>
+    <string name="inbound_details_update_failed">อัปเดตรายละเอียดกล่องไม่สำเร็จ: %1$s</string>
+    <string name="inbound_references_updated">อัปเดตข้อมูลอ้างอิงแล้ว</string>
+    <string name="inbound_references_update_failed">อัปเดตข้อมูลอ้างอิงไม่สำเร็จ</string>
     <string name="inbound_box_scanned_current">กล่องนี้ถูกสแกนในชุดตำแหน่งปัจจุบันแล้ว โปรดอย่าสแกนซ้ำ ตรวจสอบได้ในรายการกล่องปัจจุบัน</string>
     <string name="inbound_box_duplicate_record">กล่องนี้มีประวัติสแกนแล้ว โปรดตรวจสอบประวัติรับสินค้าและเข้าคลังว่าได้ดำเนินการแล้วหรือไม่</string>
     <string name="inbound_box_manual_received">กล่องนี้รับสินค้าด้วยตนเองแล้ว ไม่สามารถสแกนเข้าคลังซ้ำได้ โปรดตรวจสอบประวัติและติดต่อผู้ดูแลหากต้องการเข้าคลัง %1$s</string>

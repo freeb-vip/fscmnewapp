@@ -331,7 +331,6 @@ class InboundSessionViewModel @Inject constructor(
                     repository.startBatch(sessionId, rawCode)
                     repository.workspace(sessionId)
                 } else {
-                    crossOrderRepository.intercept(sessionId, rawCode, "inbound", workspace.draftBatch.id, workspace.draftBatch.warehouseLocationId, workspace.draftBatch.locationCode)
                     repository.addBox(workspace.draftBatch.id, rawCode, confirmedRebind)
                     repository.workspace(sessionId)
                 }
@@ -682,6 +681,7 @@ internal fun Throwable.inboundUiText(): UiText = when (this) {
             InboundClientError.MappingCacheMiss -> R.string.box_label_mapping_cache_miss
             InboundClientError.BoxNotInSession -> R.string.inbound_box_not_in_session
             InboundClientError.BoxNotEligible -> R.string.inbound_box_not_eligible
+            InboundClientError.BoxOwnershipConflict -> R.string.inbound_box_ownership_conflict
             InboundClientError.BoxOfflineNotFound -> R.string.inbound_box_offline_not_found
             InboundClientError.BoxScannedInCurrentBatch -> R.string.inbound_box_scanned_current
             InboundClientError.BoxDuplicateRecord -> R.string.inbound_box_duplicate_record
