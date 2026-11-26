@@ -158,6 +158,43 @@ class InboundCartonCaptureTest {
     }
 
     @Test
+    fun downloadedAdjustmentMappingCapturesOriginalStickerOfflineAndDeduplicatesCanonicalLabel() = runBlocking {
+        val alias = AdjustmentLabelAlias(1253, 13949, sourceLabel = "759D55F92653", targetPlan = 14167, targetLabel = "0FF452405854", status = "active")
+        val target = box.copy(boxPlanId = 14167, labelCode = alias.targetLabel, firstSkuCode = "B20-4-Grid", quantity = 800)
+        val calls = mutableListOf<Pair<Long, Long>>()
+        val snapshot = collectBoxLabelMappingPages { mappingCursor, aliasCursor ->
+            calls += mappingCursor to aliasCursor
+            if (aliasCursor == 0L) {
+                BoxLabelMappingSnapshot(aliases = listOf(alias.copy(id = 1, sourceLabel = "OTHER")), nextAliasAfterId = 1, aliasHasMore = true)
+            } else {
+                BoxLabelMappingSnapshot(aliases = listOf(alias), nextAliasAfterId = alias.id)
+            }
+        }
+        assertEquals(listOf(0L to 0L, 0L to 1L), calls)
+        db.localInboundDao().replaceSnapshots(session, listOf(target))
+        db.offlineCacheDao().replaceAdjustmentAliases(7, 2, snapshot.aliases, 10)
+        val local = checkNotNull(db.resolveInboundCarton(batch, alias.sourceLabel) { error("unexpected cross-order confirmation") })
+        assertEquals(target, local)
+        val draft = db.localInboundDao().recordDraftBox(batch, local, alias.sourceLabel, null)
+        assertEquals(alias.sourceLabel, draft.rawCode)
+        assertEquals(
+            InboundClientError.BoxScannedInCurrentBatch,
+            assertFailsWith<InboundClientException> {
+                db.localInboundDao().recordDraftBox(batch, target, target.labelCode, null)
+            }.reason,
+        )
+        db.offlineCacheDao().replaceAdjustmentAliases(7, 2, listOf(alias, alias.copy(id = 1254, targetPlan = 14168)), 11)
+        assertEquals(
+            InboundClientError.BoxOwnershipConflict,
+            assertFailsWith<InboundClientException> {
+                db.resolveInboundCarton(batch, alias.sourceLabel) { error("conflict should block") }
+            }.reason,
+        )
+        db.offlineCacheDao().replaceAdjustmentAliases(7, 2, emptyList(), 12)
+        assertNull(db.offlineCacheDao().inboundAlias(7, 2, listOf(alias.sourceLabel)))
+    }
+
+    @Test
     fun verifiedOriginalLabelUsesOnlyTheSameSessionPlanAndUploadKeepsPhysicalIdentity() = runBlocking {
         val raw = "759D55F92653"
         val target = box.copy(boxPlanId = 14167, labelCode = "0FF452405854", firstSkuCode = "B20-4-Grid", quantity = 800)

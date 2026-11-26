@@ -112,11 +112,11 @@ internal fun JsonObject.crossID(key: String): Long = this[key]?.jsonPrimitive?.l
 fun CrossOrderScanEntity.confirmation(): JsonObject? =
     runCatching { Json.parseToJsonElement(confirmationPayload).jsonObject }.getOrNull()
 
-internal fun offlineCrossOrderConfirmation(catalog: JsonObject, box: JsonObject, operation: String, locationId: Long, locationCode: String): JsonObject {
+internal fun offlineCrossOrderConfirmation(catalog: JsonObject, box: JsonObject, operation: String, locationId: Long, locationCode: String, physicalPlanId: Long = box.crossID("box_plan_id")): JsonObject {
     val snapshot = buildJsonObject {
         put("source_session_id", catalog.crossID("source_session_id"))
         put("source_order_id", catalog.crossID("source_order_id"))
-        put("physical_box_plan_id", box.crossID("box_plan_id"))
+        put("physical_box_plan_id", physicalPlanId)
         put("box_plan_id", box.crossID("box_plan_id"))
         put("target_order_id", box.crossID("target_order_id"))
         put("warehouse_id", catalog.crossID("warehouse_id"))
@@ -159,13 +159,14 @@ internal suspend fun FscmDatabase.resolveInboundCarton(
     val direct = inbound.scanCandidates(user, namespace, sourceId, codes)
     val mapping = boxLabelMappingDao().captureMapping(user, namespace, codes, code)
     val mapped = mapping?.toResolvedPayload(code)?.labelCode
-    val keys = if (mapped != null && mapped !in codes) codes + mapped else codes
+    val alias = offlineCacheDao().inboundAlias(user, namespace, codes)
+    val keys = (codes + listOfNotNull(mapped, alias?.targetLabel)).distinct()
     val local = if (keys == codes) direct else inbound.scanCandidates(user, namespace, sourceId, keys)
     val catalog = offlineCacheDao().find(user, namespace, "cross-order:$sourceId")
         ?.let { Json.parseToJsonElement(it.payload).jsonObject }
     val matches = catalogMatches(catalog, user, namespace, keys)
     val snapshot = local.singleOrNull()
-    val plans = local.map { it.boxPlanId } + matches.map { it.crossID("box_plan_id") } + listOfNotNull(mapping?.supplierOrderBoxPlanId)
+    val plans = local.map { it.boxPlanId } + matches.map { it.crossID("box_plan_id") } + listOfNotNull(mapping?.supplierOrderBoxPlanId, alias?.targetPlan)
     if (plans.distinct().size > 1) throw InboundClientException(InboundClientError.BoxOwnershipConflict)
     val box = matches.singleOrNull()
     if (box == null || catalog == null || box.crossID("target_order_id") == catalog.crossID("source_order_id")) {
@@ -174,7 +175,7 @@ internal suspend fun FscmDatabase.resolveInboundCarton(
         return@withTransaction snapshot ?: throw InboundClientException(InboundClientError.BoxOfflineNotFound, sourceId.toString(), code)
     }
     if (snapshot != null) throw InboundClientException(InboundClientError.BoxOwnershipConflict)
-    onCrossOrder(offlineCrossOrderConfirmation(catalog, box, "inbound", batch.warehouseLocationId, batch.locationCode))
+    onCrossOrder(offlineCrossOrderConfirmation(catalog, box, "inbound", batch.warehouseLocationId, batch.locationCode, alias?.sourcePlan ?: box.crossID("box_plan_id")))
     null
 }
 

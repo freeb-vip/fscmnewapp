@@ -28,6 +28,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -160,12 +162,68 @@ data class BoxLabelMappingSnapshotItem(
 @Serializable
 internal data class BoxLabelMappingSnapshot(
     val items: List<BoxLabelMappingSnapshotItem> = emptyList(),
+    @SerialName("adjustment_aliases") val aliases: List<AdjustmentLabelAlias> = emptyList(),
+    @SerialName("alias_has_more") val aliasHasMore: Boolean = false,
+    @SerialName("next_alias_after_id") val nextAliasAfterId: Long = 0,
     @SerialName("next_after_id") val nextAfterId: Long = 0,
     @SerialName("has_more") val hasMore: Boolean = false,
 )
 
-// Adjustment aliases have their own pagination stream and are not mapping rows.
-// Only items/next_after_id/has_more control this cache's full snapshot.
+@Serializable
+internal data class AdjustmentLabelAlias(
+    val id: Long,
+    @SerialName("source_box_plan_id") val sourcePlan: Long,
+    @SerialName("source_label_code") val sourceLabel: String = "",
+    @SerialName("source_box_no") val sourceNo: String = "",
+    @SerialName("source_box_uid") val sourceUid: String = "",
+    @SerialName("target_box_plan_id") val targetPlan: Long? = null,
+    @SerialName("target_label_code") val targetLabel: String = "",
+    val status: String,
+    @SerialName("quantity_confirmation_required") val confirmQuantity: Boolean = false,
+)
+
+private fun aliasKey(code: String) = "adjustment-alias:" + code.trim().uppercase(Locale.ROOT)
+
+internal suspend fun OfflineCacheDao.replaceAdjustmentAliases(user: Long, namespace: Long, aliases: List<AdjustmentLabelAlias>, syncedAt: Long) {
+    val entries = aliases.flatMap { alias ->
+        listOf(alias.sourceLabel, alias.sourceNo, alias.sourceUid).filter(String::isNotBlank).map(::aliasKey).distinct().map { it to alias }
+    }.groupBy({ it.first }, { it.second })
+    clearAdjustmentAliases(user, namespace)
+    upsertAll(entries.map { (key, value) -> OfflineCacheEntity(userId = user, namespaceId = namespace, cacheKey = key, payload = Json.encodeToString(value), updatedAt = syncedAt) })
+}
+
+internal suspend fun OfflineCacheDao.inboundAlias(user: Long, namespace: Long, codes: List<String>): AdjustmentLabelAlias? {
+    val matches = findKeys(user, namespace, codes.map(::aliasKey)).flatMap { Json.decodeFromString<List<AdjustmentLabelAlias>>(it.payload) }.distinctBy { it.id }
+    if (matches.size > 1) throw InboundClientException(InboundClientError.BoxOwnershipConflict)
+    return matches.singleOrNull()?.takeIf { it.status in setOf("active", "consumed") && !it.confirmQuantity && (it.targetPlan ?: 0) > 0 && it.targetLabel.isNotBlank() }
+}
+
+internal suspend fun collectBoxLabelMappingPages(fetch: suspend (Long, Long) -> BoxLabelMappingSnapshot): BoxLabelMappingSnapshot {
+    val mappings = mutableListOf<BoxLabelMappingSnapshotItem>()
+    val aliases = mutableListOf<AdjustmentLabelAlias>()
+    var after = 0L
+    var aliasAfter = 0L
+    var moreMappings = true
+    var moreAliases = true
+    do {
+        val page = fetch(after, aliasAfter)
+        if (moreMappings) {
+            mappings += page.items
+            check(!page.hasMore || (page.nextAfterId > after && page.items.isNotEmpty())) { "箱码快照未下载完整" }
+            after = page.nextAfterId
+            moreMappings = page.hasMore
+        }
+        if (moreAliases) {
+            aliases += page.aliases
+            check(!page.aliasHasMore || (page.nextAliasAfterId > aliasAfter && page.aliases.isNotEmpty())) { "旧箱唛映射未下载完整" }
+            aliasAfter = page.nextAliasAfterId
+            moreAliases = page.aliasHasMore
+        }
+    } while (moreMappings || moreAliases)
+    check(mappings.distinctBy { it.id }.size == mappings.size && aliases.distinctBy { it.id }.size == aliases.size) { "箱码快照包含重复记录" }
+    return BoxLabelMappingSnapshot(items = mappings, aliases = aliases)
+}
+
 class BoxLabelMappingCacheMissException : IllegalStateException()
 
 @Singleton
@@ -182,10 +240,12 @@ class BoxLabelMappingRepository @Inject constructor(
         if (scope.userId == 0L || scope.namespaceId == 0L || sessionStore.current().isOffline) return false
         val latest = database.localSkuCatalogDao().meta(scope.userId, scope.namespaceId, "box_mappings")?.refreshedAt ?: 0L
         if (!force && latest > 0 && System.currentTimeMillis() - latest < CACHE_REFRESH_INTERVAL_MS) return false
-        val items = downloadSnapshot()
+        val snapshot = downloadSnapshot()
+        val items = snapshot.items
         val syncedAt = System.currentTimeMillis()
         check(scope == scope()) { "工作空间已切换" }
         database.withTransaction {
+            database.offlineCacheDao().replaceAdjustmentAliases(scope.userId, scope.namespaceId, snapshot.aliases, syncedAt)
             dao.replaceScope(scope.userId, scope.namespaceId, items.map { it.toEntity(scope, syncedAt) })
             database.localSkuCatalogDao().saveMeta(ReferenceCacheMeta(scope.userId, scope.namespaceId, "box_mappings", true, items.size, syncedAt))
         }
@@ -202,34 +262,24 @@ class BoxLabelMappingRepository @Inject constructor(
         ) {
             return false
         }
-        val items = downloadSnapshot(sessionId)
+        val snapshot = downloadSnapshot(sessionId)
         val syncedAt = System.currentTimeMillis()
         check(scope == scope()) { "工作空间已切换" }
-        dao.replacePlans(
-            userId = scope.userId,
-            namespaceId = scope.namespaceId,
-            boxPlanIds = boxPlanIds.distinct(),
-            rows = items.map { it.toEntity(scope, syncedAt) },
-        )
+        database.withTransaction {
+            database.offlineCacheDao().replaceAdjustmentAliases(scope.userId, scope.namespaceId, snapshot.aliases, syncedAt)
+            dao.replacePlans(scope.userId, scope.namespaceId, boxPlanIds.distinct(), snapshot.items.map { it.toEntity(scope, syncedAt) })
+        }
         return true
     }
 
-    private suspend fun downloadSnapshot(sessionId: Long? = null): List<BoxLabelMappingSnapshotItem> {
+    private suspend fun downloadSnapshot(sessionId: Long? = null): BoxLabelMappingSnapshot {
         val actor = scope()
-        val items = mutableListOf<BoxLabelMappingSnapshotItem>()
-        var afterId = 0L
-        do {
-            val previousAfterId = afterId
-            val params = mutableMapOf("after_id" to afterId.toString(), "limit" to PAGE_SIZE.toString())
+        return collectBoxLabelMappingPages { afterId, aliasAfterId ->
+            val params = mutableMapOf("after_id" to afterId.toString(), "alias_after_id" to aliasAfterId.toString(), "limit" to PAGE_SIZE.toString())
             sessionId?.let { params["receiving_session_id"] = it.toString() }
             check(actor == scope()) { "工作空间已切换" }
-            val page: BoxLabelMappingSnapshot = api.get("mobile/app/box-label-mappings/snapshot", params, headers = inboundScopeHeaders(actor.userId, actor.namespaceId))
-            items += page.items
-            afterId = page.nextAfterId
-            check(!page.hasMore || (afterId > previousAfterId && page.items.isNotEmpty())) { "箱码快照未下载完整" }
-        } while (page.hasMore)
-        check(items.distinctBy { it.id }.size == items.size) { "箱码快照包含重复记录" }
-        return items
+            api.get("mobile/app/box-label-mappings/snapshot", params, headers = inboundScopeHeaders(actor.userId, actor.namespaceId))
+        }
     }
 
     suspend fun resolve(rawCode: String): BoxLabelQrPayload? {
