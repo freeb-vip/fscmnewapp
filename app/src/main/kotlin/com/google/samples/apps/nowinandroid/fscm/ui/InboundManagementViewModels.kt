@@ -679,6 +679,7 @@ internal fun Throwable.inboundUiText(): UiText = when (this) {
             InboundClientError.EmptyBatch -> R.string.inbound_empty_batch
             InboundClientError.InvalidBoxLabel -> R.string.inbound_invalid_box_label
             InboundClientError.MappingCacheMiss -> R.string.box_label_mapping_cache_miss
+            InboundClientError.PhysicalIdentityUnverified -> R.string.inbound_old_box_needs_verification
             InboundClientError.BoxNotInSession -> R.string.inbound_box_not_in_session
             InboundClientError.BoxNotEligible -> R.string.inbound_box_not_eligible
             InboundClientError.BoxOwnershipConflict -> R.string.inbound_box_ownership_conflict
@@ -696,7 +697,11 @@ internal fun Throwable.inboundUiText(): UiText = when (this) {
             InboundClientError.ConflictNotFound -> R.string.inbound_conflict_not_found
             InboundClientError.OfflineSyncUnavailable -> R.string.inbound_sync_offline
         },
-        args = listOf(detail),
+        args = if (reason == InboundClientError.BoxNotInSession || reason == InboundClientError.BoxOfflineNotFound || reason == InboundClientError.PhysicalIdentityUnverified) {
+            listOf(detail, scannedCode.replace(Regex("[\\p{C}\\s]+"), " ").take(100))
+        } else {
+            listOf(detail)
+        },
     )
     is FscmApiException -> when (inboundStandardCode()) {
         42244 -> UiText.Resource(R.string.inbound_location_center_not_found)

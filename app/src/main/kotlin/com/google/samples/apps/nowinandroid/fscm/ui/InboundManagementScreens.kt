@@ -79,6 +79,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -231,10 +232,12 @@ fun InboundSessionScreen(
     val scannerState by viewModel.scannerState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
-    var input by rememberSaveable { mutableStateOf("") }
+    val input = rememberSaveable(sessionId, state.workspace?.draftBatch?.id) { mutableStateOf("") }
+    val editInput: (String) -> Unit = { value -> handleInboundKeyboardInput(input, value, value.hasScanTerminator(), viewModel::scan) }
+    val submitInput = { handleInboundKeyboardInput(input, input.value, true, viewModel::scan) }
 
     LaunchedEffect(sessionId) { viewModel.load(sessionId) }
-    LaunchedEffect(state.cameraResumeToken, state.changingLocation) { input = "" }
+    LaunchedEffect(state.cameraResumeToken, state.changingLocation) { input.value = "" }
     DisposableEffect(lifecycleOwner) {
         viewModel.registerScanner(lifecycleOwner)
         onDispose(viewModel::unregisterScanner)
@@ -285,14 +288,11 @@ fun InboundSessionScreen(
                 InboundActiveBatchContent(
                     crossOrderCount = crossOrderTasks.count { it.batchId == draftBatch.id },
                     workspace = workspace,
-                    input = input,
+                    input = input.value,
                     loading = state.submitting || state.changingLocation || state.pendingRebind != null,
                     broadcastMode = scannerState.effectiveMode == ScannerInputMode.IntentBroadcast,
-                    onValueChange = { value ->
-                        input = value
-                        if (value.hasScanTerminator()) viewModel.scan(value.cleanScanInput())
-                    },
-                    onSubmit = { viewModel.scan(input.cleanScanInput()) },
+                    onValueChange = editInput,
+                    onSubmit = submitInput,
                     onCamera = openCamera,
                     onFinish = viewModel::requestFinish,
                     onRequestCancel = viewModel::requestCancelDraft,
@@ -327,14 +327,11 @@ fun InboundSessionScreen(
                             item {
                                 InboundScanInput(
                                     title = stringResource(R.string.inbound_scan_location),
-                                    value = input,
+                                    value = input.value,
                                     loading = state.submitting,
                                     broadcastMode = scannerState.effectiveMode == ScannerInputMode.IntentBroadcast,
-                                    onValueChange = { value ->
-                                        input = value
-                                        if (value.hasScanTerminator()) viewModel.scan(value.cleanScanInput())
-                                    },
-                                    onSubmit = { viewModel.scan(input.cleanScanInput()) },
+                                    onValueChange = editInput,
+                                    onSubmit = submitInput,
                                     onCamera = openCamera,
                                 )
                             }
@@ -1473,6 +1470,16 @@ private fun InboundLoading() = Box(Modifier.fillMaxWidth().padding(32.dp), conte
 
 @Composable
 private fun InboundEmpty(text: String) = Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { Text(text, color = InboundMuted) }
+
+internal fun handleInboundKeyboardInput(buffer: MutableState<String>, value: String, submit: Boolean, scan: (String) -> Unit) {
+    if (submit) {
+        buffer.value = ""
+        val code = value.cleanScanInput()
+        if (code.isNotEmpty()) scan(code)
+    } else {
+        buffer.value = value
+    }
+}
 
 private fun String.hasScanTerminator(): Boolean = contains('\n') || contains('\r')
 

@@ -102,6 +102,8 @@ interface CrossOrderScanDao {
     suspend fun delete(id: String, userId: Long, namespaceId: Long)
 }
 
+class InboundReviewOffer internal constructor(val task: CrossOrderScanEntity, val location: String) : Exception()
+
 class CrossOrderScanPending(val task: CrossOrderScanEntity) : Exception(task.message)
 
 internal fun JsonObject.crossText(key: String): String = this[key]?.jsonPrimitive?.content.orEmpty()
@@ -169,11 +171,58 @@ internal suspend fun FscmDatabase.resolveInboundCarton(
     if (box == null || catalog == null || box.crossID("target_order_id") == catalog.crossID("source_order_id")) {
         val targetSession = box?.crossID("target_session_id") ?: 0L
         if (targetSession > 0 && targetSession != sourceId) throw InboundClientException(InboundClientError.BoxOwnershipConflict)
-        return@withTransaction snapshot ?: throw InboundClientException(InboundClientError.BoxOfflineNotFound, sourceId.toString())
+        return@withTransaction snapshot ?: throw InboundClientException(InboundClientError.BoxOfflineNotFound, sourceId.toString(), code)
     }
     if (snapshot != null) throw InboundClientException(InboundClientError.BoxOwnershipConflict)
     onCrossOrder(offlineCrossOrderConfirmation(catalog, box, "inbound", batch.warehouseLocationId, batch.locationCode))
     null
+}
+
+internal suspend fun FscmDatabase.stageOriginalScan(offer: InboundReviewOffer): Boolean = withTransaction {
+    val task = offer.task
+    val dao = crossOrderScanDao()
+    val batch = localInboundDao().batch(task.batchId)
+    check(
+        batch != null && batch.userId == task.userId && batch.namespaceId == task.namespaceId &&
+            batch.sessionId == task.sourceSessionId && batch.status == InboundBatchStatus.Draft.value &&
+            batch.locationCode == offer.location && batch.warehouseLocationId == Json.parseToJsonElement(task.requestPayload).jsonObject.crossID("warehouse_location_id"),
+    ) { "采集批次或库位已变化，请重新扫描" }
+    val existing = dao.outstanding(task.userId, task.namespaceId, task.sourceSessionId, task.rawCode, task.operation)
+    if (existing != null || dao.get(task.userId, task.namespaceId, task.id) != null) return@withTransaction false
+    dao.save(task.copy(message = "原扫描已保存，待提交中心处理"))
+    true
+}
+
+/** Only a center preview of the original scan may establish an adjustment alias for capture. */
+internal suspend fun FscmDatabase.previewMissingInboundCarton(
+    batch: LocalInboundBatchEntity,
+    raw: String,
+    preview: suspend () -> JsonObject,
+): LocalInboundSnapshotEntity {
+    val missing = InboundClientException(InboundClientError.BoxNotInSession, batch.sessionId.toString(), raw)
+    val response = try {
+        preview()
+    } catch (error: FscmApiException) {
+        val root = error.payload as? JsonObject
+        val data = root?.get("data") as? JsonObject ?: root
+        if (data?.crossText("reason_code") == "physical_identity_unverified") {
+            throw InboundClientException(InboundClientError.PhysicalIdentityUnverified, batch.sessionId.toString(), raw)
+        }
+        throw error
+    }
+    val item = response["item"] as? JsonObject ?: throw InboundClientException(InboundClientError.BoxNotEligible)
+    if (item.crossText("status") == "unknown") throw missing
+    if (item.crossID("receiving_session_id") != batch.sessionId ||
+        item.crossText("status") != "normal" || item.crossText("exception_reason").isNotBlank() ||
+        response.crossText("virtual_recovery_required") == "true"
+    ) {
+        throw InboundClientException(InboundClientError.BoxNotEligible)
+    }
+    val code = item.crossText("label_code")
+    if (item.crossText("resolution_type") != "adjustment_alias" || item.crossID("source_box_plan_id") <= 0 || code.isBlank()) throw missing
+    val snapshot = resolveInboundCarton(batch, code) { throw InboundClientException(InboundClientError.BoxOwnershipConflict) }
+    if (snapshot == null || snapshot.boxPlanId != item.crossID("box_plan_id")) throw InboundClientException(InboundClientError.BoxOwnershipConflict)
+    return snapshot
 }
 
 // Cross-order attempts retain their source batch for operation history, while all
@@ -253,7 +302,7 @@ class CrossOrderReceivingRepository @Inject constructor(
 
     // A normal same-order preview falls through to the established pipeline.
     // Every unresolved/cross-order attempt is durable before it leaves this method.
-    suspend fun intercept(sourceId: Long, raw: String, operation: String, batch: LocalInboundBatchEntity? = null): LocalInboundSnapshotEntity? = mutex.withLock {
+    suspend fun intercept(sourceId: Long, raw: String, operation: String, batch: LocalInboundBatchEntity? = null, previewMissing: Boolean = false): LocalInboundSnapshotEntity? = mutex.withLock {
         val session = sessionStore.current()
         session.requireOfflineOperationPermission("receiving")
         val user = session.user?.id ?: 0
@@ -273,6 +322,7 @@ class CrossOrderReceivingRepository @Inject constructor(
             put("client_event_id", event)
             put("request_id", event)
             if (operation == "inbound") {
+                put("operation_mode", "scan")
                 put("warehouse_location_id", locationId)
                 put("location_code", locationCode)
             } else {
@@ -281,10 +331,32 @@ class CrossOrderReceivingRepository @Inject constructor(
         }
         var task = CrossOrderScanEntity(event, user, namespace, sourceId, batchId, operation, raw, request.toString())
         if (operation == "inbound") {
-            val localSnapshot = database.resolveInboundCarton(requireNotNull(batch), raw) { confirmation ->
+            val inboundBatch = requireNotNull(batch)
+            suspend fun saveConfirmation(confirmation: JsonObject) {
                 checkScope(user, namespace)
-                task = task.copy(confirmationPayload = confirmation.toString(), state = "awaiting_confirmation", message = "本地识别为 ${confirmation.crossText("target_order_code")}，确认后待同步")
+                task = task.copy(confirmationPayload = confirmation.toString(), state = "awaiting_confirmation", message = "此箱属于 ${confirmation.crossText("target_order_code")}，请确认")
                 dao.save(task)
+            }
+            val localSnapshot = try {
+                database.resolveInboundCarton(inboundBatch, raw, ::saveConfirmation)
+            } catch (error: InboundClientException) {
+                if (error.reason != InboundClientError.BoxOfflineNotFound || !previewMissing || session.isOffline) throw error
+                try {
+                    database.previewMissingInboundCarton(inboundBatch, raw) {
+                        api.post<JsonObject>(
+                            "receiving-sessions/$sourceId/scan-preview",
+                            headers = inboundScopeHeaders(user, namespace),
+                            body = JsonObject(request + ("operation" to JsonPrimitive(operation))),
+                        ).also { checkScope(user, namespace) }
+                    }
+                } catch (remote: FscmApiException) {
+                    val confirmation = remote.crossConfirmation() ?: throw remote
+                    saveConfirmation(confirmation)
+                    throw CrossOrderScanPending(task)
+                } catch (rejection: InboundClientException) {
+                    if (rejection.reason != InboundClientError.PhysicalIdentityUnverified) throw rejection
+                    throw InboundReviewOffer(task, locationCode)
+                }
             }
             if (localSnapshot == null) throw CrossOrderScanPending(task)
             return@withLock localSnapshot
@@ -352,6 +424,15 @@ class CrossOrderReceivingRepository @Inject constructor(
         if (task.operation != "inbound" && !sessionStore.current().isOffline) execute(task)
     }
 
+    suspend fun submitOriginalScan(offer: InboundReviewOffer) = mutex.withLock {
+        val task = offer.task
+        checkScope(task.userId, task.namespaceId)
+        if (!database.stageOriginalScan(offer)) return@withLock
+        scheduler.enqueueSoon()
+        execute(task)
+        Unit
+    }
+
     suspend fun retry(id: String) = mutex.withLock {
         var task = scopedTask(id)
         if (task.state == "needs_identification") {
@@ -401,6 +482,9 @@ class CrossOrderReceivingRepository @Inject constructor(
             return true
         } catch (error: FscmApiException) {
             val confirmation = error.crossConfirmation()
+            val data = (error.payload as? JsonObject)?.get("data") as? JsonObject
+            val receipt = data?.get("scan_receipt") as? JsonObject
+            val reviewId = receipt?.takeIf { it.crossText("persisted") == "true" && it.crossText("state") in setOf("awaiting_assignment", "needs_review") }?.crossID("id") ?: 0
             dao.save(
                 task.copy(
                     state = if (confirmation != null) {
@@ -413,7 +497,8 @@ class CrossOrderReceivingRepository @Inject constructor(
                         "blocked"
                     },
                     confirmationPayload = confirmation?.toString() ?: task.confirmationPayload,
-                    message = error.serverMessage ?: "同步失败，请处理",
+                    resultPayload = data?.toString() ?: task.resultPayload,
+                    message = if (reviewId > 0) "中心扫码留痕 #$reviewId：${error.serverMessage.orEmpty()}。请在网页仓库收货的「扫码留痕」处理。" else error.serverMessage ?: "同步失败，请处理",
                     updatedAt = System.currentTimeMillis(),
                 ),
             )

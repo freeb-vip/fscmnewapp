@@ -18,8 +18,11 @@ package com.google.samples.apps.nowinandroid.fscm.data
 
 import androidx.room.Room
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import org.junit.After
 import org.junit.Before
@@ -110,9 +113,73 @@ class InboundCartonCaptureTest {
     @Test
     fun repeatedMissStopsAfterOneRefresh() = runBlocking {
         var refreshes = 0
-        assertEquals(InboundClientError.BoxNotInSession, assertFailsWith<InboundClientException> { capture(false) { refreshes++ } }.reason)
+        val missing = assertFailsWith<InboundClientException> { capture(false) { refreshes++ } }
+        assertEquals(InboundClientError.BoxNotInSession, missing.reason)
+        assertEquals("20", missing.detail)
+        assertEquals(label, missing.scannedCode)
         assertEquals(1, refreshes)
         assertTrue(db.localInboundDao().itemsForBatch(batch.id).isEmpty())
+    }
+
+    @Test
+    fun unverifiedPrintedLabelCannotCreateADraftEvenIfCandidateIsPresent() = runBlocking {
+        val raw = "759D55F92653"
+        db.localInboundDao().replaceSnapshots(session, listOf(box.copy(boxPlanId = 14167, labelCode = "0FF452405854")))
+        val response = Json.parseToJsonElement("""{"code":40948,"data":{"reason_code":"physical_identity_unverified","canonical_label":{"box_plan_id":0}}}""")
+        val rejection = assertFailsWith<InboundClientException> {
+            db.previewMissingInboundCarton(batch, raw) { throw FscmApiException("unverified", 409, response) }
+        }
+        assertEquals(InboundClientError.PhysicalIdentityUnverified, rejection.reason)
+        assertEquals(raw, rejection.scannedCode)
+        assertTrue(db.localInboundDao().itemsForBatch(batch.id).isEmpty())
+        assertTrue(db.crossOrderScanDao().pending(7, 2).isEmpty())
+    }
+
+    @Test
+    fun reviewSubmissionPreservesOneOriginalEventAndRequiresTheSameActiveLocation() = runBlocking {
+        val raw = "759D55F92653"
+        val request = buildJsonObject {
+            put("raw_code", raw)
+            put("request_id", "original")
+            put("client_event_id", "original")
+            put("warehouse_location_id", batch.warehouseLocationId)
+            put("location_code", batch.locationCode)
+        }
+        val task = CrossOrderScanEntity("original", 7, 2, 20, batch.id, "inbound", raw, request.toString())
+        val offer = InboundReviewOffer(task, batch.locationCode)
+        assertFailsWith<IllegalStateException> { db.stageOriginalScan(InboundReviewOffer(task, "other")) }
+        assertTrue(db.crossOrderScanDao().pending(7, 2).isEmpty())
+        assertTrue(db.stageOriginalScan(offer))
+        assertEquals(false, db.stageOriginalScan(InboundReviewOffer(task.copy(id = "second"), batch.locationCode)))
+        val saved = db.crossOrderScanDao().pending(7, 2).single()
+        assertEquals("original", saved.id)
+        assertEquals(request.toString(), saved.requestPayload)
+        assertTrue(db.localInboundDao().itemsForBatch(batch.id).isEmpty())
+    }
+
+    @Test
+    fun verifiedOriginalLabelUsesOnlyTheSameSessionPlanAndUploadKeepsPhysicalIdentity() = runBlocking {
+        val raw = "759D55F92653"
+        val target = box.copy(boxPlanId = 14167, labelCode = "0FF452405854", firstSkuCode = "B20-4-Grid", quantity = 800)
+        db.localInboundDao().replaceSnapshots(session, listOf(target))
+        fun preview(plan: Long) = Json.parseToJsonElement(
+            """{"item":{"status":"normal","receiving_session_id":20,"resolution_type":"adjustment_alias","source_box_plan_id":13949,"label_code":"0FF452405854","box_plan_id":$plan}}""",
+        ).jsonObject
+        assertEquals(
+            InboundClientError.BoxOwnershipConflict,
+            assertFailsWith<InboundClientException> { db.previewMissingInboundCarton(batch, raw) { preview(999) } }.reason,
+        )
+        val verified = db.previewMissingInboundCarton(batch, raw) { preview(14167) }
+        assertEquals(target, verified)
+        val draft = db.localInboundDao().recordDraftBox(batch, verified, raw, null)
+        val request = inboundBatchScanRequest(batch.id, listOf(draft)).getValue("items").jsonArray.single().jsonObject
+        assertEquals(14167L, request.crossID("box_plan_id"))
+        assertEquals(raw, request.crossText("raw_code"))
+        assertNull(request["box_no"])
+        assertEquals(
+            InboundClientError.BoxScannedInCurrentBatch,
+            assertFailsWith<InboundClientException> { db.localInboundDao().recordDraftBox(batch, target, target.labelCode, null) }.reason,
+        )
     }
 
     @Test

@@ -16,6 +16,7 @@
 
 package com.google.samples.apps.nowinandroid.fscm.ui
 
+import androidx.compose.runtime.mutableStateOf
 import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.fscm.data.FscmApiException
 import com.google.samples.apps.nowinandroid.fscm.data.InboundClientError
@@ -64,6 +65,19 @@ class InboundErrorTextTest {
         val error = text(InboundClientError.BoxException, "Reason with 10% and %1\$s")
         assertEquals(R.string.inbound_box_exception, error.id)
         assertEquals(listOf("Reason with 10% and %1\$s"), error.args)
+    }
+
+    @Test
+    fun consecutiveKeyboardScansConsumeLocationAndEachCartonExactlyOnce() {
+        val buffer = mutableStateOf("")
+        val scans = mutableListOf<String>()
+        for (code in listOf("F3-B3-L03-0", "F681543E5224", "0BD49D00356B")) {
+            for (character in code) handleInboundKeyboardInput(buffer, buffer.value + character, false, scans::add)
+            handleInboundKeyboardInput(buffer, buffer.value + "\r\n", true, scans::add)
+            handleInboundKeyboardInput(buffer, buffer.value, true, scans::add)
+        }
+        assertEquals(listOf("F3-B3-L03-0", "F681543E5224", "0BD49D00356B"), scans)
+        assertEquals("", buffer.value)
     }
 
     private fun text(reason: InboundClientError, detail: String = "") =

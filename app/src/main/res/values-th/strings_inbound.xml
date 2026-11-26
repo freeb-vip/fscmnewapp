@@ -19,7 +19,11 @@
     <string name="inbound_batch_not_found">ไม่พบชุดตำแหน่งปัจจุบัน</string>
     <string name="inbound_empty_batch">สแกนอย่างน้อยหนึ่งกล่องก่อนเสร็จสิ้น</string>
     <string name="inbound_invalid_box_label">รูปแบบฉลากกล่องไม่ถูกต้อง</string>
-    <string name="inbound_box_not_in_session">ไม่พบกล่องในรายละเอียดใบรับเข้าที่อัปเดตแล้ว โปรดตรวจสอบใบรับเข้าและรหัสกล่อง</string>
+    <string name="inbound_review_title">ต้องตรวจสอบฉลากกล่องเดิม</string>
+    <string name="inbound_review_explanation">ใบรับเข้า %1$s พบฉลากเดิม “%2$s” ส่งรายการสแกนเพื่อบันทึกให้คลังตรวจสอบการรับฝากและการจับคู่ในประวัติการสแกนบนเว็บ หากยืนยันแล้ว ระบบจะดำเนินการรับเข้าที่ %3$s ทันที</string>
+    <string name="inbound_review_submit">ส่งรายการสแกนเดิม</string>
+    <string name="inbound_old_box_needs_verification">ใบรับเข้า %1$s พบฉลากเดิม “%2$s” โปรดยืนยันตัวกล่องก่อนลองอีกครั้ง</string>
+    <string name="inbound_box_not_in_session">ใบรับเข้า %1$s ไม่มีรหัสกล่อง “%2$s” โปรดสแกนคิวอาร์ของกล่องหรือกรอกรหัสกล่อง</string>
     <string name="inbound_box_not_eligible">ยังระบุสาเหตุที่แน่ชัดไม่ได้ อาจมีประวัติสแกน ข้อผิดพลาดในการรับสินค้า หรือข้อมูลเก่า โปรดเชื่อมต่อเพื่ออัปเดตและตรวจสอบประวัติรับสินค้าและเข้าคลัง</string>
     <string name="inbound_box_already_assigned">กล่องนี้เข้าคลังแล้ว ไม่สามารถเข้าคลังซ้ำได้ โปรดตรวจสอบตำแหน่งและติดต่อผู้ดูแลหากต้องการเปลี่ยนแปลง</string>
     <string name="inbound_box_already_scanned">กล่องนี้ถูกสแกนในชุดตำแหน่งอื่นแล้ว โปรดตรวจสอบและจัดการชุดเดิมก่อน</string>
@@ -146,7 +150,7 @@
     <string name="inbound_box_location_value">ตำแหน่ง: %1$s</string>
     <string name="inbound_box_unassigned">ยังไม่กำหนดตำแหน่ง · รอจัดเก็บ</string>
     <string name="inbound_box_virtual_pending">จัดเก็บเสมือน · รอกำหนดตำแหน่งจริง</string>
-    <string name="inbound_box_offline_not_found">ไม่พบกล่องในใบรับเข้า %1$s บนอุปกรณ์นี้ โปรดเชื่อมต่อและอัปเดตรายละเอียดใบรับเข้า</string>
+    <string name="inbound_box_offline_not_found">ใบรับเข้า %1$s บนอุปกรณ์นี้ไม่พบกล่อง “%2$s” โปรดเชื่อมต่อและอัปเดตรายละเอียด</string>
     <string name="inbound_box_ownership_conflict">ข้อมูลกล่องตรงกับหลายแผนหรือหลายใบรับเข้า โปรดตรวจสอบ</string>
     <string name="inbound_details_updated">อัปเดตรายละเอียดกล่องในใบรับเข้าแล้ว</string>
     <string name="inbound_details_update_failed">อัปเดตรายละเอียดกล่องไม่สำเร็จ: %1$s</string>

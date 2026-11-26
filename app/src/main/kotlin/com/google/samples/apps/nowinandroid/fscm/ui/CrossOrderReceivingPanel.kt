@@ -31,11 +31,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.google.samples.apps.nowinandroid.R
 import com.google.samples.apps.nowinandroid.fscm.data.CrossOrderReceivingRepository
 import com.google.samples.apps.nowinandroid.fscm.data.CrossOrderScanEntity
 import com.google.samples.apps.nowinandroid.fscm.data.CrossOrderScanPending
+import com.google.samples.apps.nowinandroid.fscm.data.InboundReviewOffer
 import com.google.samples.apps.nowinandroid.fscm.data.confirmation
 import com.google.samples.apps.nowinandroid.fscm.data.crossText
 import kotlinx.coroutines.CoroutineScope
@@ -46,14 +49,16 @@ import com.google.samples.apps.nowinandroid.fscm.ui.ScanAwareAlertDialog as Aler
 
 class CrossOrderReceivingController(private val scope: CoroutineScope, private val repository: CrossOrderReceivingRepository, private val feedback: com.google.samples.apps.nowinandroid.fscm.device.ReceivingScanFeedback) {
     val tasks = MutableStateFlow<List<CrossOrderScanEntity>>(emptyList())
+    val review = MutableStateFlow<InboundReviewOffer?>(null)
     val selected = MutableStateFlow<String?>(null)
     val busy = MutableStateFlow(false)
     val error = MutableStateFlow<String?>(null)
     private var observation: Job? = null
-    val isBlocking get() = selected.value != null || busy.value
+    val isBlocking get() = selected.value != null || review.value != null || busy.value
 
     fun load(sourceId: Long, refreshRemote: Boolean = true) {
         observation?.cancel()
+        review.value = null
         selected.value = null
         observation = scope.launch {
             var initialized = false
@@ -72,10 +77,30 @@ class CrossOrderReceivingController(private val scope: CoroutineScope, private v
     }
 
     fun handle(failure: Throwable): Boolean {
+        if (failure is InboundReviewOffer) {
+            feedback.failure()
+            review.value = failure
+            return true
+        }
         if (failure !is CrossOrderScanPending) return false
         feedback.failure()
         if (failure.task.state == "awaiting_confirmation") selected.value = failure.task.id
         return true
+    }
+
+    fun submitReview() = scope.launch {
+        if (busy.value) return@launch
+        val offer = review.value ?: return@launch
+        busy.value = true
+        try {
+            repository.submitOriginalScan(offer)
+        } catch (failure: Exception) {
+            if (failure is kotlinx.coroutines.CancellationException) throw failure
+            error.value = failure.message
+        } finally {
+            review.value = null
+            busy.value = false
+        }
     }
 
     fun dismiss() {
@@ -102,6 +127,7 @@ class CrossOrderReceivingController(private val scope: CoroutineScope, private v
 @Composable
 fun CrossOrderReceivingPanel(controller: CrossOrderReceivingController) {
     val tasks by controller.tasks.collectAsStateWithLifecycle()
+    val review by controller.review.collectAsStateWithLifecycle()
     val selected by controller.selected.collectAsStateWithLifecycle()
     val busy by controller.busy.collectAsStateWithLifecycle()
     val error by controller.error.collectAsStateWithLifecycle()
@@ -114,6 +140,16 @@ fun CrossOrderReceivingPanel(controller: CrossOrderReceivingController) {
             }
             tasks.firstOrNull()?.let { Text(it.message) }
         }
+    }
+    review?.let { offer ->
+        AlertDialog(
+            modifier = Modifier.onPreviewKeyEvent { it.key == Key.Enter || it.key == Key.NumPadEnter },
+            onDismissRequest = { if (!busy) controller.review.value = null },
+            title = { Text(stringResource(R.string.inbound_review_title)) },
+            text = { Text(stringResource(R.string.inbound_review_explanation, offer.task.sourceSessionId, offer.task.rawCode.take(100), offer.location)) },
+            confirmButton = { TextButton(enabled = !busy, onClick = { controller.submitReview() }) { Text(stringResource(R.string.inbound_review_submit)) } },
+            dismissButton = { TextButton(enabled = !busy, onClick = { controller.review.value = null }) { Text(stringResource(R.string.common_cancel)) } },
+        )
     }
     if (listOpen) {
         AlertDialog(
