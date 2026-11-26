@@ -160,6 +160,15 @@ interface OfflineCacheDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: OfflineCacheEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(rows: List<OfflineCacheEntity>)
+
+    @Query("SELECT * FROM offline_cache WHERE userId=:user AND namespaceId=:namespace AND cacheKey IN (:keys)")
+    suspend fun findKeys(user: Long, namespace: Long, keys: List<String>): List<OfflineCacheEntity>
+
+    @Query("DELETE FROM offline_cache WHERE userId=:user AND namespaceId=:namespace AND cacheKey GLOB 'adjustment-alias:*'")
+    suspend fun clearAdjustmentAliases(user: Long, namespace: Long)
+
     @Query("SELECT * FROM offline_cache WHERE userId = :userId AND namespaceId = :namespaceId AND cacheKey = :cacheKey LIMIT 1")
     suspend fun find(userId: Long, namespaceId: Long, cacheKey: String): OfflineCacheEntity?
 
