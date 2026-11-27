@@ -2371,6 +2371,7 @@ fun visibleMobileApps(
         .filter { it.key != "purchase_insights" || (sessionMode == SessionMode.Online && "purchase-insights" in permissionSet) }
         .filter { it.key != "profit" || (sessionMode == SessionMode.Online && "mobile-app:profit" in permissionSet && "operating-profit-daily" in permissionSet) }
         .filter { it.key != "product_capture" || "mobile-app:product-capture" in permissionSet }
+        .filter { it.key != "fbs_outbound" || "mobile-app:fbs-outbound" in permissionSet }
         .filter { it.key != "offline_shipping" || "mobile-app:offline-shipping" in permissionSet }
         .filter { it.key in implementedMobileAppKeys && it.key !in setOf("pda_settings", "edge_nodes") }
         .filter { app ->
@@ -2404,6 +2405,7 @@ internal val implementedMobileAppKeys = setOf(
     "product_management",
     "product_counting",
     "product_capture",
+    "fbs_outbound",
     "offline_shipping",
     "box_labels",
     "supplier_orders",
@@ -2461,6 +2463,7 @@ val defaultMobileApps = listOf(
         sort = 45,
     ),
     MobileAppEntry(key = "product_capture", title = "", description = "", path = "/pages/product-capture/index", permission = "mobile-app:product-capture", icon = "photo_camera", color = "#1677ff", sort = 50),
+    MobileAppEntry(key = "fbs_outbound", title = "", description = "", path = "/pages/fbs-outbound/index", permission = "mobile-app:fbs-outbound", icon = "local_shipping", color = "#1677ff", sort = 50),
     MobileAppEntry(key = "offline_shipping", title = "", description = "", path = "/pages/offline-shipping/index", permission = "mobile-app:offline-shipping", icon = "local_shipping", color = "#1677ff", sort = 49),
     MobileAppEntry(
         key = "inbound_management",

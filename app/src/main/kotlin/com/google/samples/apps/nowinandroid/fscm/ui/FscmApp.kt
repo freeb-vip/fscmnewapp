@@ -744,6 +744,8 @@ internal sealed interface FeatureRoute : Serializable {
     data object ProductManagement : FeatureRoute
     data object ProductCaptureList : FeatureRoute
     data class ProductCaptureDetail(val taskId: Long) : FeatureRoute
+    data object FbsList : FeatureRoute
+    data class FbsDetail(val orderId: Long) : FeatureRoute
     data object OfflineShippingList : FeatureRoute
     data class OfflineShippingDetail(val orderId: Long) : FeatureRoute
     data object ProductCountingList : FeatureRoute
@@ -777,6 +779,7 @@ private fun FeatureRoute.parentRoute(): FeatureRoute = when (this) {
         ?: FeatureRoute.SupplierOrders
     is FeatureRoute.ManufacturerPaymentBillDetail -> FeatureRoute.ManufacturerPaymentBills
     is FeatureRoute.ProductCaptureDetail -> FeatureRoute.ProductCaptureList
+    is FeatureRoute.FbsDetail -> FeatureRoute.FbsList
     is FeatureRoute.OfflineShippingDetail -> FeatureRoute.OfflineShippingList
     is FeatureRoute.ProductCountingDetail -> FeatureRoute.ProductCountingList
     is FeatureRoute.ProductSkuList,
@@ -1138,6 +1141,7 @@ private fun FeatureScreen(
                         is FeatureRoute.ManufacturerPaymentBillDetail -> stringResource(R.string.feature_manufacturer_payment_bill_detail)
                         FeatureRoute.ProductManagement -> stringResource(R.string.feature_product_management)
                         FeatureRoute.ProductCaptureList, is FeatureRoute.ProductCaptureDetail -> stringResource(R.string.capture_title)
+                        FeatureRoute.FbsList, is FeatureRoute.FbsDetail -> stringResource(R.string.fbs_title)
                         FeatureRoute.OfflineShippingList, is FeatureRoute.OfflineShippingDetail -> stringResource(R.string.shipping_title)
                         FeatureRoute.ProductCountingList -> stringResource(R.string.feature_product_counting)
                         FeatureRoute.LocationStocktakes -> stringResource(R.string.st_title)
@@ -1299,6 +1303,8 @@ private fun FeatureScreen(
                     scopeKey = "${session.user?.id}-${session.currentNamespace?.id}",
                 )
                 is FeatureRoute.ProductCaptureDetail -> ProductCaptureDetailScreen(route.taskId, "${session.user?.id}-${session.currentNamespace?.id}")
+                FeatureRoute.FbsList -> FbsScreen(null, "${session.user?.id}-${session.currentNamespace?.id}") { onNavigate(FeatureRoute.FbsDetail(it)) }
+                is FeatureRoute.FbsDetail -> FbsScreen(route.orderId, "${session.user?.id}-${session.currentNamespace?.id}") {}
                 FeatureRoute.OfflineShippingList -> OfflineShippingListScreen(
                     scopeKey = "${session.user?.id}-${session.currentNamespace?.id}",
                     onOpen = { onNavigate(FeatureRoute.OfflineShippingDetail(it)) },
@@ -3008,6 +3014,7 @@ internal fun localAppTitleResource(key: String): Int? = when (key) {
     "profit" -> R.string.local_app_profit_title
     "product_management" -> R.string.local_app_product_management_title
     "product_capture" -> R.string.capture_title
+    "fbs_outbound" -> R.string.fbs_title
     "offline_shipping" -> R.string.shipping_title
     "product_counting" -> R.string.local_app_product_counting_title
     "location_stocktakes" -> R.string.st_title
@@ -3036,6 +3043,7 @@ private fun localAppDescriptionResource(key: String): Int? = when (key) {
     "profit" -> R.string.local_app_profit_description
     "product_management" -> R.string.local_app_product_management_description
     "product_capture" -> R.string.capture_description
+    "fbs_outbound" -> R.string.fbs_description
     "offline_shipping" -> R.string.shipping_description
     "product_counting" -> R.string.local_app_product_counting_description
     "location_stocktakes" -> R.string.st_description
@@ -3310,6 +3318,10 @@ private fun openAppEntry(
     }
     "product_capture" -> {
         onOpenFeature(FeatureRoute.ProductCaptureList)
+        true
+    }
+    "fbs_outbound" -> {
+        onOpenFeature(FeatureRoute.FbsList)
         true
     }
     "offline_shipping" -> {
